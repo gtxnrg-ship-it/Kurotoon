@@ -58,7 +58,7 @@ A universal work may contain many provider listings and editions. A chapter numb
 
 ## Current implementation status
 
-The domain model already distinguishes Work, Edition, ProviderListing, Chapter, and ChapterListing. The current repository manager reads repository index metadata, but that alone is not an extension runtime or source catalogue. MangaDex is one provider implementation. The new catalog grouping module is a pure, testable foundation; it is not yet wired into global search, IndexedDB persistence, provider scheduling, or the UI.
+The domain model already distinguishes Work, Edition, ProviderListing, Chapter, and ChapterListing. The current repository manager reads repository index metadata, but that alone is not an extension runtime or source catalogue. MangaDex is one provider implementation. The existing `universalCatalog.ts` and `universalSearch.ts` provide an initial pure domain/search foundation, including bounded concurrency and partial-source outcomes. They are not yet wired to a persisted global catalog index, extension runtime, merge review UI, or durable user-confirmed merge history.
 
 ## Acceptance gates before calling the ecosystem universal
 
