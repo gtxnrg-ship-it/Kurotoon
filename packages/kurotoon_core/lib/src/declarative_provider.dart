@@ -30,27 +30,13 @@ class DeclarativeJsonProvider implements SourceProvider {
   }) {
     final validation = const ExtensionManifestPolicy().validate(manifest);
     if (!validation.accepted) throw ArgumentError(validation.issues.join('; '));
-    descriptor = ProviderDescriptor(
-      id: manifest.id,
-      name: manifest.name,
-      homepage: manifest.homepage,
-      capabilities: {
-        if (manifest.capabilities.contains(ExtensionCapability.search)) ProviderCapability.search,
-      },
-      isBuiltIn: false,
-      enabledByDefault: manifest.enabledByDefault,
-    );
   }
 
   final DeclarativeExtensionManifest manifest;
   final DeclarativeJsonFetcher fetcher;
-  late final ProviderDescriptor descriptor;
 
   @override
-  ProviderDescriptor get descriptor => _descriptor;
-  late final ProviderDescriptor _descriptor = _buildDescriptor();
-
-  ProviderDescriptor _buildDescriptor() => ProviderDescriptor(
+  late final ProviderDescriptor descriptor = ProviderDescriptor(
         id: manifest.id,
         name: manifest.name,
         homepage: manifest.homepage,
