@@ -1,153 +1,163 @@
-# KuroToon Roadmap
+# Kurotoon Roadmap
 
-This is a living plan. Items stay **Planned** until code exists and the acceptance criteria pass. Do not report a whole phase complete because its documents exist.
+> **Living, acceptance-based tracker.** These estimates are manually reviewed against merged code, tests and CI—not guessed from line count. A checkbox means the acceptance gate is met, not merely that a file exists. Update this page with every meaningful implementation milestone.
 
-## Phase 0 — Foundation and feasibility
+## Current checkpoint — 2026-10-19
 
-Status: **In progress** — the PWA install path and Capacitor Android APK pipeline are merged to `main`. GitHub Actions has successfully built the `Kurotoon.apk` artifact; physical-device installation and performance checks remain open.
+- [x] Native Flutter/Dart application is on `main`.
+- [x] Native release APK built by GitHub Actions.
+- [x] Flutter static analysis and Flutter tests passed on the current main build.
+- [x] Dart core CI passed on the same main commit.
+- [x] APK is uploaded as `Kurotoon.apk` to a continuous development release.
+- [ ] Install and verify the current APK on a real Android device.
+- [ ] Add and verify a stable direct-download alias for the README.
+- [ ] Run the native product flows against live sources on-device.
+- [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
-- [x] Establish public repository and initial documentation baseline.
-- [x] Select the initial web UI stack: React + TypeScript + Vite, with Capacitor as the initial Android packaging path; validate further native requirements against device and extension feasibility.
-- [x] Define type-check/production-build and unit-test commands.
-- [x] Add CI checks for pull requests and main-branch pushes.
-- [x] Add the PWA manifest, bounded app-shell service worker, Capacitor app identity, download UI, and CI workflow for an installable Kurotoon.apk (CI has generated a debug APK artifact; physical installation remains pending).
-- [ ] Verify the generated APK by installing it on a real Android device.
-- [ ] Document local setup and environment variables; commit no secrets.
-- [ ] Record a baseline performance budget for mid-range Android devices.
+Current verified build: commit `adde6fc27f96ef38e3a0e0abe38cf2b320924812`, release tag `continuous-137`. See the README for the current download link, which should only be marked current after the stable alias build succeeds.
 
-**Exit gate:** a clean checkout can install dependencies, run checks, and build a minimal responsive shell using documented commands.
+## Progress dashboard
 
-## Phase 1 — App shell and design system
+| Workstream | Current estimate | Evidence in main | Main gaps before calling it done |
+|---|---:|---|---|
+| Native build and CI | 90% | Flutter APK build, analysis, tests and release workflow pass | Real-device install, package metadata/signing strategy, smoke-test automation and other platforms |
+| Pure Dart domain and policy core | 70% | Typed work/edition/chapter models, cancellation, provider coordinator, identity matching, progress reconciliation, cache/effect/voice policies | More adversarial/property tests, manual identity corrections and end-to-end consumers |
+| Persistent state | 55% | SQLite schema and migrations for catalog/listings, library/progress/settings, creator credits, cache metadata, repositories and extensions | Verify all CRUD flows are composed into the runtime and native UI; migration/failure recovery and restore tests |
+| Provider integration | 50% | Native MangaDex adapter and bounded provider runtime; declarative endpoint provider contract | Live flow validation, respectful per-provider pacing/health, more source adapters and robust schema-drift handling |
+| Repository / extension foundation | 65% | Preview/confirmation API, index/manifest checks, hashes/size caps, redirect rejection, DNS checks, persistent install records | Real repository UI, source permissions and compatibility display, update/uninstall recovery tests, deeper DNS pinning review |
+| Cross-source catalog and chapter merge | 45% | Identity matcher, catalog index, provenance models, candidate grouping, mini-chapter/edition concepts | End-to-end persisted merge pipeline, corrections/undo, creator pages and real multi-source fixtures |
+| Reader and library end-to-end | 20% | Core models/persistence foundation and previous product prototype evidence | Flutter-native reader, chapters/pages, progress resume, durable library CRUD, sorting, empty/error/offline states |
+| Galaxy experience / adaptive performance | 25% | Initial animated Galaxy shell and effect-budget policy | Reduced-motion/lifecycle hardening, GPU/frame/memory/battery profiling, device-tested quality adaptation |
+| Voice, music, haptics and particle runtime | 10% | Timeline/voice license and size/hash policies | Real native adapters, consent UI, stop/lifecycle integration, downloadable packs, music discovery/playback, haptic and particle tuning |
+| Cross-platform releases | 10% | Shared Dart core is intended to be portable | iOS/iPadOS/Windows/Linux platform adapters, platform builds, accessibility and device test matrix |
 
-Status: **In progress** — the initial procedural cosmic canvas is merged and CI-verified; physical-device performance validation remains pending.
+**Engineering estimate of the full product: about 40% complete.** This is a practical scope estimate, not an objective code-coverage statistic. The native build foundation is real and CI-verified; the product is not finished because the real reader, library, repository UI, cross-source integration, effects, and device acceptance are still major work. The separate backend-foundation estimate is roughly 55–60%; a larger portion of the foundations exists than is wired into an end-to-end user experience.
 
-- [ ] Establish responsive dark-first design tokens, typography, spacing, surfaces, motion, focus states, and reduced-motion support.
-- [x] Add a first procedural cosmic canvas with layered colour fields, starfield, subtle large-scale filaments, pointer/touch ripples, visibility pausing, and reduced-motion handling (CI-verified; physical-device validation pending).
-- [ ] Add adaptive quality settings and validate GPU/memory/battery behaviour on low-end Android hardware.
-- [x] Implement the five-destination navigation shell: Home, Browser, Shop, Library, Me (full Library functionality remains a later integration task).
-- [ ] Add empty, loading, error, offline, and retry states.
-- [x] Add the in-app reader route and Me/settings boundary; some settings destinations remain placeholders.
-- [ ] Verify narrow mobile, tablet, and desktop layouts.
-- [ ] Add a first-launch cosmic reveal and shorter subsequent-launch transition only after the base renderer is profiled.
-- [x] Keep source/repository management under Me/settings; the repository manager is reachable from Me settings without adding a bottom-navigation item.
+## Phase A — Native foundation and release hygiene
 
-**Exit gate:** navigation is keyboard/touch usable, responsive, and does not lose route state during ordinary navigation.
+- [x] Establish a Flutter/Dart app entry point and a pure Dart core package.
+- [x] Replace the experimental Capacitor APK path with a Flutter release build in CI.
+- [x] Run Flutter analysis/tests and Dart core checks in CI.
+- [x] Build and publish a downloadable APK artifact from main.
+- [ ] Maintain a stable `continuous-latest` APK URL in addition to immutable numbered releases.
+- [ ] Add artifact checksum and build metadata to the release page and README.
+- [ ] Test installation, launch, upgrade/reinstall and navigation on a physical Android device.
+- [ ] Verify app label, icon, application ID, minimum Android version and signing/version policy.
+- [ ] Add smoke tests for cold-start and critical navigation.
+- [ ] Create reproducible release notes and a clear rollback path.
 
-## Phase 2 — Domain model and provider boundary
+**Exit gate:** a fresh user can download a known build, install it, launch it on a tested device and report a reproducible version/commit.
 
-Status: **In progress**
+## Phase B — Backend reliability and runtime integration
 
-- [x] Define typed models for Work, Edition, ProviderListing, Chapter, ChapterListing, Creator references, ReadingProgress, LibraryEntry, and ProviderHealth.
-- [x] Define source adapter contract for search, details, chapter list, and page retrieval.
-- [x] Define provider capability flags, cancellation signals, and structured provider errors; request budgets/timeouts still need enforcement.
-- [x] Add conservative work identity matching with confidence, reasons, and an explicit auto-merge threshold; provider-local creator IDs are not treated as globally comparable by default.
-- [x] Add the first source-agnostic batch catalog engine with canonical display titles, alternate titles, source provenance, and guarded high-confidence grouping.
-- [x] Add bounded potential-duplicate suggestions for review, rejecting contradictory cross-source IDs and ambiguous bridge merges.
-- [x] Rank latest chapter observations by publication date, with clearly identified fallback to chapter number or source verification time.
-- [ ] Persist canonical title overrides and manual identity corrections without changing stable Work/library/progress IDs.
-- [ ] Expand domain tests to cover edition mapping, mini-chapters, specials, progress remapping, and provider failures.
+- [x] Keep domain rules in `packages/kurotoon_core`, independent of Flutter widgets.
+- [x] Provide typed provider capability contracts and explicit structured result states.
+- [x] Bound search concurrency and provider deadlines; allow cancellation.
+- [x] Add first native MangaDex provider and user-toggle persistence.
+- [x] Add SQLite persistence and explicit versioned schema migration.
+- [x] Add repository preview-before-add, identity/URL checks and declarative manifest verification.
+- [x] Store installed extension metadata and restore enabled provider state on runtime initialization.
+- [ ] Test provider cancellation under real HTTP read/write stalls and ensure socket/resource disposal.
+- [ ] Make provider health/backoff/rate limiting observable and persist meaningful health states.
+- [ ] Exercise every SQLite migration from a real previous-version database fixture.
+- [ ] Test app kill/crash during extension install/update/uninstall and recover orphan temp files safely.
+- [ ] Add a structured diagnostic export that redacts credentials, tokens and private user data.
+- [ ] Wire storage-budget planning to actual cache writes/evictions with dry-run and observable outcomes.
+- [ ] Add backup/export only with versioned schema, preview, validation and explicit user confirmation.
 
-**Exit gate:** domain logic can be tested without UI or a live provider, and source failures are distinguishable from empty results.
+**Exit gate:** interrupted network, source failure, app restart and storage failure never corrupt user-owned data or masquerade as a successful empty response.
 
-## Phase 3 — First real source and core reader
+## Phase C — Repository and provider ecosystem
 
-Status: **In progress** — the initial MangaDex series/chapter/page reader is merged to `main`. TypeScript/build, domain-test, and APK-workflow checks have passed on recent reader changes. Complete live-flow acceptance and physical-device navigation/performance verification are still pending.
+- [x] Define repository and extension index/manifest models.
+- [x] Support explicit preview and confirmation API, manual HTTPS URL input and deep-link parsing.
+- [x] Use declarative manifests rather than arbitrary downloaded code execution.
+- [x] Validate index-declared manifest size/hash and cross-check identity/version/capabilities.
+- [ ] Build Me → Settings → Repositories UI with loading, trust warning, preview, add, refresh, remove and retry.
+- [ ] Add extension listing, detail/capability/host/license display, explicit install/update/uninstall and enabled switch.
+- [ ] Support multiple repo catalogs, collision handling, repo attribution and stale-index UX.
+- [ ] Add update preview with version/digest diff and rollback to last valid manifest.
+- [ ] Build conformance fixtures for allowed/disallowed URLs, DNS, IPv4/IPv6, redirect, oversized body, malformed JSON, hash mismatch, stale preview and changed repository identity.
+- [ ] Investigate Mihon/Tachiyomi APK compatibility independently; do not claim support without a working Android host/API proof of concept.
+- [ ] Add more real native provider adapters (candidate examples: Webtoon, Tapas, and other sources) only with lawful, stable APIs and source-specific terms respected.
 
-- [x] Add a typed MangaDex search adapter with cancellation, timeout, explicit provider failures, and a conservative content-rating default.
-- [x] Render real MangaDex search results with source attribution and honest loading/empty/error states; results can open the in-app series and chapter reader.
-- [ ] Manually verify the complete live flow: search → series details → chapter list → page retrieval.
-- [x] Add an initial bounded image-loading strategy: paged reading preloads the current page and immediate neighbours; vertical reading uses lazy loading and incremental page mounting. Further cancellation/concurrency hardening and device verification remain.
-- [x] Save and restore per-chapter reading progress using defensive storage helpers and a saved-page anchor for vertical mode; automated tests cover malformed, missing, clamped, and unavailable storage.
-- [x] Provide previous/next chapter navigation and failed-page retry UI; manually verify chapter boundaries and retry recovery on-device.
-- [ ] Add durable library add/remove/status/sort and progress integration.
-- [ ] Make source health and attribution consistently visible across all provider states.
+**Exit gate:** users can safely add several repositories, inspect before trusting, install one declarative source, update/disable/remove it and recover from broken metadata.
 
-**Exit gate:** verify the full search → series → reader path on old three-button Android navigation and modern gesture navigation, including retry, page/scroll restoration, chapter boundaries, and safe-area layout. A live comments service is explicitly not part of this exit gate.
+## Phase D — Universal catalog and reading data
 
-## Phase 4 — Repository and extension research gate
+- [x] Define Work / Edition / provider listing / Chapter / chapter listing / creator-credit concepts.
+- [x] Preserve provider provenance and source-specific identity.
+- [x] Add conservative identity matching and explicit review candidates.
+- [x] Model mini-chapter groups, reading-progress reconciliation and creator-work capability.
+- [ ] Persist approved merges, user corrections and undo without changing stable user/library IDs.
+- [ ] Build a multi-source synchronization pipeline with bounded concurrent fetches and conflict records.
+- [ ] Track translations, release groups, language, source timestamps and the last verified chapter per source.
+- [ ] Keep special chapters, seasons, one-shots, doujin layouts and mini-chapters distinct and correctly counted.
+- [ ] Build creator/artist pages aggregating all source editions with evidence and alternate identities.
+- [ ] Add durable library operations: add/remove, status, manual ordering, custom collections, sort and filter.
+- [ ] Add library update notifications without duplicate spam and with source disable/mute controls.
+- [ ] Add import/export for library and progress with identity review, dry-run and conflict handling.
 
-Status: **In progress — metadata-only web proof of concept; extension compatibility is still an open research gate.**
+**Exit gate:** the same work across multiple sources appears once when evidence is strong, distinct adaptations remain distinct, and removing a provider never deletes the user's library/progress.
 
-- [x] Parse a real community repository JSON index without installing anything; parser and tests target the legacy Mihon/Tachiyomi-style JSON index shape.
-- [x] Add a Me → Settings repository manager with HTTPS URL entry, supported deep-link URL extraction, local repository-list persistence, add/check/refresh/remove, metadata list filtering, and explicit error states.
-- [x] Limit index responses to 15 MB and 10,000 records, reject non-HTTPS URLs, and avoid downloading or executing listed APKs.
-- [ ] Add full signature/trust/package-format inspection and source permission presentation.
-- [ ] Inspect package formats, host API versions, dependencies, signatures, and license notices.
-- [ ] Build a disposable Android proof of concept for one extension, if licensing and technical feasibility permit.
-- [ ] Verify search, details, chapters, and page URLs through the host interface.
-- [ ] Document what cannot be supported in a browser/PWA.
-- [ ] Decide between native compatibility, a restricted adapter bridge, and provider adapters authored for KuroToon.
-- [ ] Define source permissions, provenance, update policy, rate limits, and safe failure.
+## Phase E — Native reader vertical slice
 
-**Exit gate:** a tested architecture decision with evidence. No production promise of generic Mihon/Tachiyomi compatibility before this gate passes.
+- [ ] Implement chapter selection and chapter reader in Flutter; no WebView wrapper.
+- [ ] Display manga/manhwa/webtoon page types with long-strip virtualization and predictable paging.
+- [ ] Bound image decode/prefetch concurrency and bytes; cancel previous chapter work on navigation.
+- [ ] Add page retry, network states, broken-page recovery and source attribution.
+- [ ] Persist reading progress continuously but with write coalescing; restore the correct page/anchor on reopen.
+- [ ] Implement previous/next chapter navigation, chapter boundaries, safe-area handling and gestures.
+- [ ] Add reader settings: reading direction/layout, fit/scale, brightness where platform allows, page gap and data saver.
+- [ ] Ensure external links and unsafe source responses cannot break navigation or escape a safe scheme policy.
+- [ ] Test with slow/error networks, very long webtoons, huge image dimensions, malformed media types and app background/foreground transitions.
 
-## Phase 5 — Unified catalog and discovery
+**Exit gate:** a user can search MangaDex, open series, choose a chapter, read it, retry failed pages, change chapters, close/reopen the app and resume at the expected position.
 
-Status: **In progress — the first source-agnostic grouping engine exists; live multi-provider search and UI integration remain open.**
+## Phase F — Galaxy UI and platform polish
 
-- [ ] Cross-provider search with bounded parallel requests, provider-specific limits, cancellation, and partial-result reporting.
-- [ ] Local incremental search index for already-seen metadata.
-- [x] Canonical display titles with retained aliases/alternate titles and source URLs.
-- [x] High-confidence duplicate grouping plus bounded review suggestions; ambiguous matches are not silently merged.
-- [ ] Persist the Work/Edition/listing/chapter relationships and make user corrections reversible.
-- [ ] Merge equivalent chapter observations without flattening languages, adaptations, specials, mini-chapters, seasons, or doujin structure.
-- [ ] Creator/artist pages with provenance.
-- [ ] Explicit handling for specials, mini-chapters, seasons, and doujin structure.
-- [ ] Explain partial results when a source is slow, blocked, or offline.
+- [x] Add an initial native Galaxy backdrop and five-tab navigation shell.
+- [ ] Define reusable tokens for surfaces, contrast, typography, spacing, focus, haptics and motion.
+- [ ] Add reduced-motion support and pause animations when hidden/backgrounded.
+- [ ] Keep the galaxy behind content, never underneath text with insufficient contrast or over manga pages by default.
+- [ ] Add adaptive particle/star counts and effects quality that degrade under frame-time pressure.
+- [ ] Avoid rebuild storms, unbounded animation controllers, per-frame allocations and excess blur over large screen areas.
+- [ ] Profile cold start, scroll frame pacing, image-heavy browsing, memory, battery and thermal behaviour on low-end and mid-range devices.
+- [ ] Verify phone/tablet/desktop breakpoints, keyboard, screen reader, large text and Android navigation modes.
+- [ ] Replace placeholders with genuine loading, empty, failure, retry and offline experiences.
+- [ ] Implement Library after persistence API and Reader acceptance gates; keep Shop isolated until its rules are defined.
 
-**Exit gate:** test fixtures prove that distinct editions are not incorrectly merged and source timeouts are not shown as “no results.”
+**Exit gate:** core reading remains smooth, accessible and fully usable with all Galaxy effects disabled.
 
-## Phase 6 — Immersive reader and audio
+## Phase G — Optional immersive layer
 
-Status: **Planned; staged rollout**
+- [x] Define chapter-relative cue models/policies and voice-pack license/size/hash constraints.
+- [ ] Wire haptics through an injected native adapter with system preference checks.
+- [ ] Build an optional native audio timeline that respects focus, mute, backgrounding and reader lifecycle.
+- [ ] Build voice-pack discovery/download/install/remove with license, digest, size, free-space and cancellation gates.
+- [ ] Keep OCR/speaker/emotion/dialogue detection explicitly uncertain, correctable and off by default until accuracy is evaluated.
+- [ ] Build the browser-native atmospheric music discovery engine with explicit source attribution and user-initiated playback.
+- [ ] Add particle/effect budgets, reduced-motion handling, quality controls and a global effects kill switch.
+- [ ] Test no audio/effects mode and ensure reading does not depend on downloaded voice packs.
+- [ ] Measure incremental CPU, memory, startup, battery and storage cost for each optional feature.
 
-- [ ] Define a single reader timeline and event model.
-- [ ] Add independently controlled dialogue, narration, music, ambience, and effects.
-- [ ] Add safe volume defaults, global pause/mute, audio focus, and no surprise autoplay.
-- [ ] Prototype OCR/bubble order/speaker labeling with confidence indicators.
-- [ ] Add voice profiles and pronunciation dictionaries.
-- [ ] Allow line corrections and persist user-approved corrections.
-- [ ] Add optional auto-scroll and tempo controls.
-- [ ] Test low-memory and interrupted-network behaviour.
+**Exit gate:** immersive features are opt-in, reversible, measurable and never a dependency of ordinary reading.
 
-**Exit gate:** basic reading works without audio; audio can be disabled instantly; timeline interruption/restart does not corrupt reading progress.
+## Phase H — Cross-platform and final acceptance
 
-## Phase 7 — Storage, reliability, and privacy
+- [ ] Define and build iOS/iPadOS host integration with the same Flutter/Dart domain rules.
+- [ ] Add Windows/Linux desktop launch/build workflows where platform dependencies permit.
+- [ ] Validate persistence, audio session, files, haptics, lifecycle and reader gestures per platform.
+- [ ] Add an accessibility pass and security/threat-model review.
+- [ ] Publish a stable release channel, versioned releases, checksums and user-visible change notes.
+- [ ] Establish a tested support matrix, minimum OS versions and known-limitations section.
 
-Status: **Planned**
+**Exit gate:** supported platforms have reproducible builds and documented test evidence, not only shared source code.
 
-- [ ] Storage dashboard and cache limits.
-- [ ] Separate disposable image/audio cache from durable library/progress data.
-- [ ] Cleanup and recovery tests.
-- [ ] Data export/backup design.
-- [ ] Privacy review for history, analytics, and external speech providers.
-- [ ] Diagnostics that redact tokens and personal data.
-- [ ] Performance tests on slower mobile hardware.
+## Rules for progressing the percentage
 
-**Exit gate:** cache cleanup cannot erase the library/progress; network and provider failures remain recoverable.
-
-## Phase 8 — Shop / rewards
-
-Status: **Blocked on product specification**
-
-The destination remains in navigation, but mechanics must wait for the product owner's explanation. Do not implement guessed currency, reward loops, tasks, purchases, or monetization.
-
-## Phase 9 — Release readiness
-
-Status: **Planned**
-
-- [ ] Accessibility and interaction audit.
-- [ ] Security and dependency review.
-- [ ] Android/PWA install and update tests.
-- [ ] Reproducible production build.
-- [ ] Clear release notes and known-limitations list.
-- [ ] Validate all claims in README against actual behaviour.
-
-## Working rules
-
-1. Prefer small, reviewable pull requests with a clear acceptance gate.
-2. Keep Implemented separate from Verified.
-3. Add tests with domain behaviour, especially identity/progress/storage logic.
-4. Do not add a dependency without a concrete reason and maintenance assessment.
-5. Never put secrets, private tokens, or personal credentials in source control.
-6. Revisit this roadmap when evidence or the owner's priorities change.
+1. Change a checkbox only when its evidence is available in code/tests or a recorded manual test.
+2. A schema or policy type is foundation work; it does not count as a user-facing feature until integrated and exercised.
+3. CI green does not imply live-source compatibility or physical-device acceptance.
+4. Recalculate the dashboard when a substantial milestone merges, and record what evidence changed the estimate.
+5. Keep blocked items visible instead of silently removing them to improve the number.

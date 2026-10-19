@@ -1,26 +1,44 @@
 # Kurotoon Dart backend foundation
 
-## Direction
+**Status: active foundation; not production-complete.** The native product direction is Flutter/Dart. The Android APK is built from `apps/kurotoon_flutter`; the domain/policy layer lives in `packages/kurotoon_core`. The legacy React/TypeScript prototype may remain in the repository for reference, but it is not the active Android application and must not be wrapped in Capacitor as a substitute for the native Flutter app.
 
-The long-term app UI target is Flutter/Dart. The old React/TypeScript/Vite + Capacitor application remains the current main-branch prototype until a tested Flutter replacement exists; it must not be described as already migrated or native. Domain behavior is being moved into a platform-independent Dart package first, so Flutter does not become a thin shell over a web application.
+## Workspace boundaries
 
-## Workspace
+- `packages/kurotoon_core`: platform-independent models and deterministic rules for catalog identity, chapter grouping, provider coordination, cancellation, progress reconciliation, repository/manifest policy, storage budget planning, reader timeline cues, experience/effect budgets and voice-pack eligibility.
+- `apps/kurotoon_flutter`: Flutter UI, composition root, native application runtime, SQLite persistence and HTTP-backed repository/extension services.
+- `.github/workflows/dart-core.yml`: formatting/static analysis/unit tests for the core.
+- `.github/workflows/android-apk.yml`: Flutter analysis/tests, native Android release APK build, artifact upload and development-release publication.
 
-- `packages/kurotoon_core`: pure Dart catalog/domain rules, source coordination, progress reconciliation, safety policy, bounded cache planning, and reader event filtering.
-- `apps/kurotoon_flutter`: Flutter workspace consuming the core. No polished screen tree belongs in the backend phase.
-- `.github/workflows/dart-core.yml`: analyzes and tests the domain package on relevant changes.
+The shared code is not a remote server. Current backend means device-side domain rules, persistence and provider services. There is no hosted account, cloud sync or application API today.
 
 ## Backend invariants
 
-- Cross-source matching preserves provenance and never auto-merges on title alone. Conflicting publication years or formats veto an automatic match; uncertain candidates remain reviewable.
-- Provider search has a concurrency limit, a request deadline, cooperative cancellation, safe error messages, and explicit partial/blocked/timeout statuses. Network adapters must connect the token to the underlying client's actual cancellation/abort support.
-- MangaDex remains an ordinary built-in provider that can be disabled by the user; built-in source IDs cannot be accidentally removed as if they were community installs.
-- Repository URLs require HTTPS and reject common local/private hosts. This is an initial validation gate, not a complete SSRF defense: adapters must re-check resolved IPs and redirect targets and must not execute untrusted provider code in the app's main isolate.
-- Reading progress uses deterministic timestamp/revision reconciliation and allows a newer intentional rewind.
-- Cache planning defaults to 1.5 GiB and evicts only unpinned cache entries; it does not manage user library, preferences, or progress. User-owned offline data must be represented explicitly and must never be silently deleted.
-- Reader audio/voice/haptic cues share one chapter-relative timeline. All channels are opt-in, inferred dialogue is separately gated, and low-confidence/foreign-chapter cues are ignored.
-- Platform adapters will supply actual network, database, secure-storage, audio, voice, haptic, and lifecycle integrations; the core package contains deterministic policy and domain logic, not pretend device implementations.
+- Cross-source matching preserves provenance; title similarity alone must not automatically merge works. Contradictory year, format, language, edition or source identifiers lower confidence or veto automatic matching; uncertain candidates remain reviewable.
+- Provider search has bounded concurrency, a request deadline, cancellation and explicit partial/blocked/rate-limited/timeout/malformed states. A failure must not masquerade as an empty source.
+- MangaDex is a built-in/live source that the user can disable. It cannot be removed through the community-extension uninstall path.
+- Repository indexes and extension manifests are declarative JSON, not executable code. Repository addition requires preview/review and confirmation; installation is opt-in per extension.
+- Repository traffic must use HTTPS, reject embedded credentials/custom ports/fragments and local/private addresses, validate resolved IPs, reject redirects, cap response/index/manifest sizes, set timeouts, propagate cancellation and verify manifest integrity against index metadata. This is defense in depth, not a guarantee against every platform/network DNS race; keep the security limitation documented and tested.
+- Reading progress uses deterministic timestamp/revision reconciliation while allowing an intentional newer rewind.
+- The cache planner defaults to 1.5 GiB for disposable cache-managed assets, not total app data. Eviction may only affect explicitly classified cache entries; pinned/offline user data and library/progress/preferences must be protected.
+- Reader cues share a chapter-relative timeline. Voice, sound, haptics and particles are optional; inferred dialogue is uncertain and separately gated. Policy models do not prove the native adapters exist.
+- Platform adapters must provide actual storage, network cancellation, audio focus/lifecycle, speech, haptics and file operations. Do not create fake no-op implementations that the UI reports as success.
 
-## Verification
+## Current integrated services
 
-The Dart CI workflow runs formatting checks, static analysis, and unit tests for the core. Real device performance, real HTTP cancellation, provider compatibility, disk eviction execution, and platform media/haptics remain integration-test gates rather than claimed completed features.
+- Runtime composition registers the built-in MangaDex adapter, restores persisted provider enablement, and loads installed declarative extension manifests from app-private storage.
+- SQLite schema version 2 persists normalized listing/catalog records, library/progress/settings, creator credits, review candidates, cache metadata, voice-pack install metadata, extension repositories and installed extensions.
+- Repository service offers preview-before-add, index refresh/identity checks, declared size/SHA-256 verification, safe install file creation and cancellation-aware HTTP fetches.
+- CI has built a native Flutter APK and passed Flutter analysis/tests and Dart core checks on main.
+- Native Flutter UI is still an initial shell. Full chapter-reader navigation, library workflows and the repository manager are not yet fully surfaced end-to-end. Physical-device verification remains open.
+
+## Verification required before production
+
+1. Unit tests for every policy boundary and malformed input; no reliance on the UI to enforce a security invariant.
+2. Migration tests starting from each supported old schema and preserving real records.
+3. Integration tests for HTTP cancellation, stalled bodies, oversized chunked bodies, redirects, DNS edge cases, stale repository previews, digest mismatches and update rollback.
+4. Recovery tests for interrupted installs/uninstalls and orphan temporary files.
+5. Runtime tests that exercise provider settings, source failures, library/progress flows and cache plans through the same composition root the UI uses.
+6. Physical-device tests for app lifecycle, cold start, image decoding/reader behaviour, voice/audio focus, haptics, frame pacing, memory and battery.
+7. A diagnostic export that removes URLs with credentials, auth values, personal data and any future tokens before logs leave the device.
+
+Do not claim the backend is "finished" based on schemas and models alone. Production readiness requires each capability to be wired through runtime, tests, UI and failure recovery, with device evidence where it depends on a platform API.

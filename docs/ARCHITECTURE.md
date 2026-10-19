@@ -1,115 +1,123 @@
-# KuroToon Architecture Proposal
+# Kurotoon Architecture
 
-This is a proposal, not a claim that the architecture is implemented. The final stack is intentionally left open until the first build and Android feasibility spikes provide evidence.
+> **Status: accepted direction.** The active Android app is Flutter/Dart. This document supersedes older web-first and Capacitor-first proposals. The production APK must be built from `apps/kurotoon_flutter`; it must not be a website wrapped in a WebView.
 
-## Platform strategy
+## Architecture at a glance
 
-Target a shared product experience across web/PWA and Android, but do not assume every capability can be shared. Keep platform-specific features behind explicit interfaces.
+```text
+Flutter screens and navigation
+        |
+Application runtime / services
+        |
+Pure Dart domain package (packages/kurotoon_core)
+        |
+        +-- provider contracts + bounded coordinator
+        +-- cross-source identity/catalog policies
+        +-- reading-progress reconciliation
+        +-- repository/manifest safety policies
+        +-- cache/effects/voice-pack policies
+        |
+Platform adapters
+        +-- SQLite (sqflite) for durable app-owned records
+        +-- native HTTP client with cancellation and response caps
+        +-- managed files for optional media/cache
+        +-- future native audio, speech, haptics, lifecycle adapters
+```
 
-The decision between a web-first PWA, a shared web UI packaged with Capacitor, and a more native Android implementation must account for:
-- extension compatibility and host APIs,
-- image-heavy reader performance,
-- audio focus/background behaviour,
-- file/storage permissions and offline downloads,
-- accessibility and mobile lifecycle handling,
-- developer effort and long-term maintenance.
+The core package must remain unit-testable without Flutter widgets, a live network, or physical hardware. Widgets orchestrate interactions; they do not own catalog matching, request limits, persistence schemas, or repository trust rules.
 
-A browser cannot directly execute Android APK extensions. Any Android compatibility path must be proven in a disposable spike before it becomes a production dependency.
+## Current implementation
 
-## Logical layers
+- `packages/kurotoon_core` defines the shared domain contracts and deterministic policy layer.
+- `apps/kurotoon_flutter` is the current Android application entry point and runtime composition root.
+- SQLite schema version 2 stores catalog identities/listings, editions, chapter/source listings, library entries, progress, settings, creator credits, identity-review suggestions, bounded-cache metadata, voice-pack installs, repositories, and installed declarative extensions.
+- The repository service previews an index before confirmation, checks index/manifest identity, verifies package size and SHA-256, caps response bodies, rejects redirects, uses timeouts/cancellation, and checks DNS results before requests.
+- GitHub Actions runs Flutter analysis/tests and produces a native release APK. The first APK build is CI-verified; physical-device behaviour remains unverified.
+- The current Flutter screen tree is a shell with live search. A complete native reader/library/repository-management experience is not yet integrated.
 
-- **Screens and interactions:** Home, Browser, Reader, Library, Shop, Me.
-- **Application services:** Search, Catalog, Progress, Collections, Recommendations, Reader timeline, Audio orchestration, Repository manager.
-- **Domain model and policies:** Work, Edition, Listing, Chapter, Creator, Progress, Identity matching, Source provenance, Storage policy.
-- **Capability interfaces:** Comic providers, Metadata providers, Speech providers, Cache/storage, Notifications, Platform lifecycle.
-- **Platform adapters:** Web/PWA adapter, Android/native adapter, and test adapters.
+## Product/platform commitments
 
-UI code should not know the implementation details of a specific source or speech provider. Domain rules should be testable without a browser, network, or device.
+1. **Native-first:** Flutter/Dart is the shared application UI and domain stack; native platform APIs live behind adapters. Do not restore Capacitor as the Android app runtime without an explicit product-owner decision.
+2. **Primary navigation stays:** Home, Browser, Shop, Library, Me. The reader is a dedicated route. Repositories and extensions live under Me/settings, not as a sixth bottom-tab item.
+3. **Galaxy identity:** dark cosmic background, slow layered colour fields, stars/particles, soft depth/glow, restrained motion and context-aware transitions. The theme must remain readable; effects can never obscure comic pages or primary controls.
+4. **Performance is a budget:** target smooth 60 FPS on ordinary devices, degrade effects under load, pause animation while backgrounded, respect reduced-motion settings, bound image/request concurrency, virtualize long lists, and dispose controllers. These are acceptance goals until measured on physical devices.
+5. **Live-first storage:** default to live provider fetches and bounded disposable cache. The initial cache planner defaults to 1.5 GiB. Never evict the user's library, settings, reading progress, pinned offline content, or other user-owned data as if it were cache.
+6. **Local-first privacy:** no remote application server or account sync is implemented. Reading history and library data stay on-device unless a separately reviewed, explicit export/sync feature is added.
+7. **Honest source behaviour:** keep provider attribution, preserve source-specific IDs/URLs, report blocked/timeout/malformed/partial results separately from empty results, and never retry indefinitely.
 
-## Provider contract
+## Provider contract and request safety
 
-A provider adapter should expose capabilities such as:
-- search(query, filters, cancellation)
-- getWorkDetails(providerListingId)
-- listChapters(providerListingId)
-- getChapterPages(chapterListingId)
-- health/status and capability metadata
+Providers expose capabilities for search and, where supported, work details, chapter feeds, creator works and reader pages. Requests must carry cancellation, a bounded deadline and response-size limits. Provider failures are typed states; a failed source must not be represented as a valid empty catalogue.
 
-Exact types will be defined in code. Every request should support cancellation and timeouts. Provider failures should be structured (blocked, unavailable, timeout, malformed response, unsupported operation) rather than collapsed into an empty result.
+The coordinator bounds active provider calls. Production HTTP adapters must propagate cancellation into the underlying socket/request, apply per-host concurrency and respectful request pacing, reject unsafe URLs/redirects, cap response bodies before JSON parsing, and keep diagnostics scrubbed of credentials. Do not make repeated retries that can overload community sources or trigger IP bans.
 
-Concurrency and rate limits must be bounded per provider. Do not retry indefinitely or generate traffic that risks source bans. Respect applicable terms, access rules, and provider-specific constraints.
+### MangaDex
 
-## Catalog identity
+MangaDex is the initial built-in/live source. It can be disabled by the user and must not be removable through the community-extension uninstall path. Its presence must not hard-code the rest of the app to MangaDex IDs or schemas.
 
-Do not use a URL as the sole identity of a series or chapter. URLs can change; different editions can share similar titles.
+### Community extension boundary
 
-Recommended conceptual entities:
-- **Work** — logical underlying story.
-- **Edition** — language, adaptation, release, or other meaningful variant.
-- **ProviderListing** — source-specific representation of a work/edition.
-- **Chapter** — logical chapter when identity can be established.
-- **ChapterListing** — provider-specific chapter record and page retrieval information.
-- **Creator** — author/artist identity with source-specific evidence.
-- **ReadingProgress** — durable progress associated with the logical reading target and, where needed, the edition.
+The supported first extension format is **declarative JSON**, not arbitrary downloaded Dart, Java/Kotlin, APK or JavaScript execution. A repository index lists packages; adding a repository must not download every extension. The user reviews repository identity, sees capabilities/source attribution and explicitly chooses an extension to install.
 
-Identity matching should combine evidence such as normalized titles, aliases, creators, language, chapter numbering, cover similarity where feasible, and cross-source links. Store confidence and provenance. Low-confidence matches remain separate until confirmed. User corrections override automated suggestions and should be reversible.
+Validate HTTPS, credentials, ports/fragments, local/private IP literals and resolved addresses; do not follow redirects; enforce bounded index/manifest/data sizes; verify index-declared manifest SHA-256/byte size and matching version, ID and capabilities. A URL string check alone is not a complete SSRF defence. Future redirect support must re-validate every destination and resolve/pin addresses safely. Native Mihon/Tachiyomi APK compatibility remains a separate research gate; downloading an APK/index does not make it executable.
 
-## Reading progress and persistence
+## Cross-source identity and chapter model
 
-Separate durable user data from disposable caches:
-- Durable: library membership, statuses, categories, sort preferences, progress, history settings, identity corrections.
-- Disposable: downloaded page responses, thumbnails, temporary search results, generated audio, temporary OCR output.
+Do not equate a provider listing URL with a global work ID. Keep these concepts separate:
 
-A cache purge must never delete durable library state. Source URL changes should not reset progress if a safe mapping exists. If the mapping is uncertain, ask or preserve both rather than silently moving progress.
+- **Work:** the underlying series, one-shot or story.
+- **Edition:** a language, adaptation, season/edition or meaningful publication variant.
+- **Provider listing:** one source's version of a work/edition, including its own identifiers, title, URL and metadata provenance.
+- **Chapter:** a logical chapter only when evidence supports the relationship.
+- **Chapter listing:** a source-specific release/translation of that chapter.
+- **Creator/credit:** person or credited entity plus role and source evidence.
+- **Identity review:** low-confidence possible duplicates that require review rather than silent merges.
 
-## Reader timeline and audio
+Title similarity is not sufficient for automatic merge. Contradictory year, format, language, edition or source identifiers should lower confidence or veto a link. Preserve alternate titles, original source fields, provider IDs and the reasoning behind a suggestion. Chapter count must explain specials, seasons and mini-chapter bundles; six mini-chapters should not silently become six ordinary full chapters. Latest translation/source selection must retain source and language provenance.
 
-A single timeline should coordinate chapter position, optional panel/bubble sequence, audio cues, narration/dialogue playback, and auto-scroll. These systems must be optional and independently degradable.
+## Durable state and storage
 
-Speech generation and OCR are provider capabilities, not hardwired UI functions. Model inferred speaker, text, order, emotion, and timing with confidence and user corrections. Persist only the minimum data needed and make external processing clear to the user.
+SQLite migrations are append-only and versioned. Every migration must preserve user data and be covered by tests. User-owned library/progress/preferences and identity corrections are distinct from disposable provider responses, covers, page previews, audio, and voice model cache.
 
-Audio requirements:
-- no unexpected loud autoplay,
-- independent volume controls,
-- global pause/mute,
-- cancellation on chapter change and navigation,
-- bounded prefetch and cache,
-- platform audio-focus/lifecycle integration,
-- graceful operation when audio or OCR is unavailable.
+- Keep large media files out of SQLite; store their managed paths and byte counts.
+- Cache eviction must use an explicit plan and execute only against cache rows/files; protect pinned offline content.
+- Clean up partially written files on failed/cancelled installs.
+- Avoid blocking the UI isolate with big JSON transformations, disk scans, image decoding, or bulk migrations.
+- Report when persistence is unavailable; do not pretend in-memory fallback is durable.
+- Backup/export and multi-device sync are future features. They need versioned formats, validation, restore preview and conflict handling before implementation.
 
-## Extension trust model
+## Reader timeline, voice, sound, haptics and particles
 
-Treat third-party extensions as untrusted inputs. At minimum:
-- record repository URL, extension identity/version, provenance, and update timestamp;
-- validate repository and package metadata;
-- define explicit capabilities and permissions;
-- apply timeouts, cancellation, request budgets, and isolated error handling;
-- never expose app secrets or unrestricted storage to a source;
-- show unsupported/incompatible versions clearly;
-- provide disable/remove and diagnostics controls.
+The domain layer may describe chapter-relative cues and policies, but that is not proof a native effect is wired up. All channels are opt-in, independently adjustable, and easy to mute/stop. Reader-page rendering is the primary priority; effects may never delay or block it.
 
-Do not claim a JavaScript sandbox or APK isolation model is secure until it is implemented and reviewed. Native extension execution may carry broad privileges and must be evaluated separately.
+- The reader must work fully in silent, reduced-motion, offline/blocked-source and no-voice-pack modes.
+- Speech/translation/OCR/speaker/emotion decisions are uncertain metadata. Never present inferred dialogue as ground truth; keep confidence and user corrections.
+- Voice packs require license, size and SHA-256 validation; downloads must be explicit and cancellable.
+- Audio must obey platform focus/lifecycle, avoid unexpected autoplay and stop when the reader closes or the app backgrounds.
+- Haptics must respect system settings and never fire for every trivial scroll event.
+- Particles need adaptive quality and a kill switch, with bounded controllers and no per-frame allocations on the hot path where avoidable.
+- A browser-native atmospheric music discovery/player engine is a future feature; it must not extract/play arbitrary media without clear user control and a safe playback contract.
 
-## Search and result states
+## Performance and acceptance gates
 
-Search should distinguish:
-- results found,
-- no results after successful provider responses,
-- partial results because some providers failed,
-- still loading,
-- offline/local-only results.
+Targets are goals, not current measured results:
 
-Use bounded parallelism and cancellation when the query changes. A timed-out source must not be represented as a confirmed empty result.
+- 60 FPS target on mid-range hardware; stable usable fallback on lower-end Android.
+- No synchronous network or expensive disk work on the UI isolate.
+- Bound concurrent sources, page prefetch, decode queue, request/response bytes, caches, and extension limits.
+- Pause expensive motion when not visible/backgrounded; respect reduced motion.
+- Measure cold start, search latency, first reader-page render, scrolling frame pacing, peak memory, cache growth and battery impact on real devices.
+- Test narrow phones, tablets and desktop layouts; Android three-button and gesture navigation; safe areas; large text; keyboard and screen-reader navigation.
+- CI success is necessary but not a substitute for device testing, live-source verification, security review or accessibility checks.
 
-## Testing strategy
+## Change rules for future agents
 
-- Domain unit tests for identity, edition separation, chapter ordering, and progress mapping.
-- Provider contract tests with deterministic fixtures.
-- UI tests for navigation, loading/error/empty states, reader controls, and persistence.
-- Integration tests for a complete search-to-page flow.
-- Android/PWA smoke tests for lifecycle and capability differences.
-- Performance checks for memory, image decoding, cache bounds, and source concurrency.
+Before changing architecture, read `README.md`, `docs/PRODUCT_VISION.md`, `docs/ROADMAP.md`, `docs/DECISIONS.md`, and `docs/EXTENSION_REPOSITORIES.md`.
 
-## Observability and privacy
-
-Diagnostics should explain source failures without logging sensitive tokens, credentials, full personal reading history, or unnecessary content. External AI/TTS processing must be disclosed and opt-in where appropriate. Analytics should not be required for core reading.
+1. Keep the root README's project name as `# Kurotoon`.
+2. Update the roadmap/status when a feature changes state; mark complete only when acceptance criteria pass.
+3. Add tests with policy or domain changes, and add migration tests when schema changes.
+4. Do not replace the native APK workflow with a WebView/Capacitor build.
+5. Do not claim voice, haptics, particles, cross-device sync, universal extension compatibility or physical-device performance until integrated and tested.
+6. Do not silently discard user data, bypass source restrictions, or broaden repository trust.
+7. Keep Shop mechanics reserved until the product owner defines them.
