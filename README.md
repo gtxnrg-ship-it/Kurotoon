@@ -63,3 +63,27 @@ These remain planned until individually implemented and tested.
 - **Blocked** — a dependency, platform limitation, permission, or unresolved decision prevents progress.
 
 See the roadmap for acceptance criteria.
+
+## Running the foundation UI
+
+Requirements: Node.js 20 or newer and npm.
+
+```sh
+npm install
+npm run dev
+```
+
+To run the same typecheck and production build used by CI:
+
+```sh
+npm run build
+npm run preview
+```
+
+## Current implementation status
+
+**Implemented and CI-verified:** Vite + React + TypeScript application shell, responsive cosmic-themed navigation, Home/Browser/Shop/Library/Me page scaffolds, and a pull-request build workflow.
+
+**Not implemented yet:** live source providers, real catalog search, reader/page loading, library persistence, extension installation/runtime, audio generation, account sync, downloads, and reward mechanics. The visible search box and settings rows are intentionally presentation-only at this stage.
+
+The UI currently uses remote Google Fonts with system fallbacks. A later offline/privacy pass should decide whether to self-host fonts and add a lockfile for fully reproducible dependency installs.
