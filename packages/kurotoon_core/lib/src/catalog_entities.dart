@@ -137,7 +137,11 @@ class ChapterGroup {
   String get displayTitle {
     if (!isMiniChapterGroup) {
       final unit = units.first;
-      return unit.title ?? (unit.chapterNumber == null ? 'Special' : 'Chapter ${unit.chapterNumber}');
+      final number = unit.chapterNumber;
+      final numberText = number == null
+          ? null
+          : (number == number.roundToDouble() ? number.toInt().toString() : number.toString());
+      return unit.title ?? (numberText == null ? 'Special' : 'Chapter $numberText');
     }
     final first = units.first;
     final number = first.chapterNumber;
