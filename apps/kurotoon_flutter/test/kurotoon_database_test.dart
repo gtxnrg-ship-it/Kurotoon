@@ -289,4 +289,51 @@ void main() {
       RepositoryTrust.builtIn.name,
     );
   });
+  test('pages large catalogs with a stable cursor and bounded search results', () async {
+    for (var i = 0; i < 120; i++) {
+      final suffix = i.toString().padLeft(3, '0');
+      final title = 'Series $suffix';
+      await database.upsertCatalogEntry(CatalogEntry(
+        work: WorkRecord(
+          id: 'work/series-$suffix',
+          title: title,
+          alternateTitles: ['Alias $suffix'],
+          creatorNames: ['Creator $suffix'],
+          format: WorkFormat.manga,
+        ),
+        listings: [WorkCandidate(
+          providerId: 'test.source',
+          externalId: 'series-$suffix',
+          title: title,
+          providerUrl: Uri.parse('https://source.example.org/series/$suffix'),
+        )],
+      ));
+    }
+
+    final firstPage = await database.loadCatalogPage(limit: 30);
+    expect(firstPage, hasLength(30));
+    expect(firstPage.first.work.title, 'Series 000');
+    expect(firstPage.last.work.title, 'Series 029');
+    expect(firstPage.first.listings, hasLength(1));
+
+    final secondPage = await database.loadCatalogPage(
+      limit: 30,
+      afterTitle: firstPage.last.work.title,
+      afterId: firstPage.last.work.id,
+    );
+    expect(secondPage, hasLength(30));
+    expect(secondPage.first.work.title, 'Series 030');
+    expect(secondPage.map((entry) => entry.work.id).toSet().intersection(
+      firstPage.map((entry) => entry.work.id).toSet(),
+    ), isEmpty);
+
+    final search = await database.loadCatalogPage(query: 'Series 09', limit: 20);
+    expect(search, hasLength(10));
+    expect(search.first.work.title, 'Series 090');
+    expect(search.last.work.title, 'Series 099');
+    expect(await database.loadCatalogPage(query: 'Series 09%', limit: 20), isEmpty);
+    await expectLater(database.loadCatalogPage(limit: 101), throwsArgumentError);
+  });
+
+
 }
