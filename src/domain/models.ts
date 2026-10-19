@@ -44,6 +44,12 @@ export interface ProviderListing {
   url: string;
   title: string;
   aliases: string[];
+  /** Cross-provider identifiers, namespaced by authority (for example, { mal: "123" }). */
+  externalIds?: Record<string, string>;
+  /** Language of the original work when a provider exposes it. */
+  originalLanguage?: LanguageCode;
+  /** Source-reported format; a different format may represent an edition, not a different story. */
+  format?: ComicFormat | 'unknown';
   languageCode?: LanguageCode;
   coverUrl?: string;
   description?: string;
