@@ -9,7 +9,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeProvider
     implements SourceProvider, SeriesProvider, ChapterFeedProvider, ReaderPagesProvider {
-  _FakeProvider(this._id, {this.failDetails = false});
+  _FakeProvider(this._id);
 
   final String _id;
   bool failDetails;
