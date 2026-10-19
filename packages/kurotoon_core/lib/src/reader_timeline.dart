@@ -58,7 +58,7 @@ class ReaderTimeline {
           !preferences.enabledKinds.contains(cue.kind)) {
         return false;
       }
-      if (cue.confidence < 0 || cue.confidence > 1) return false;
+      if (!cue.confidence.isFinite || cue.confidence < 0 || cue.confidence > 1) return false;
       if (cue.kind == ReaderEventKind.dialogue &&
           !cue.creatorAuthored &&
           !cue.userApproved &&
