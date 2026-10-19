@@ -400,3 +400,7 @@ Use the repository's current scripts as the source of truth if they change. Comm
 - [Roadmap and acceptance gates](docs/ROADMAP.md)
 - [Architecture proposal](docs/ARCHITECTURE.md)
 - [Decision log](docs/DECISIONS.md)
+
+## Multiplatform direction
+
+KuroToon is intended for **Android, iOS/iPadOS, Windows and Linux**, with macOS as a compatible additional target. The architecture direction is Kotlin Multiplatform for shared domain/data logic and Compose Multiplatform for shared adaptive UI where it fits, plus platform-specific adapters for audio, haptics, lifecycle, files and distribution. This is a migration plan, not a claim that all targets are already implemented. See [Multiplatform Architecture](docs/MULTIPLATFORM_ARCHITECTURE.md) for the target structure, source-security boundaries, Galaxy motion rules, sync/privacy rules and per-platform acceptance gates.
