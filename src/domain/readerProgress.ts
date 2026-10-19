@@ -69,3 +69,28 @@ export function writeReaderProgress(
     return false;
   }
 }
+
+/**
+ * Reads an older localStorage position during one-time migration to IndexedDB.
+ * Missing or corrupt entries return undefined so callers can distinguish them
+ * from a real saved position at page zero.
+ */
+export function readLegacyReaderProgress(
+  key: string,
+  storage: ProgressStorage | undefined = getBrowserStorage(),
+): ReaderProgressSnapshot | undefined {
+  if (!storage) return undefined;
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return undefined;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' ||
+        typeof (parsed as Record<string, unknown>).pageIndex !== 'number' ||
+        !Number.isFinite((parsed as Record<string, unknown>).pageIndex)) {
+      return undefined;
+    }
+    return normalizeReaderProgress(parsed);
+  } catch {
+    return undefined;
+  }
+}
