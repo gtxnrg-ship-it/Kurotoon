@@ -5,6 +5,7 @@ import {
   Vibrate, X, ZoomIn,
 } from 'lucide-react';
 import type { ChapterListing, ProviderListing } from '../domain/models';
+import { readReaderProgress, writeReaderProgress } from '../domain/readerProgress';
 import { isProviderRequestError } from '../domain/provider';
 import { mangaDexProvider } from '../providers/mangadex';
 
@@ -16,18 +17,6 @@ const PROGRESS_PREFIX = 'kurotoon:reader-progress:v1';
 
 function progressKey(listing: ProviderListing, chapter: ChapterListing) {
   return PROGRESS_PREFIX + ':' + listing.providerId + ':' + listing.providerWorkId + ':' + chapter.providerChapterId;
-}
-function readProgress(key: string): { pageIndex: number; scrollRatio: number } {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(key) || 'null');
-    if (parsed && Number.isFinite(parsed.pageIndex)) {
-      return {
-        pageIndex: Math.max(0, Math.floor(parsed.pageIndex)),
-        scrollRatio: Number.isFinite(parsed.scrollRatio) ? Math.min(1, Math.max(0, parsed.scrollRatio)) : 0,
-      };
-    }
-  } catch { /* Storage may be unavailable in private browsing. */ }
-  return { pageIndex: 0, scrollRatio: 0 };
 }
 function readableChapter(chapter: ChapterListing) {
   const number = chapter.numberLabel || 'Unnumbered';
@@ -190,6 +179,7 @@ export function ReaderScreen({
   const [scrollRatio, setScrollRatio] = useState(0);
   const [progressReady, setProgressReady] = useState(false);
   const [mode, setMode] = useState<ReaderMode>('paged');
+  const modeRef = useRef<ReaderMode>('paged');
   const [direction, setDirection] = useState<ReaderDirection>('rtl');
   const [gap, setGap] = useState(0);
   const [autoLoad, setAutoLoad] = useState(true);
@@ -205,11 +195,13 @@ export function ReaderScreen({
   const onExitRef = useRef(onSeriesHome);
   const requestAbortRef = useRef<AbortController | null>(null);
   const historyStatePushedRef = useRef(false);
+  const verticalRestoreKeyRef = useRef('');
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const lastSwipeAtRef = useRef(0);
   const progressStorageKey = progressKey(listing, chapter);
 
   useEffect(() => { onExitRef.current = onSeriesHome; }, [onSeriesHome]);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
 
   useEffect(() => {
     const currentState = window.history.state;
@@ -234,15 +226,20 @@ export function ReaderScreen({
     setRetries({});
     setProgressReady(false);
     setVisiblePageCount(6);
-    const saved = readProgress(progressStorageKey);
+    verticalRestoreKeyRef.current = '';
+    const saved = readReaderProgress(progressStorageKey);
     setPageIndex(saved.pageIndex);
     setScrollRatio(saved.scrollRatio);
     mangaDexProvider.getChapterPages(chapter.providerChapterId, controller.signal)
       .then(urls => {
         if (controller.signal.aborted) return;
         if (!urls.length) throw new Error('This chapter did not return any readable pages.');
+        const restoredPageIndex = Math.min(saved.pageIndex, urls.length - 1);
         setPages(urls);
-        setPageIndex(Math.min(saved.pageIndex, urls.length - 1));
+        setPageIndex(restoredPageIndex);
+        // Vertical mode mounts pages in batches. Ensure the saved page exists in the
+        // DOM before restoring its position, even when it is deep in a long chapter.
+        setVisiblePageCount(Math.min(urls.length, Math.max(6, modeRef.current === 'vertical' ? restoredPageIndex + 2 : 6)));
         setLoading(false);
         setProgressReady(true);
       })
@@ -265,12 +262,7 @@ export function ReaderScreen({
 
   useEffect(() => {
     if (!progressReady || !pages.length) return;
-    try {
-      localStorage.setItem(progressStorageKey, JSON.stringify({
-        pageIndex, scrollRatio,
-        updatedAt: new Date().toISOString(),
-      }));
-    } catch { /* The reader remains usable when storage is full or disabled. */ }
+    writeReaderProgress(progressStorageKey, { pageIndex, scrollRatio });
   }, [pageIndex, scrollRatio, progressReady, pages.length, progressStorageKey]);
 
   useEffect(() => {
@@ -289,14 +281,31 @@ export function ReaderScreen({
   }, [mode, autoLoad, visiblePageCount, pages.length, chapter.providerChapterId]);
 
   useEffect(() => {
-    if (mode !== 'vertical' || !progressReady || !scrollRef.current || scrollRatio <= 0) return;
+    if (mode !== 'vertical') {
+      verticalRestoreKeyRef.current = '';
+      return;
+    }
+    if (!progressReady || !scrollRef.current || !pages.length) return;
+    if (verticalRestoreKeyRef.current === progressStorageKey) return;
+
     const root = scrollRef.current;
+    const targetImage = root.querySelector<HTMLImageElement>('img[data-page-index="' + pageIndex + '"]');
+    if (!targetImage) {
+      // A saved page may be hundreds of pages into a chapter. Grow the mounted
+      // window just enough to include it instead of guessing from a partial height.
+      setVisiblePageCount(count => Math.min(pages.length, Math.max(count, pageIndex + 2)));
+      return;
+    }
+
     const raf = window.requestAnimationFrame(() => {
-      const available = Math.max(0, root.scrollHeight - root.clientHeight);
-      root.scrollTop = available * scrollRatio;
+      const rootRect = root.getBoundingClientRect();
+      const imageRect = targetImage.getBoundingClientRect();
+      const imageTopInScroll = imageRect.top - rootRect.top + root.scrollTop;
+      root.scrollTop = Math.max(0, imageTopInScroll - root.clientHeight * 0.45);
+      verticalRestoreKeyRef.current = progressStorageKey;
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [mode, progressReady, pages.length]);
+  }, [mode, progressReady, pages.length, visiblePageCount, pageIndex, progressStorageKey]);
 
   useEffect(() => {
     if (!pages.length || loading || mode !== 'paged') return;
@@ -451,7 +460,7 @@ export function ReaderScreen({
           {pages.slice(0, visiblePageCount).map((url, index) => <div className="reader-vertical-page" key={url + ':' + (retries[index] || 0)} style={{ marginBottom: gap + 'px' }}>
             {pageFailed(index)
               ? <div className="reader-page-failed"><strong>Page {index + 1} couldn't load.</strong><button className="reader-primary-button" onClick={() => retryPage(index)}><RotateCcw size={14}/> Retry page</button></div>
-              : <img data-page-index={index} src={url} alt={'Page ' + (index + 1)} loading={index < 3 ? 'eager' : 'lazy'} decoding="async" draggable={false} onError={() => markFailed(index)} />}
+              : <img data-page-index={index} src={url} alt={'Page ' + (index + 1)} loading={index < 3 || index === pageIndex ? 'eager' : 'lazy'} decoding="async" draggable={false} onError={() => markFailed(index)} />}
           </div>)}
         </div>
         {visiblePageCount < pages.length && <div ref={sentinelRef} className="reader-load-sentinel">
