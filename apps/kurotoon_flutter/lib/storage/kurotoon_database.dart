@@ -759,11 +759,11 @@ class KurotoonDatabase {
     if ((afterName == null) != (afterId == null)) {
       throw ArgumentError('afterName and afterId must be supplied together.');
     }
-    await _ensureCreatorIndexReady();
     final trimmed = query.trim();
     if (trimmed.isEmpty || trimmed.contains('%') || trimmed.contains('_')) {
       return const <CreatorProfile>[];
     }
+    await _ensureCreatorIndexReady();
     final escaped = trimmed.replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_');
     final clauses = <String>["name LIKE ? ESCAPE '!'"];
     final args = <Object?>['$escaped%'];
