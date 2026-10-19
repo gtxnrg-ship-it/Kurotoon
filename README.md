@@ -2,7 +2,7 @@
 
 > **[⬇️ Download the latest Android APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)** · [All releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases) · [Build history](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml)
 
-**KuroToon is being built as a native Flutter/Dart app—not a website wrapped in Capacitor.** The APK link points to the stable continuous-latest release alias, updated by successful main-branch builds. It is a development build; install and test it on your device before relying on it.
+**KuroToon is being built as a native Flutter/Dart app—not a website wrapped in Capacitor.** The default APK link points to the stable continuous-latest release alias and is an `arm64-v8a` build to avoid bundling unused CPU architectures. Older 32-bit ARM devices should use `Kurotoon-armeabi-v7a.apk` from [the latest release](https://github.com/gtxnrg-ship-it/Kurotoon/releases/tag/continuous-latest); x86_64 builds are published there too. Check `SHA256SUMS.txt` when verifying a download. This is a development build; install and test it on your device before relying on it.
 
 A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolving cosmic universe. The goal is a lightweight, polished reading app with a unified multi-source catalog, a durable user-owned library, safe repositories/extensions, and optional synchronized voice, audio, music and haptics.
 
