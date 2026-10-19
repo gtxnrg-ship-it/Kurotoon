@@ -34,7 +34,7 @@ void main() {
     ]);
     expect(groups, hasLength(1));
     expect(groups.single.units, hasLength(6));
-    expect(groups.single.displayTitle, 'Chapter 12.0 · 6 mini-chapters');
+    expect(groups.single.displayTitle, 'Chapter 12 · 6 mini-chapters');
   });
 
   test('exposes only the newest listing per translation language', () {
