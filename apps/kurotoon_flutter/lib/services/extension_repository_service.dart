@@ -233,6 +233,18 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     return target.path;
   }
 
+  Future<bool> isSafeInstalledManifestPath({
+    required String extensionId,
+    required String manifestPath,
+  }) async {
+    final root = await getApplicationSupportDirectory();
+    return ExtensionInstallPathPolicy.isSafeManifestPath(
+      extensionsRoot: path.join(root.path, 'extensions'),
+      extensionId: extensionId,
+      manifestPath: manifestPath,
+    );
+  }
+
   Future<void> uninstallExtension(String extensionId) async {
     if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{2,127}$').hasMatch(extensionId)) {
       throw ArgumentError.value(extensionId, 'extensionId', 'Invalid extension identifier.');
