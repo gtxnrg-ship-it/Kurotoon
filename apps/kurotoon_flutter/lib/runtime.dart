@@ -20,11 +20,31 @@ class KurotoonRuntime {
         storageBudget = storageBudget ?? StorageBudget(),
         readerTimeline = readerTimeline ?? const ReaderTimeline();
 
+  static final Uri officialRepositoryIndexUri = Uri.parse(
+    'https://raw.githubusercontent.com/gtxnrg-ship-it/Kurotoon/main/catalog/official/index.json',
+  );
+
   static Future<KurotoonRuntime> initialize({String? databasePath}) async {
     final database = await KurotoonDatabase.open(databasePath: databasePath);
+    await _ensureOfficialRepository(database);
     final runtime = KurotoonRuntime(database: database);
     await runtime.restoreProviderSettings();
     return runtime;
+  }
+
+  static Future<void> _ensureOfficialRepository(KurotoonDatabase database) async {
+    final repositories = await database.loadExtensionRepositories();
+    if (repositories.any((row) => row['id'] == 'org.kurotoon.official')) return;
+    await database.saveExtensionRepository(
+      ExtensionRepository(
+        id: 'org.kurotoon.official',
+        name: 'KuroToon Official Starter Repository',
+        indexUri: officialRepositoryIndexUri,
+        description: 'Curated, code-free JSON extensions maintained for KuroToon.',
+        website: Uri.parse('https://github.com/gtxnrg-ship-it/Kurotoon'),
+        trust: RepositoryTrust.builtIn,
+      ),
+    );
   }
 
   static ProviderRegistry _createDefaultProviders() => ProviderRegistry()
