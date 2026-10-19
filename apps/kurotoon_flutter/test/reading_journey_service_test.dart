@@ -9,9 +9,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeProvider
     implements SourceProvider, SeriesProvider, ChapterFeedProvider, ReaderPagesProvider {
-  _FakeProvider(this._id);
+  _FakeProvider(this._id, {this.failDetails = false});
 
   final String _id;
+  bool failDetails;
+  String chapterLanguage = 'en';
   int pageRequests = 0;
 
   @override
@@ -58,6 +60,12 @@ class _FakeProvider
     required CancellationToken cancellationToken,
   }) async {
     cancellationToken.throwIfCancelled();
+    if (failDetails) {
+      return const ProviderResponse(
+        status: ProviderResultStatus.failed,
+        message: 'simulated detail failure',
+      );
+    }
     return ProviderResponse(status: ProviderResultStatus.success, data: _candidate(id: seriesId));
   }
 
@@ -72,7 +80,7 @@ class _FakeProvider
             providerId: _id,
             externalId: 'chapter-$number',
             url: Uri.parse('https://catalog.example.org/chapter/chapter-$number'),
-            languageCode: 'en',
+            languageCode: chapterLanguage,
             publishedAt: DateTime.utc(2026, 1, number),
           ),
         ],
@@ -226,6 +234,36 @@ void main() {
     expect(await journey.loadLibrary(), isEmpty);
     // Library membership and resumable progress are intentionally independent.
     expect(await journey.loadResumeTarget(workId: workId, editionId: editionId), isNotNull);
+  });
+
+  test('retains the selected search result when series detail refresh fails', () async {
+    provider.failDetails = true;
+    final search = await journey.search('Blue Star');
+    final selected = search.candidates.single;
+
+    final opened = await journey.openSeries(selected);
+
+    expect(opened.details.providerId, selected.providerId);
+    expect(opened.details.externalId, selected.externalId);
+    expect(opened.detailsRefreshed, isFalse);
+    expect(opened.warning, contains('simulated detail failure'));
+    expect(opened.catalogResult.entry!.listings.single.listingKey, selected.listingKey);
+  });
+
+  test('filters chapter listings to the requested translation languages', () async {
+    provider.chapterLanguage = 'ja';
+    final opened = await journey.openSeries((await journey.search('Blue Star')).candidates.single);
+    final result = await journey.refreshChapters(
+      workId: opened.catalogResult.entry!.work.id,
+      providerId: 'fake-source',
+      translatedLanguages: const ['en'],
+      limit: 2,
+      offset: 0,
+    );
+
+    expect(result.chapters, isEmpty);
+    expect(result.warning, contains('requested language'));
+    expect(result.editionIds, isEmpty);
   });
 
   test('a failed identity match is queued instead of silently merged', () async {
