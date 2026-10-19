@@ -9,7 +9,7 @@ enum CatalogUpsertStatus { created, linked, alreadyKnown, reviewRequired }
 class CatalogEntry {
   CatalogEntry({
     required this.work,
-    required this.listings,
+    required List<WorkCandidate> listings,
     this.verified = false,
   }) : listings = List.unmodifiable(listings);
 
