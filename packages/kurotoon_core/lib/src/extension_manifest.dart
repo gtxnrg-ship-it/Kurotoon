@@ -51,7 +51,7 @@ class JsonEndpointSpec {
   final int maxResponseBytes;
 
   static const Set<String> _allowedPlaceholders = {
-    'query', 'page', 'limit', 'seriesId', 'chapterId', 'language',
+    'query', 'page', 'limit', 'seriesId', 'chapterId', 'creatorId', 'language',
   };
 
   List<String> validate() {
@@ -102,6 +102,7 @@ class JsonEndpointSpec {
     int limit = 20,
     String? seriesId,
     String? chapterId,
+    String? creatorId,
     String? language,
   }) {
     final values = <String, String>{
@@ -110,6 +111,7 @@ class JsonEndpointSpec {
       'limit': '$limit',
       'seriesId': seriesId ?? '',
       'chapterId': chapterId ?? '',
+      'creatorId': creatorId ?? '',
       'language': language ?? '',
     };
     final parameters = <String, String>{};
