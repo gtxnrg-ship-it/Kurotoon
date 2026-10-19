@@ -6,7 +6,7 @@ import 'package:kurotoon_core/kurotoon_core.dart';
 
 import '../storage/kurotoon_database.dart';
 
-enum CatalogAdmission { created, linked, alreadyKnown, reviewRequired }
+enum CatalogAdmission { created, linked, alreadyKnown, reviewRequired, distinctConfirmed }
 
 class CatalogAdmissionResult {
   const CatalogAdmissionResult({
@@ -97,6 +97,131 @@ class ReadingWorkflowService {
   final int defaultMaxChapters;
   final Duration providerTimeout;
   Future<String>? _deviceIdFuture;
+
+  /// Resolves a persisted possible-duplicate review after an explicit choice.
+  ///
+  /// Linking merges catalog provenance and migrates editions, library membership,
+  /// creator credits and progress in a single database transaction. Confirming
+  /// distinct leaves the listing independently readable and locks that identity
+  /// against future automatic merges.
+  Future<CatalogAdmissionResult> resolveIdentityReview(
+    String listingKey, {
+    String? targetWorkId,
+    bool createAsDistinctWork = false,
+  }) async {
+    if ((targetWorkId == null && !createAsDistinctWork) ||
+        (targetWorkId != null && createAsDistinctWork)) {
+      throw ArgumentError('Choose exactly one of targetWorkId or createAsDistinctWork.');
+    }
+
+    final pending = await database.loadPendingIdentityReviews();
+    PendingIdentityReview? review;
+    for (final item in pending) {
+      if (item.key == listingKey) {
+        review = item;
+        break;
+      }
+    }
+    if (review == null) throw ArgumentError.value(listingKey, 'listingKey', 'No pending identity review.');
+
+    final catalog = await database.loadCatalog();
+    CatalogEntry? sourceEntry;
+    for (final entry in catalog) {
+      if (entry.listings.any((listing) => listing.listingKey == listingKey)) {
+        sourceEntry = entry;
+        break;
+      }
+    }
+    if (sourceEntry == null) {
+      throw StateError('The reviewed provider listing is missing from the local catalog.');
+    }
+
+    if (createAsDistinctWork) {
+      await database.resolvePendingIdentityReviewAsDistinct(listingKey);
+      final source = sourceEntry.work;
+      final locked = CatalogEntry(
+        work: WorkRecord(
+          id: source.id,
+          title: source.title,
+          alternateTitles: source.alternateTitles,
+          creatorNames: source.creatorNames,
+          year: source.year,
+          format: source.format,
+          lockedDistinctIdentity: true,
+        ),
+        listings: sourceEntry.listings,
+        verified: sourceEntry.verified,
+      );
+      return CatalogAdmissionResult(
+        entry: locked,
+        admission: CatalogAdmission.distinctConfirmed,
+        message: 'Confirmed as a separate work; this identity is protected from automatic merging.',
+      );
+    }
+
+    CatalogEntry? targetEntry;
+    for (final entry in catalog) {
+      if (entry.work.id == targetWorkId) {
+        targetEntry = entry;
+        break;
+      }
+    }
+    if (targetEntry == null) {
+      throw ArgumentError.value(targetWorkId, 'targetWorkId', 'Target work does not exist.');
+    }
+    if (targetEntry.work.id == sourceEntry.work.id) {
+      await database.deletePendingIdentityReview(listingKey);
+      return CatalogAdmissionResult(
+        entry: targetEntry,
+        admission: CatalogAdmission.alreadyKnown,
+        message: 'The reviewed listing already belongs to the selected work.',
+      );
+    }
+
+    final listingByKey = <String, WorkCandidate>{};
+    for (final listing in targetEntry.listings) {
+      listingByKey[listing.listingKey] = listing;
+    }
+    for (final listing in sourceEntry.listings) {
+      listingByKey[listing.listingKey] = listing;
+    }
+    final aliases = <String>{
+      ...targetEntry.work.alternateTitles,
+      ...sourceEntry.work.alternateTitles,
+    };
+    if (WorkIdentityMatcher.normalizeTitle(sourceEntry.work.title) !=
+        WorkIdentityMatcher.normalizeTitle(targetEntry.work.title)) {
+      aliases.add(sourceEntry.work.title);
+    }
+    final creators = <String>{
+      ...targetEntry.work.creatorNames,
+      ...sourceEntry.work.creatorNames,
+    };
+    final canonical = targetEntry.work;
+    final merged = CatalogEntry(
+      work: WorkRecord(
+        id: canonical.id,
+        title: canonical.title,
+        alternateTitles: aliases.toList(growable: false),
+        creatorNames: creators.toList(growable: false),
+        year: canonical.year ?? sourceEntry.work.year,
+        format: canonical.format == WorkFormat.unknown ? sourceEntry.work.format : canonical.format,
+        lockedDistinctIdentity: canonical.lockedDistinctIdentity,
+      ),
+      listings: listingByKey.values.toList(growable: false),
+      verified: targetEntry.verified || sourceEntry.verified,
+    );
+    await database.mergePendingIdentityReview(
+      listingKey: listingKey,
+      targetWorkId: targetEntry.work.id,
+      mergedEntry: merged,
+    );
+    return CatalogAdmissionResult(
+      entry: merged,
+      admission: CatalogAdmission.linked,
+      message: 'The provider listings and saved reading state were merged into the selected work.',
+    );
+  }
 
   SourceProvider? _provider(String id) {
     for (final provider in providers.all) {
