@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -45,18 +46,26 @@ class CacheWritePlan {
 
 /// SQLite persistence for user-owned state and normalized catalog metadata.
 /// Image/page/audio bytes live in bounded files, not database blobs.
+class CatalogMatchPage {
+  CatalogMatchPage({required List<CatalogEntry> entries, required this.hasMore})
+      : entries = List.unmodifiable(entries);
+  final List<CatalogEntry> entries;
+  final bool hasMore;
+}
+
 class KurotoonDatabase {
   KurotoonDatabase._(this._database);
 
   final Database _database;
   bool _closed = false;
+  Future<void>? _catalogSearchIndexFuture;
 
   Database get rawDatabase {
     _ensureOpen();
     return _database;
   }
 
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
 
   static Future<KurotoonDatabase> open({
     String? databasePath,
@@ -115,6 +124,13 @@ class KurotoonDatabase {
         FOREIGN KEY(work_id) REFERENCES works(id) ON UPDATE CASCADE ON DELETE RESTRICT
       )''',
       'CREATE INDEX provider_listings_work_idx ON provider_listings(work_id)',
+      '''CREATE TABLE catalog_search_terms (
+        work_id TEXT NOT NULL,
+        term TEXT NOT NULL COLLATE NOCASE,
+        PRIMARY KEY(work_id, term),
+        FOREIGN KEY(work_id) REFERENCES works(id) ON UPDATE CASCADE ON DELETE CASCADE
+      )''',
+      'CREATE INDEX catalog_search_terms_term_idx ON catalog_search_terms(term COLLATE NOCASE, work_id)',
       '''CREATE TABLE editions (
         id TEXT PRIMARY KEY NOT NULL,
         work_id TEXT NOT NULL,
@@ -258,6 +274,17 @@ class KurotoonDatabase {
     if (oldVersion < 1 && newVersion >= 1) await _createSchema(db, newVersion);
     if (oldVersion < 2 && newVersion >= 2) await _createExtensionSchema(db);
     if (oldVersion < 3 && newVersion >= 3) await _createCatalogIndexes(db);
+    if (oldVersion < 4 && newVersion >= 4) await _createCatalogSearchTermsTable(db);
+  }
+
+  static Future<void> _createCatalogSearchTermsTable(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS catalog_search_terms (
+      work_id TEXT NOT NULL,
+      term TEXT NOT NULL COLLATE NOCASE,
+      PRIMARY KEY(work_id, term),
+      FOREIGN KEY(work_id) REFERENCES works(id) ON UPDATE CASCADE ON DELETE CASCADE
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS catalog_search_terms_term_idx ON catalog_search_terms(term COLLATE NOCASE, work_id)');
   }
 
   static Future<void> _createCatalogIndexes(DatabaseExecutor db) async {
@@ -338,6 +365,7 @@ class KurotoonDatabase {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
+      await _replaceCatalogSearchTerms(tx, entry);
     });
   }
 
@@ -364,15 +392,21 @@ class KurotoonDatabase {
     final args = <Object?>[];
     final trimmedQuery = query?.trim();
     if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
-      // '!' is the SQL LIKE escape character, so user-supplied wildcards are
-      // treated literally instead of turning a short query into a table scan.
-      final escaped = trimmedQuery
-          .replaceAll('!', '!!')
-          .replaceAll('%', '!%')
-          .replaceAll('_', '!_');
-      final pattern = '%$escaped%';
-      clauses.add("(canonical_title LIKE ? ESCAPE '!' OR alternate_titles_json LIKE ? ESCAPE '!' OR creator_names_json LIKE ? ESCAPE '!' OR id IN (SELECT work_id FROM provider_listings WHERE title LIKE ? ESCAPE '!'))");
-      args.addAll([pattern, pattern, pattern, pattern]);
+      // This is an autocomplete-style prefix search over indexed tokens, not a
+      // leading-wildcard scan over the entire works table. Refuse SQL wildcard
+      // syntax rather than allowing user input to change query semantics.
+      if (trimmedQuery.contains('%') || trimmedQuery.contains('_')) {
+        return const <CatalogEntry>[];
+      }
+      await _ensureCatalogSearchIndexReady();
+      final normalized = WorkIdentityMatcher.normalizeTitle(trimmedQuery);
+      final tokens = normalized.split(' ').where((token) => token.isNotEmpty).toSet().take(8).toList();
+      if (tokens.isEmpty) return const <CatalogEntry>[];
+      for (final token in tokens) {
+        clauses.add("id IN (SELECT work_id FROM catalog_search_terms WHERE term LIKE ? ESCAPE '!')");
+        final escaped = token.replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_');
+        args.add('$escaped%');
+      }
     }
     if (afterTitle != null && afterId != null) {
       clauses.add('(canonical_title COLLATE NOCASE > ? OR (canonical_title COLLATE NOCASE = ? AND id > ?))');
@@ -418,6 +452,171 @@ class KurotoonDatabase {
         verified: (row['verified'] as int? ?? 0) == 1,
       );
     }));
+  }
+
+  /// Loads only the likely identity candidates for one provider result.
+  /// A broad pool is reported explicitly so callers can defer to manual review
+  /// rather than silently matching an arbitrary truncated subset.
+  Future<CatalogMatchPage> loadCatalogCandidatesForMatching(
+    WorkCandidate candidate, {
+    int maxCandidates = 512,
+  }) async {
+    _ensureOpen();
+    if (maxCandidates < 1 || maxCandidates > 512) {
+      throw ArgumentError.value(maxCandidates, 'maxCandidates', 'Must be between 1 and 512.');
+    }
+    await _ensureCatalogSearchIndexReady();
+    final terms = _searchTerms([
+      candidate.title,
+      ...candidate.alternateTitles,
+      ...candidate.creatorNames,
+    ]).take(128).toList(growable: false);
+    final termClause = terms.isEmpty
+        ? '0'
+        : 'w.id IN (SELECT work_id FROM catalog_search_terms WHERE term COLLATE NOCASE IN (${List.filled(terms.length, '?').join(',')}))';
+    final args = <Object?>[
+      candidate.providerId, candidate.externalId, ...terms,
+      candidate.providerId, candidate.externalId, maxCandidates + 1,
+    ];
+    final rows = await _database.rawQuery(
+      'SELECT w.* FROM works w WHERE '
+      '(EXISTS (SELECT 1 FROM provider_listings p WHERE p.work_id = w.id AND p.provider_id = ? AND p.external_id = ?) OR $termClause) '
+      'ORDER BY CASE WHEN EXISTS (SELECT 1 FROM provider_listings p WHERE p.work_id = w.id AND p.provider_id = ? AND p.external_id = ?) THEN 0 ELSE 1 END, '
+      'w.canonical_title COLLATE NOCASE ASC, w.id ASC LIMIT ?',
+      args,
+    );
+    final hasMore = rows.length > maxCandidates;
+    final pageRows = hasMore ? rows.take(maxCandidates).toList(growable: false) : rows;
+    if (pageRows.isEmpty) return CatalogMatchPage(entries: const [], hasMore: false);
+    final ids = pageRows.map((row) => row['id'] as String).toList(growable: false);
+    final listingRows = await _database.query(
+      'provider_listings',
+      where: 'work_id IN (${List.filled(ids.length, '?').join(',')})',
+      whereArgs: ids,
+      orderBy: 'work_id ASC, title COLLATE NOCASE ASC',
+    );
+    final listingsByWork = <String, List<WorkCandidate>>{};
+    for (final row in listingRows) {
+      final parsed = _candidateFromRow(row);
+      if (parsed != null) (listingsByWork[row['work_id'] as String] ??= <WorkCandidate>[]).add(parsed);
+    }
+    final entries = pageRows.map((row) => CatalogEntry(
+      work: WorkRecord(
+        id: row['id'] as String,
+        title: row['canonical_title'] as String,
+        alternateTitles: _stringList(row['alternate_titles_json']),
+        creatorNames: _stringList(row['creator_names_json']),
+        year: row['year'] as int?,
+        format: _enumByName(WorkFormat.values, row['format'] as String, WorkFormat.unknown),
+        lockedDistinctIdentity: (row['locked_distinct_identity'] as int? ?? 0) == 1,
+      ),
+      listings: listingsByWork[row['id'] as String] ?? const <WorkCandidate>[],
+      verified: (row['verified'] as int? ?? 0) == 1,
+    )).toList(growable: false);
+    return CatalogMatchPage(entries: entries, hasMore: hasMore);
+  }
+
+  Future<CatalogEntry?> loadCatalogEntryById(String workId) async {
+    _ensureOpen();
+    final rows = await _database.query('works', where: 'id = ?', whereArgs: [workId], limit: 1);
+    if (rows.isEmpty) return null;
+    final listingRows = await _database.query('provider_listings', where: 'work_id = ?', whereArgs: [workId]);
+    final work = rows.single;
+    final listings = listingRows.map(_candidateFromRow).whereType<WorkCandidate>().toList(growable: false);
+    return CatalogEntry(
+      work: WorkRecord(
+        id: work['id'] as String,
+        title: work['canonical_title'] as String,
+        alternateTitles: _stringList(work['alternate_titles_json']),
+        creatorNames: _stringList(work['creator_names_json']),
+        year: work['year'] as int?,
+        format: _enumByName(WorkFormat.values, work['format'] as String, WorkFormat.unknown),
+        lockedDistinctIdentity: (work['locked_distinct_identity'] as int? ?? 0) == 1,
+      ),
+      listings: listings,
+      verified: (work['verified'] as int? ?? 0) == 1,
+    );
+  }
+
+  Future<PendingIdentityReview?> loadPendingIdentityReview(String listingKey) async {
+    _ensureOpen();
+    final rows = await _database.query('identity_review_queue', where: 'listing_key = ?', whereArgs: [listingKey], limit: 1);
+    if (rows.isEmpty) return null;
+    return _pendingIdentityReviewFromRow(rows.single);
+  }
+
+  Future<void> _ensureCatalogSearchIndexReady() async {
+    final active = _catalogSearchIndexFuture;
+    if (active != null) return active;
+    final completer = Completer<void>();
+    _catalogSearchIndexFuture = completer.future;
+    try {
+      if (await getSetting<String>('internal.catalogSearchIndexVersion') == '1') {
+        completer.complete();
+        return;
+      }
+      await _database.delete('catalog_search_terms');
+      String? lastId;
+      while (true) {
+        final rows = await _database.query(
+          'works',
+          columns: ['id', 'canonical_title', 'alternate_titles_json', 'creator_names_json'],
+          where: lastId == null ? null : 'id > ?',
+          whereArgs: lastId == null ? null : [lastId],
+          orderBy: 'id ASC',
+          limit: 250,
+        );
+        if (rows.isEmpty) break;
+        await _database.transaction((tx) async {
+          final batch = tx.batch();
+          for (final row in rows) {
+            final terms = _searchTerms([
+              row['canonical_title'] as String,
+              ..._stringList(row['alternate_titles_json']),
+              ..._stringList(row['creator_names_json']),
+            ]);
+            for (final term in terms) {
+              batch.insert('catalog_search_terms', {'work_id': row['id'], 'term': term},
+                  conflictAlgorithm: ConflictAlgorithm.ignore);
+            }
+          }
+          await batch.commit(noResult: true);
+        });
+        lastId = rows.last['id'] as String;
+      }
+      await setSetting('internal.catalogSearchIndexVersion', '1');
+      completer.complete();
+    } catch (error, stackTrace) {
+      _catalogSearchIndexFuture = null;
+      completer.completeError(error, stackTrace);
+      await completer.future;
+      return;
+    }
+  }
+
+  Future<void> _replaceCatalogSearchTerms(DatabaseExecutor tx, CatalogEntry entry) async {
+    await tx.delete('catalog_search_terms', where: 'work_id = ?', whereArgs: [entry.work.id]);
+    final batch = tx.batch();
+    for (final term in _searchTerms([
+      entry.work.title,
+      ...entry.work.alternateTitles,
+      ...entry.work.creatorNames,
+    ])) {
+      batch.insert('catalog_search_terms', {'work_id': entry.work.id, 'term': term},
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Set<String> _searchTerms(Iterable<String> values) {
+    final terms = <String>{};
+    for (final value in values) {
+      final normalized = WorkIdentityMatcher.normalizeTitle(value);
+      if (normalized.isEmpty) continue;
+      terms.add(normalized);
+      terms.addAll(normalized.split(' ').where((token) => token.isNotEmpty));
+    }
+    return terms;
   }
 
   Future<List<CatalogEntry>> loadCatalog() async {
@@ -987,32 +1186,36 @@ class KurotoonDatabase {
     final rows = await _database.query('identity_review_queue', orderBy: 'created_at ASC');
     final reviews = <PendingIdentityReview>[];
     for (final row in rows) {
-      final candidate = _candidateFromJson(row['candidate_json'] as String);
-      if (candidate == null) continue;
-      final decoded = _tryDecode(row['reason_json'] as String);
-      final decisions = <IdentityDecision>[];
-      if (decoded is List) {
-        for (final item in decoded.whereType<Map>()) {
-          final verdictName = item['verdict'];
-          final score = item['score'];
-          final evidence = item['evidence'];
-          if (verdictName is! String || score is! num || evidence is! List) continue;
-          final verdict = IdentityVerdict.values.where((value) => value.name == verdictName);
-          if (verdict.isEmpty) continue;
-          decisions.add(IdentityDecision(
-            verdict: verdict.first,
-            score: score.toDouble(),
-            evidence: evidence.whereType<String>().toList(growable: false),
-          ));
-        }
+      try {
+        reviews.add(_pendingIdentityReviewFromRow(row));
+      } on FormatException {
+        // Corrupt review rows are ignored rather than blocking catalog recovery.
       }
-      reviews.add(PendingIdentityReview(
-        key: row['listing_key'] as String,
-        candidate: candidate,
-        possibleMatches: decisions,
-      ));
     }
     return List.unmodifiable(reviews);
+  }
+
+  PendingIdentityReview _pendingIdentityReviewFromRow(Map<String, Object?> row) {
+    final candidate = _candidateFromJson(row['candidate_json'] as String);
+    if (candidate == null) throw FormatException('Pending identity review has invalid candidate data.');
+    final decoded = _tryDecode(row['reason_json'] as String);
+    final decisions = <IdentityDecision>[];
+    if (decoded is List) {
+      for (final item in decoded.whereType<Map>()) {
+        final verdictName = item['verdict'];
+        final score = item['score'];
+        final evidence = item['evidence'];
+        if (verdictName is! String || score is! num || evidence is! List) continue;
+        final verdict = IdentityVerdict.values.where((value) => value.name == verdictName);
+        if (verdict.isEmpty) continue;
+        decisions.add(IdentityDecision(
+          verdict: verdict.first,
+          score: score.toDouble(),
+          evidence: evidence.whereType<String>().toList(growable: false),
+        ));
+      }
+    }
+    return PendingIdentityReview(key: row['listing_key'] as String, candidate: candidate, possibleMatches: decisions);
   }
 
   Future<void> deletePendingIdentityReview(String listingKey) async {

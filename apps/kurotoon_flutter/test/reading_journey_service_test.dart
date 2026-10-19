@@ -291,6 +291,20 @@ void main() {
     expect((await database.loadCatalog()).length, 2);
   });
 
+  test('serializes concurrent admissions for the same provider listing', () async {
+    final candidate = (await journey.search('Blue Star')).candidates.single;
+    final results = await Future.wait([
+      journey.saveListing(candidate),
+      journey.saveListing(candidate),
+    ]);
+
+    expect(results.map((result) => result.status), contains(CatalogUpsertStatus.created));
+    expect(results.map((result) => result.status), contains(CatalogUpsertStatus.alreadyKnown));
+    final catalog = await database.loadCatalog();
+    expect(catalog, hasLength(1));
+    expect(catalog.single.listings, hasLength(1));
+  });
+
   test('disabled providers cannot be used to load details or chapters', () async {
     final candidate = (await journey.search('Blue Star')).candidates.single;
     final registry = journey.providers;

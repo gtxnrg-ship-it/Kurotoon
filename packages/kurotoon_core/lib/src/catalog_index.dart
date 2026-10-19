@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 import 'identity_matcher.dart';
 import 'models.dart';
 
@@ -117,7 +121,7 @@ class CatalogIndex {
   CatalogEntry? getById(String workId) => _works[workId];
   String? workIdForListing(String listingKey) => _listingToWork[listingKey];
 
-  CatalogUpsertResult upsert(WorkCandidate candidate) {
+  CatalogUpsertResult upsert(WorkCandidate candidate, {bool candidatePoolOverflow = false}) {
     final key = candidate.listingKey;
     final knownWorkId = _listingToWork[key];
     if (knownWorkId != null) {
@@ -139,7 +143,7 @@ class CatalogIndex {
     // catalog. If a common title/creator bucket is too large, we fail closed:
     // retain the candidate for review rather than guessing or doing O(n^2) work.
     final candidateWorkIds = <String>{};
-    var candidatePoolTooBroad = false;
+    var candidatePoolTooBroad = candidatePoolOverflow;
     void addBucket(Set<String>? bucket) {
       if (bucket == null) return;
       if (bucket.length > maxIdentityCandidates) candidatePoolTooBroad = true;
@@ -286,7 +290,8 @@ class CatalogIndex {
   }
 
   CatalogEntry _createWork(WorkCandidate candidate) {
-    final id = 'work/${candidate.listingKey}';
+    final digest = sha256.convert(utf8.encode(candidate.listingKey)).toString();
+    final id = 'work/$digest';
     final work = WorkRecord(
       id: id,
       title: candidate.title,

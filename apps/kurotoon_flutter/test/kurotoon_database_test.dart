@@ -67,6 +67,15 @@ void main() {
       factory: databaseFactoryFfi,
     );
     expect((await database.loadCatalog()).single.listings.single.providerUrl.host, 'mangadex.org');
+    final restoredMatch = await database.loadCatalogCandidatesForMatching(WorkCandidate(
+      providerId: 'community-source',
+      externalId: 'blue-star-translation',
+      title: 'The Blue Star',
+      creatorNames: const ['A. Artist'],
+      providerUrl: Uri.parse('https://community.example.org/blue-star'),
+    ));
+    expect(restoredMatch.entries.map((entry) => entry.work.id), contains('work/blue-star'));
+    expect(restoredMatch.hasMore, isFalse);
   });
 
   test('stores edition chapters and the user library independently', () async {
@@ -326,6 +335,30 @@ void main() {
     expect(secondPage.map((entry) => entry.work.id).toSet().intersection(
       firstPage.map((entry) => entry.work.id).toSet(),
     ), isEmpty);
+
+    final matchPage = await database.loadCatalogCandidatesForMatching(
+      WorkCandidate(
+        providerId: 'another.source',
+        externalId: 'series-090',
+        title: 'Series 090',
+        creatorNames: const ['Creator 090'],
+        providerUrl: Uri.parse('https://another.example.org/series/090'),
+      ),
+    );
+    expect(matchPage.hasMore, isFalse);
+    expect(matchPage.entries.map((entry) => entry.work.title), contains('Series 090'));
+
+    final broadMatchPage = await database.loadCatalogCandidatesForMatching(
+      WorkCandidate(
+        providerId: 'another.source',
+        externalId: 'new-series',
+        title: 'Series',
+        providerUrl: Uri.parse('https://another.example.org/series'),
+      ),
+      maxCandidates: 10,
+    );
+    expect(broadMatchPage.entries, hasLength(10));
+    expect(broadMatchPage.hasMore, isTrue);
 
     final search = await database.loadCatalogPage(query: 'Series 09', limit: 20);
     expect(search, hasLength(10));
