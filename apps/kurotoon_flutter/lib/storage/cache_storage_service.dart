@@ -102,7 +102,7 @@ class CacheStorageService {
       pathsToStage.add(existing.filePath);
     }
     for (final filePath in pathsToStage) {
-      if (!_isManagedPath(filePath)) {
+      if (!await _isManagedPath(filePath)) {
         throw StateError('Refusing to evict a cache path outside the managed cache directory.');
       }
     }
@@ -199,7 +199,7 @@ class CacheStorageService {
     return _enqueue(() async {
       final entry = await database.findCacheEntry(key);
       if (entry == null) return;
-      if (!_isManagedPath(entry.filePath)) {
+      if (!await _isManagedPath(entry.filePath)) {
         throw StateError('Refusing to remove a cache path outside the managed cache directory.');
       }
       final original = File(entry.filePath);
@@ -232,10 +232,22 @@ class CacheStorageService {
     });
   }
 
-  bool _isManagedPath(String candidate) {
+  Future<bool> _isManagedPath(String candidate) async {
     final root = path.normalize(path.absolute(_rootDirectory.path));
     final file = path.normalize(path.absolute(candidate));
-    return path.isWithin(root, file);
+    if (!path.isWithin(root, file)) return false;
+
+    // A path can be lexically inside the cache while a symlink redirects it
+    // outside. Refuse any symlink along the managed path before rename/delete.
+    var current = root;
+    final relative = path.relative(file, from: root);
+    for (final segment in path.split(relative)) {
+      current = path.join(current, segment);
+      if (await FileSystemEntity.type(current, followLinks: false) == FileSystemEntityType.link) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<T> _enqueue<T>(Future<T> Function() action) {
