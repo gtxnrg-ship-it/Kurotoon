@@ -1,6 +1,3 @@
-import 'dart:collection';
-
-import 'catalog_entities.dart';
 import 'identity_matcher.dart';
 import 'models.dart';
 
