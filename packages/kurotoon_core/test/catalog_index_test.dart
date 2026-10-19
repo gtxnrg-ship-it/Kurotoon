@@ -25,7 +25,7 @@ void main() {
     final index = CatalogIndex();
     final first = index.upsert(candidate(provider: 'a', id: '1', creators: ['Artist'], year: 2020));
     expect(first.status, CatalogUpsertStatus.created);
-    expect(first.entry!.work.id, 'work/${sha256.convert(utf8.encode('a:1')).toString()}');
+    expect(first.entry!.work.id, "work/${sha256.convert(utf8.encode('a:1')).toString()}");
     final second = index.upsert(candidate(provider: 'b', id: '2', creators: ['Artist'], year: 2020));
     expect(second.status, CatalogUpsertStatus.linked);
     expect(index.works, hasLength(1));
