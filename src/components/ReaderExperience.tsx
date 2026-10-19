@@ -5,7 +5,9 @@ import {
   Vibrate, X, ZoomIn,
 } from 'lucide-react';
 import type { ChapterListing, ProviderListing } from '../domain/models';
-import { readReaderProgress, writeReaderProgress } from '../domain/readerProgress';
+import { readLegacyReaderProgress } from '../domain/readerProgress';
+import { createDataRepositories } from '../data/repositories';
+import { getDefaultDataStore } from '../data/store';
 import { isProviderRequestError } from '../domain/provider';
 import { mangaDexProvider } from '../providers/mangadex';
 
@@ -175,6 +177,8 @@ export function ReaderScreen({
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [storageMode, setStorageMode] = useState<'loading' | 'indexeddb' | 'memory'>('loading');
+  const [storageWarning, setStorageWarning] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const pageIndexRef = useRef(0);
   pageIndexRef.current = pageIndex;
@@ -203,17 +207,31 @@ export function ReaderScreen({
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const lastSwipeAtRef = useRef(0);
   const progressStorageKey = progressKey(listing, chapter);
+  const progressIdentity = {
+    providerId: listing.providerId,
+    providerWorkId: listing.providerWorkId,
+    providerChapterId: chapter.providerChapterId,
+  };
+
+  const persistProgress = useCallback(async () => {
+    if (!progressReady || !pages.length) return;
+    const store = await getDefaultDataStore();
+    setStorageMode(store.mode);
+    await createDataRepositories(store).progress.save({
+      ...progressIdentity,
+      pageIndex: pageIndexRef.current,
+      scrollRatio: scrollRatioRef.current,
+    });
+  }, [progressReady, pages.length, listing.providerId, listing.providerWorkId, chapter.providerChapterId]);
+
   const scheduleProgressSave = useCallback(() => {
     if (!progressReady || !pages.length) return;
     if (progressSaveTimerRef.current !== null) window.clearTimeout(progressSaveTimerRef.current);
     progressSaveTimerRef.current = window.setTimeout(() => {
       progressSaveTimerRef.current = null;
-      writeReaderProgress(progressStorageKey, {
-        pageIndex: pageIndexRef.current,
-        scrollRatio: scrollRatioRef.current,
-      });
+      void persistProgress().catch(() => setStorageWarning(true));
     }, 320);
-  }, [progressReady, pages.length, progressStorageKey]);
+  }, [progressReady, pages.length, persistProgress]);
 
   useEffect(() => { onExitRef.current = onSeriesHome; }, [onSeriesHome]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
@@ -240,33 +258,62 @@ export function ReaderScreen({
     setFailedPages([]);
     setRetries({});
     setProgressReady(false);
+    setStorageWarning(false);
     setVisiblePageCount(6);
     verticalRestoreKeyRef.current = '';
-    const saved = readReaderProgress(progressStorageKey);
-    pageIndexRef.current = saved.pageIndex;
-    scrollRatioRef.current = saved.scrollRatio;
-    setPageIndex(saved.pageIndex);
-    mangaDexProvider.getChapterPages(chapter.providerChapterId, controller.signal)
-      .then(urls => {
-        if (controller.signal.aborted) return;
-        if (!urls.length) throw new Error('This chapter did not return any readable pages.');
-        const restoredPageIndex = Math.min(saved.pageIndex, urls.length - 1);
-        pageIndexRef.current = restoredPageIndex;
-        setPages(urls);
-        setPageIndex(restoredPageIndex);
-        // Vertical mode mounts pages in batches. Ensure the saved page exists in the
-        // DOM before restoring its position, even when it is deep in a long chapter.
-        setVisiblePageCount(Math.min(urls.length, Math.max(6, modeRef.current === 'vertical' ? restoredPageIndex + 2 : 6)));
-        setLoading(false);
-        setProgressReady(true);
-      })
-      .catch(error => {
-        if (controller.signal.aborted) return;
-        setLoading(false);
-        setLoadError(friendlyError(error));
-      });
+    const legacySaved = readLegacyReaderProgress(progressStorageKey);
+    pageIndexRef.current = legacySaved?.pageIndex ?? 0;
+    scrollRatioRef.current = legacySaved?.scrollRatio ?? 0;
+    setPageIndex(pageIndexRef.current);
+
+    const restoreAndLoad = async () => {
+      const store = await getDefaultDataStore();
+      if (controller.signal.aborted) return;
+      setStorageMode(store.mode);
+      const data = createDataRepositories(store);
+
+      // Fetch the page manifest and durable position concurrently. Progress failure
+      // must never stop a valid chapter from opening.
+      const pagesPromise = mangaDexProvider.getChapterPages(chapter.providerChapterId, controller.signal);
+      const urls = await pagesPromise;
+      if (controller.signal.aborted) return;
+      if (!urls.length) throw new Error('This chapter did not return any readable pages.');
+
+      let savedRecord: Awaited<ReturnType<typeof data.progress.get>> | undefined;
+      try {
+        savedRecord = await data.progress.get(progressIdentity);
+      } catch {
+        setStorageWarning(true);
+      }
+      if (controller.signal.aborted) return;
+
+      const saved = savedRecord
+        ? { pageIndex: savedRecord.pageIndex, scrollRatio: savedRecord.scrollRatio }
+        : (legacySaved ?? { pageIndex: 0, scrollRatio: 0 });
+
+      if (!savedRecord && legacySaved) {
+        // Copy previous localStorage progress forward without deleting the original.
+        void data.progress.save({ ...progressIdentity, ...legacySaved }).catch(() => setStorageWarning(true));
+      }
+
+      const restoredPageIndex = Math.min(saved.pageIndex, urls.length - 1);
+      pageIndexRef.current = restoredPageIndex;
+      scrollRatioRef.current = saved.scrollRatio;
+      setPages(urls);
+      setPageIndex(restoredPageIndex);
+      // Only vertical mode grows the render window to reach a deep saved page.
+      setVisiblePageCount(Math.min(urls.length, Math.max(6, modeRef.current === 'vertical' ? restoredPageIndex + 2 : 6)));
+      setLoading(false);
+      setProgressReady(true);
+    };
+
+    void restoreAndLoad().catch(error => {
+      if (controller.signal.aborted) return;
+      setLoading(false);
+      setLoadError(friendlyError(error));
+    });
     return () => controller.abort();
-  }, [chapter.providerChapterId, progressStorageKey]);
+  }, [chapter.providerChapterId, progressStorageKey, listing.providerId, listing.providerWorkId]);
 
   useEffect(() => {
     const cancelInitial = loadPages();
@@ -291,11 +338,8 @@ export function ReaderScreen({
     if (progressSaveTimerRef.current === null) return;
     window.clearTimeout(progressSaveTimerRef.current);
     progressSaveTimerRef.current = null;
-    writeReaderProgress(progressStorageKey, {
-      pageIndex: pageIndexRef.current,
-      scrollRatio: scrollRatioRef.current,
-    });
-  }, [progressStorageKey]);
+    void persistProgress().catch(() => setStorageWarning(true));
+  }, [progressStorageKey, persistProgress]);
 
   useEffect(() => {
     if (mode !== 'vertical' || !autoLoad || !sentinelRef.current || !scrollRef.current || visiblePageCount >= pages.length) return;
@@ -567,6 +611,8 @@ export function ReaderScreen({
             </div><p className="reader-control-help">This changes page turns and swipe direction, not the original artwork.</p></div>}
             {mode === 'vertical' && <><div className="reader-control-group"><div className="reader-control-label">Space between pages <strong>{gap}px</strong></div><input className="reader-range" type="range" min="0" max="32" step="2" value={gap} onChange={event => setGap(Number(event.target.value))}/></div><div className="reader-setting-toggle"><span><strong>Load pages automatically</strong><small>Bring in a few pages at a time as you read.</small></span><button className={'reader-toggle ' + (autoLoad ? 'on' : '')} onClick={() => setAutoLoad(value => !value)} role="switch" aria-checked={autoLoad}><i/></button></div></>}
             {mode === 'paged' && <div className="reader-control-group"><div className="reader-control-label">Page zoom <strong>{zoom}%</strong></div><input className="reader-range" type="range" min="70" max="130" step="5" value={zoom} onChange={event => setZoom(Number(event.target.value))}/><p className="reader-control-help"><ZoomIn size={13}/> Zoom applies to the current page view.</p></div>}
+            {storageWarning && <p className="reader-storage-warning" role="status">Kurotoon couldn't save reading progress just now. Your chapter remains open, but this position may not survive a reload.</p>}
+            {storageMode === 'memory' && <p className="reader-storage-warning" role="status">Persistent browser storage is unavailable. Progress is kept only for this app session.</p>}
             <div className="reader-control-group"><div className="reader-control-label">Page position</div><div className="reader-inline-action"><span>{pages.length ? 'Page ' + (pageIndex + 1) + ' of ' + pages.length : 'Page position will appear when loaded'}</span><button className="reader-text-button" onClick={() => { pageIndexRef.current = 0; scrollRatioRef.current = 0; setPageIndex(0); if (scrollRef.current) scrollRef.current.scrollTop = 0; scheduleProgressSave(); setPanel(null); }}>Return to start</button></div></div>
           </>}
           {panel === 'navigation' && <>
