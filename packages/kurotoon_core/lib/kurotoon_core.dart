@@ -9,3 +9,5 @@ export 'src/storage_budget.dart';
 export 'src/catalog_entities.dart';
 export 'src/catalog_index.dart';
 export 'src/mangadex_provider.dart';
+export 'src/experience_policy.dart';
+export 'src/voice_packs.dart';
