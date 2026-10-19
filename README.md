@@ -325,8 +325,13 @@ This order is a plan, not a promise that all stages are complete. Reorder only w
 - Seven domain unit tests.
 - CI build/test and high/critical dependency audit checks.
 
+### In progress — first procedural cosmic layer
+- Added a lightweight, procedurally generated full-screen cosmic backdrop with layered nebula-like colour fields, sparse large-scale filaments, twinkling stars, and restrained pointer/touch ripples.
+- The canvas caps its ambient update rate, scales pixel density on touch devices, pauses while the document is hidden, and respects reduced-motion preferences.
+- This first pass is **not yet CI-verified or tested on physical devices**. It is a foundation, not the final richly detailed universe.
+
 ### Not implemented yet
-- Full procedural living cosmos, touch-reactive space bending, adaptive rendering, and launch sequence.
+- Full production cosmic art direction, gas-giant/galaxy formation layers, final touch-reactive space bending, adaptive quality controls, and launch sequence.
 - Finished design system and fully wired settings.
 - Functional live catalog search and production source integration.
 - Complete reader/page loading, progress persistence, and durable library.
@@ -335,6 +340,10 @@ This order is a plan, not a promise that all stages are complete. Reorder only w
 - Account sync, offline downloads, backups, and Shop/reward mechanics.
 
 The visible search and settings controls may still be presentation-only. Do not describe a planned capability as working until code and tests prove it.
+
+### Android / APK status
+- **No APK is currently available.** The repository does not yet produce or publish an installable Android package.
+- Android packaging, signing, distribution, and device validation are future release work. Do not add an APK download link or describe Kurotoon as Android-release-ready until a real artifact has been built and verified.
 
 ## Status vocabulary
 
