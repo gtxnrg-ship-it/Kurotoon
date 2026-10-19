@@ -98,8 +98,63 @@ void main() {
     );
     final uri = endpoint.buildUri(Uri.parse('https://api.source.example.org'), seriesId: 'a/b?x=1');
     expect(uri.pathSegments.last, 'a/b?x=1');
-    expect(uri.query, isNull);
-    expect(uri.fragment, isNull);
+    expect(uri.hasQuery, isFalse);
+    expect(uri.hasFragment, isFalse);
     expect(uri.host, 'api.source.example.org');
   });
+
+  test('parses a declarative extension manifest and rejects unsafe endpoints', () {
+    final manifest = parseDeclarativeExtensionManifest({
+      'id': 'org.example.source',
+      'name': 'Example Source',
+      'version': '1.0.0',
+      'minimumAppApi': 1,
+      'homepage': 'https://source.example.org',
+      'baseUrl': 'https://api.source.example.org/v1',
+      'license': 'MIT',
+      'developer': 'Example Maintainers',
+      'allowedHosts': ['api.source.example.org'],
+      'endpoints': [
+        {
+          'id': 'search',
+          'capability': 'search',
+          'path': '/search',
+          'query': {'q': '{query}'},
+          'resultPath': ['data', 'items'],
+          'fields': {
+            'id': ['id'],
+            'title': ['title'],
+            'url': ['url'],
+          },
+        },
+      ],
+    });
+    expect(manifest.id, 'org.example.source');
+    expect(manifest.endpoints.single.capability, ExtensionCapability.search);
+    expect(
+      () => parseDeclarativeExtensionManifest({
+        'id': 'org.example.source',
+        'name': 'Unsafe',
+        'version': '1.0.0',
+        'minimumAppApi': 1,
+        'homepage': 'https://source.example.org',
+        'baseUrl': 'https://127.0.0.1',
+        'license': 'MIT',
+        'developer': 'Example Maintainers',
+        'allowedHosts': ['127.0.0.1'],
+        'endpoints': [
+          {
+            'id': 'search',
+            'capability': 'search',
+            'path': '/../secret',
+            'query': {},
+            'resultPath': ['data'],
+            'fields': {'id': ['id'], 'title': ['title'], 'url': ['url']},
+          },
+        ],
+      }),
+      throwsFormatException,
+    );
+  });
+
 }
