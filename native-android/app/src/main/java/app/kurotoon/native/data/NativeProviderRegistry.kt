@@ -1,4 +1,4 @@
-package app.kurotoon.native.data
+package app.kurotoon.android.data
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
