@@ -21,6 +21,15 @@ describe('assessWorkMatch', () => {
     expect(assessment.autoMerge).toBe(true);
   });
 
+  it('normalizes optional leading English articles when creator identity also matches', () => {
+    const assessment = assessWorkMatch(
+      { title: 'The Moon Keeper', creatorIds: ['creator-1'] },
+      { title: 'Moon Keeper!', creatorIds: ['creator-1'] },
+    );
+    expect(assessment.autoMerge).toBe(true);
+    expect(assessment.confidence).toBe(0.95);
+  });
+
   it('does not auto-merge based on title alone', () => {
     const assessment = assessWorkMatch(
       { title: 'Rebirth', creatorIds: [] },
