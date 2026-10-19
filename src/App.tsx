@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, CheckCircle2, ChevronRight, Compass, Headphones, Library, Search, Settings2, ShieldCheck, Sparkles, Store, WandSparkles, Wifi, Download, CircleHelp } from 'lucide-react';
+import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, ChevronRight, Compass, Headphones, Library, Search, Settings2, ShieldCheck, Sparkles, Store, WandSparkles, Wifi, Download, CircleHelp } from 'lucide-react';
 
 type Destination = 'Home' | 'Browser' | 'Shop' | 'Library' | 'Me';
 const nav: { name: Destination; icon: typeof Compass }[] = [
