@@ -778,21 +778,34 @@ ringList(profiles.single['aliases_json']),
     )));
   }
 
+  Future<CacheEntryFile?> findCacheEntry(String key) async {
+    _ensureOpen();
+    final entries = await loadCacheEntries();
+    for (final entry in entries) {
+      if (entry.entry.key == key) return entry;
+    }
+    return null;
+  }
+
   Future<CacheWritePlan> planCacheWrite({
     required int incomingBytes,
     StorageBudget? budget,
+    String? replacingKey,
   }) async {
     _ensureOpen();
     final entries = await loadCacheEntries();
+    final effectiveEntries = replacingKey == null
+        ? entries
+        : entries.where((item) => item.entry.key != replacingKey).toList(growable: false);
     final plan = (budget ?? StorageBudget()).plan(
-      currentEntries: entries.map((item) => item.entry),
+      currentEntries: effectiveEntries.map((item) => item.entry),
       incomingBytes: incomingBytes,
     );
     final keys = plan.evictKeys.toSet();
     return CacheWritePlan(
       storagePlan: plan,
       filesToEvict: List.unmodifiable(
-        entries.where((item) => keys.contains(item.entry.key)).map((item) => item.filePath),
+        effectiveEntries.where((item) => keys.contains(item.entry.key)).map((item) => item.filePath),
       ),
     );
   }
