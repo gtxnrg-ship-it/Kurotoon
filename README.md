@@ -24,7 +24,7 @@
 
 ## Project status — 19 October 2026
 
-**Full-product progress: ~40%** · **Backend foundation: ~55–60%** · **Native UI experience: ~22%** · **CI/APK pipeline: ~90%**
+**Full-product progress: ~39%** · **Backend foundation: ~55–60%** · **Native UI experience: ~22%** · **CI/APK pipeline: ~90%**
 
 These are honest engineering estimates, not code-line counts or test-coverage percentages. They are reviewed against merged implementation, automated checks and known missing end-to-end workflows. A domain model or database table counts as foundation work, not as a finished user feature. CI being green does not prove the app works on a physical phone.
 
@@ -294,16 +294,16 @@ The full-product percentage weights the intended end-user outcome—not file cou
 
 | Workstream | Weight | Current completion estimate |
 |---|---:|---:|
-| Native build and release delivery | 10% | 90% |
-| Domain models and policies | 20% | 70% |
-| Provider runtime and live sources | 15% | 50% |
-| Persistence and extension safety | 20% | 60% |
-| Cross-source catalog and data integration | 10% | 45% |
-| Reader and library end-to-end | 15% | 20% |
-| Galaxy polish, effects and accessibility | 5% | 25% |
-| Voice/music/haptics/particle integrations | 5% | 10% |
+| Native build and release delivery | 5% | 90% |
+| Domain models and policies | 10% | 70% |
+| Provider runtime and live sources | 10% | 50% |
+| Persistence and extension safety | 10% | 60% |
+| Cross-source catalog and data integration | 15% | 45% |
+| Reader and library end-to-end | 30% | 20% |
+| Galaxy polish, effects and accessibility | 10% | 25% |
+| Voice/music/haptics/particle integrations | 10% | 10% |
 
-The weighted estimate is approximately 50% for these engineering tracks, but several of the most visible end-user flows and physical-device acceptance are incomplete. For communication, **the conservative overall product estimate remains ~40%** until the native Reader and Library vertical slices work end-to-end and device tests have evidence. Recalculate on meaningful merges; do not change the score simply to make the number look better.
+Using the explicit weights above, the current weighted product score is approximately **39%** (38.75 before rounding). This deliberately gives the end-to-end Reader and Library more weight than foundational code. Backend foundations are roughly 55–60% because more policy/data groundwork exists than is wired into complete user journeys. Recalculate when implementation or acceptance evidence changes; do not change the score simply to make the number look better.
 
 ## Hand-off instructions for future agents
 
