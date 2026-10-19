@@ -25,7 +25,7 @@ function listing(providerId: string, providerWorkId: string, overrides: Partial<
 function provider(
   id: string,
   search: (query: ProviderSearchQuery) => Promise<{ listings: ProviderListing[] }>,
-  overrides: Partial<Pick<ComicProvider, 'capabilities'>> = {},
+  overrides: { capabilities?: Partial<ComicProvider['capabilities']> } = {},
 ): ComicProvider {
   return {
     id,
@@ -87,8 +87,8 @@ describe('searchUniversalCatalog', () => {
   });
 
   it('honors an enabled-source allowlist and per-source result limit', async () => {
-    const searched = vi.fn(async () => ({ listings: [listing('a', 'work-a')] }));
-    const notEnabled = provider('b', searched as never);
+    const searched = vi.fn(async (_query: ProviderSearchQuery) => ({ listings: [listing('a', 'work-a')] }));
+    const notEnabled = provider('b', searched);
     const enabled = provider('a', searched);
     await searchUniversalCatalog([enabled, notEnabled], { query: 'moon' }, {
       enabledProviderIds: ['a'],
