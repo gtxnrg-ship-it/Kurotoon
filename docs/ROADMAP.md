@@ -17,13 +17,16 @@ Status: **In progress** — initial web build and CI are verified; Android feasi
 
 ## Phase 1 — App shell and design system
 
-Status: **Planned**
+Status: **In progress** — first procedural cosmic backdrop has been added on a feature branch; CI and device validation are pending.
 
 - [ ] Establish responsive dark-first design tokens, typography, spacing, surfaces, motion, focus states, and reduced-motion support.
+- [x] Add a first procedural cosmic canvas with layered colour fields, starfield, subtle large-scale filaments, pointer/touch ripples, visibility pausing, and reduced-motion handling (awaiting CI/device verification).
+- [ ] Add adaptive quality settings and validate GPU/memory/battery behaviour on low-end Android hardware.
 - [ ] Implement persistent five-destination navigation: Home, Browser, Shop, Library, Me.
 - [ ] Add empty, loading, error, offline, and retry states.
 - [ ] Add reader route and shared app-level settings boundary.
 - [ ] Verify narrow mobile, tablet, and desktop layouts.
+- [ ] Add a first-launch cosmic reveal and shorter subsequent-launch transition only after the base renderer is profiled.
 - [ ] Keep source/repository management under Me/settings.
 
 **Exit gate:** navigation is keyboard/touch usable, responsive, and does not lose route state during ordinary navigation.
