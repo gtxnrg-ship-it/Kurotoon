@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'cancellation.dart';
+import 'catalog_entities.dart';
 import 'models.dart';
 
 abstract interface class SourceProvider {
@@ -9,6 +10,31 @@ abstract interface class SourceProvider {
   Future<ProviderResponse<List<WorkCandidate>>> search(
     String query, {
     required CancellationToken cancellationToken,
+  });
+}
+
+abstract interface class SeriesProvider implements SourceProvider {
+  Future<ProviderResponse<WorkCandidate>> getSeries(
+    String seriesId, {
+    required CancellationToken cancellationToken,
+  });
+}
+
+abstract interface class ChapterFeedProvider implements SourceProvider {
+  Future<ProviderResponse<List<ChapterUnit>>> getChapters(
+    String seriesId, {
+    required CancellationToken cancellationToken,
+    List<String> translatedLanguages = const ['en'],
+    int limit = 100,
+    int offset = 0,
+  });
+}
+
+abstract interface class ReaderPagesProvider implements SourceProvider {
+  Future<ProviderResponse<ReaderPageManifest>> getPages(
+    String chapterId, {
+    required CancellationToken cancellationToken,
+    bool dataSaver = false,
   });
 }
 
