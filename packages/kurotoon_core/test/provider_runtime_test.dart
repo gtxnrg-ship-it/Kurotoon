@@ -97,12 +97,82 @@ void main() {
     expect(() => registry.setEnabled('missing', false), throwsArgumentError);
   });
 
-  test('times out an unresponsive provider within a bounded wait', () async {
+  test('empty search does not dispatch to any provider', () async {
+    var calls = 0;
+    final registry = ProviderRegistry()
+      ..register(FakeProvider(
+        descriptor: descriptor('counted'),
+        handler: (query, token) async {
+          calls++;
+          return const ProviderResponse(status: ProviderResultStatus.success, data: []);
+        },
+      ));
+
+    final batch = await ProviderCoordinator(registry).search('   ');
+
+    expect(calls, 0);
+    expect(batch.results, isEmpty);
+    expect(batch.cancelled, isFalse);
+  });
+
+  test('parent cancellation returns when a provider ignores its token', () async {
+    final started = Completer<void>();
+    final observedCancel = Completer<void>();
+    final never = Completer<ProviderResponse<List<WorkCandidate>>>();
+    final parent = CancellationToken();
+    final registry = ProviderRegistry()
+      ..register(FakeProvider(
+        descriptor: descriptor('uncooperative'),
+        handler: (query, token) {
+          started.complete();
+          token.onCancel((_) {
+            if (!observedCancel.isCompleted) observedCancel.complete();
+          });
+          return never.future;
+        },
+      ));
+
+    final pending = ProviderCoordinator(
+      registry,
+      providerTimeout: const Duration(seconds: 2),
+    ).search('series', cancellationToken: parent);
+    await started.future;
+    parent.cancel('A newer search replaced this one');
+    final batch = await pending;
+
+    expect(batch.cancelled, isTrue);
+    expect(batch.results.single.response.status, ProviderResultStatus.cancelled);
+    expect(observedCancel.isCompleted, isTrue);
+  });
+
+  test('provider failures do not expose raw URLs, credentials or query tokens', () async {
+    final registry = ProviderRegistry()
+      ..register(FakeProvider(
+        descriptor: descriptor('unsafe-error'),
+        handler: (query, token) async => throw Exception(
+          'https://user:secret@example.org/path?token=should-not-escape',
+        ),
+      ));
+
+    final batch = await ProviderCoordinator(registry).search('series');
+    final message = batch.results.single.response.message ?? '';
+
+    expect(batch.results.single.response.status, ProviderResultStatus.failed);
+    expect(message, isNot(contains('secret')));
+    expect(message, isNot(contains('should-not-escape')));
+    expect(message, isNot(contains('example.org')));
+  });
+
+  test('times out an unresponsive provider and signals cooperative cancellation', () async {
+    final observedCancel = Completer<void>();
+    final never = Completer<ProviderResponse<List<WorkCandidate>>>();
     final registry = ProviderRegistry()
       ..register(FakeProvider(
         descriptor: descriptor('slow'),
-        handler: (query, token) async {
-          final never = Completer<ProviderResponse<List<WorkCandidate>>>();
+        handler: (query, token) {
+          token.onCancel((_) {
+            if (!observedCancel.isCompleted) observedCancel.complete();
+          });
           return never.future;
         },
       ));
@@ -111,6 +181,7 @@ void main() {
       providerTimeout: const Duration(milliseconds: 10),
     ).search('test');
     expect(batch.results.single.response.status, ProviderResultStatus.timedOut);
+    expect(observedCancel.isCompleted, isTrue);
   });
   test('backs off a failing source and resets health after a successful retry', () async {
     var now = DateTime.utc(2026, 1, 1);
