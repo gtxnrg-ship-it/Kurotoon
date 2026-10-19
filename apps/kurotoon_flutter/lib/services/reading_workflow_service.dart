@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -73,12 +74,16 @@ class ReadingWorkflowService {
     this.deviceId,
     this.defaultChapterPageSize = 100,
     this.defaultMaxChapters = 2000,
+    this.providerTimeout = const Duration(seconds: 8),
   }) {
     if (defaultChapterPageSize < 1 || defaultChapterPageSize > 500) {
       throw ArgumentError.value(defaultChapterPageSize, 'defaultChapterPageSize');
     }
     if (defaultMaxChapters < 1 || defaultMaxChapters > 10000) {
       throw ArgumentError.value(defaultMaxChapters, 'defaultMaxChapters');
+    }
+    if (providerTimeout <= Duration.zero) {
+      throw ArgumentError.value(providerTimeout, 'providerTimeout');
     }
     if (deviceId != null && deviceId!.trim().isEmpty) {
       throw ArgumentError.value(deviceId, 'deviceId');
@@ -90,6 +95,7 @@ class ReadingWorkflowService {
   final String? deviceId;
   final int defaultChapterPageSize;
   final int defaultMaxChapters;
+  final Duration providerTimeout;
   Future<String>? _deviceIdFuture;
 
   SourceProvider? _provider(String id) {
@@ -125,7 +131,13 @@ class ReadingWorkflowService {
       detailsMessage = 'This source is disabled in settings.';
     } else if (provider is SeriesProvider && provider.descriptor.supports(ProviderCapability.series)) {
       try {
-        final response = await provider.getSeries(candidate.externalId, cancellationToken: token);
+        final response = await _boundedProviderCall(
+          (requestToken) => provider.getSeries(
+            candidate.externalId,
+            cancellationToken: requestToken,
+          ),
+          parentToken: token,
+        );
         detailsStatus = response.status;
         detailsMessage = response.message;
         final detailCandidate = response.data;
@@ -140,6 +152,9 @@ class ReadingWorkflowService {
         }
       } on OperationCancelled {
         rethrow;
+      } on TimeoutException {
+        detailsStatus = ProviderResultStatus.timedOut;
+        detailsMessage = 'Series details timed out; the search result was retained.';
       } on Object catch (error) {
         detailsStatus = ProviderResultStatus.failed;
         detailsMessage = 'Series details could not be loaded (${error.runtimeType}).';
@@ -347,13 +362,34 @@ class ReadingWorkflowService {
 
     while (all.length < ceiling) {
       token.throwIfCancelled();
-      final response = await source.getChapters(
-        work.externalId,
-        cancellationToken: token,
-        translatedLanguages: languages,
-        limit: size,
-        offset: offset,
-      );
+      ProviderResponse<List<ChapterUnit>> response;
+      try {
+        response = await _boundedProviderCall(
+          (requestToken) => source.getChapters(
+            work.externalId,
+            cancellationToken: requestToken,
+            translatedLanguages: languages,
+            limit: size,
+            offset: offset,
+          ),
+          parentToken: token,
+        );
+      } on OperationCancelled {
+        rethrow;
+      } on TimeoutException {
+        if (all.isEmpty) {
+          return ChapterSyncResult(
+            status: ProviderResultStatus.timedOut,
+            chapters: const [],
+            nextOffset: offset,
+            reachedEnd: false,
+            message: 'Chapter loading timed out; try again when the source is responsive.',
+          );
+        }
+        status = ProviderResultStatus.partial;
+        message = 'Chapter loading timed out; previously saved chapters are preserved.';
+        break;
+      }
       final page = response.data;
       if (!response.hasUsableData || page == null) {
         if (all.isEmpty) {
@@ -516,10 +552,13 @@ class ReadingWorkflowService {
       );
     }
     try {
-      final response = await source.getPages(
-        listing.externalId,
-        cancellationToken: cancellationToken ?? CancellationToken(),
-        dataSaver: dataSaver,
+      final response = await _boundedProviderCall(
+        (requestToken) => source.getPages(
+          listing!.externalId,
+          cancellationToken: requestToken,
+          dataSaver: dataSaver,
+        ),
+        parentToken: cancellationToken,
       );
       final manifest = response.data;
       if (response.hasUsableData && manifest != null && manifest.chapterId != listing.externalId) {
@@ -531,6 +570,11 @@ class ReadingWorkflowService {
       return response;
     } on OperationCancelled catch (error) {
       return ProviderResponse(status: ProviderResultStatus.cancelled, message: error.reason);
+    } on TimeoutException {
+      return const ProviderResponse(
+        status: ProviderResultStatus.timedOut,
+        message: 'Reader page loading timed out; request the manifest again to retry.',
+      );
     } on Object catch (error) {
       return ProviderResponse(
         status: ProviderResultStatus.failed,
@@ -609,6 +653,26 @@ class ReadingWorkflowService {
     if (saved == null) return null;
     final chapters = await database.loadChapters(work.edition.id);
     return chapters.any((chapter) => chapter.id == saved.chapterId) ? saved : null;
+  }
+
+  Future<T> _boundedProviderCall<T>(
+    Future<T> Function(CancellationToken requestToken) operation, {
+    CancellationToken? parentToken,
+  }) async {
+    parentToken?.throwIfCancelled();
+    final requestToken = CancellationToken();
+    final detach = parentToken?.onCancel((reason) => requestToken.cancel(reason));
+    try {
+      return await operation(requestToken).timeout(
+        providerTimeout,
+        onTimeout: () {
+          requestToken.cancel('Provider request timed out');
+          throw TimeoutException('Provider request exceeded $providerTimeout');
+        },
+      );
+    } finally {
+      detach?.call();
+    }
   }
 
   Future<String> _localDeviceId() {
