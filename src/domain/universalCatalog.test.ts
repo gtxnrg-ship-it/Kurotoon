@@ -4,15 +4,12 @@ import { groupUniversalWorks } from './universalCatalog';
 
 function listing(overrides: Partial<ProviderListing> & Pick<ProviderListing, 'providerId' | 'providerWorkId' | 'title'>): ProviderListing {
   return {
+    ...overrides,
     id: overrides.id ?? overrides.providerId + ':listing:' + overrides.providerWorkId,
-    providerId: overrides.providerId,
-    providerWorkId: overrides.providerWorkId,
     url: overrides.url ?? 'https://example.test/' + overrides.providerWorkId,
-    title: overrides.title,
     aliases: overrides.aliases ?? [],
     creators: overrides.creators ?? [],
     publicationStatus: overrides.publicationStatus ?? 'unknown',
-    ...overrides,
   };
 }
 
