@@ -1,4 +1,4 @@
-package app.kurotoon.native.ui
+package app.kurotoon.android.ui
 
 import android.content.Context
 import android.provider.Settings
