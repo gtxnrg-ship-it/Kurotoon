@@ -46,7 +46,63 @@ class CatalogUpsertResult {
 class CatalogIndex {
   CatalogIndex({WorkIdentityMatcher matcher = const WorkIdentityMatcher()}) : _matcher = matcher;
 
+  /// Rehydrates a persisted catalog before new provider results are indexed.
+  ///
+  /// Entries are restored first so their listing identities always win over
+  /// stale review-queue records left behind by an interrupted persistence step.
+  factory CatalogIndex.fromEntries({
+    WorkIdentityMatcher matcher = const WorkIdentityMatcher(),
+    Iterable<CatalogEntry> entries = const <CatalogEntry>[],
+    Iterable<PendingIdentityReview> pendingReviews = const <PendingIdentityReview>[],
+  }) {
+    final index = CatalogIndex(matcher: matcher);
+    for (final entry in entries) {
+      index.restoreEntry(entry);
+    }
+    for (final review in pendingReviews) {
+      // Crash recovery: a listing that has already been committed to the
+      // catalog must not reappear as a pending duplicate review.
+      if (!index._listingToWork.containsKey(review.key)) {
+        index.restorePendingReview(review);
+      }
+    }
+    return index;
+  }
+
   final WorkIdentityMatcher _matcher;
+
+  /// Restores an already-persisted catalog entry without re-running identity
+  /// matching. Conflicting stable IDs or provider listing keys are rejected.
+  void restoreEntry(CatalogEntry entry) {
+    if (_works.containsKey(entry.work.id)) {
+      throw StateError('Catalog work is already restored: ${entry.work.id}');
+    }
+    final keys = <String>{};
+    for (final listing in entry.listings) {
+      final key = listing.listingKey;
+      if (!keys.add(key) || _listingToWork.containsKey(key) || _pending.containsKey(key)) {
+        throw StateError('Provider listing identity is already assigned: $key');
+      }
+    }
+    _works[entry.work.id] = entry;
+    for (final key in keys) {
+      _listingToWork[key] = entry.work.id;
+    }
+  }
+
+  /// Restores a persisted review only if its identity remains unassigned.
+  void restorePendingReview(PendingIdentityReview review) {
+    if (review.key != review.candidate.listingKey) {
+      throw StateError('Pending review key does not match its provider listing.');
+    }
+    if (_listingToWork.containsKey(review.key)) {
+      throw StateError('A catalog listing cannot also be pending review: ${review.key}');
+    }
+    if (_pending.containsKey(review.key)) {
+      throw StateError('Pending identity review is already restored: ${review.key}');
+    }
+    _pending[review.key] = review;
+  }
   final Map<String, CatalogEntry> _works = {};
   final Map<String, String> _listingToWork = {};
   final Map<String, PendingIdentityReview> _pending = {};
