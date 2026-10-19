@@ -10,11 +10,11 @@
 - [x] Dart core CI passed on the same main commit.
 - [x] APK is uploaded as `Kurotoon.apk` to a continuous development release.
 - [ ] Install and verify the current APK on a real Android device.
-- [ ] Add and verify a stable direct-download alias for the README.
+- [x] Create and verify the stable `continuous-latest` direct-download alias; its asset exists and is downloadable.
 - [ ] Run the native product flows against live sources on-device.
 - [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
-Current verified build: commit `adde6fc27f96ef38e3a0e0abe38cf2b320924812`, release tag `continuous-137`. See the README for the current download link, which should only be marked current after the stable alias build succeeds.
+Last verified APK build: commit `383c7e7b477543643405d2cdea7f3324c33211df`; stable alias: `continuous-latest`. The cache-enforcement change is now merged at `9148265e6a180e228e50318d6c029abe001b011e`; its main-branch APK rebuild is pending, so the direct link will update when that build succeeds.
 
 ## Progress dashboard
 
@@ -22,7 +22,7 @@ Current verified build: commit `adde6fc27f96ef38e3a0e0abe38cf2b320924812`, relea
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter APK build, analysis, tests and release workflow pass | Real-device install, package metadata/signing strategy, smoke-test automation and other platforms |
 | Pure Dart domain and policy core | 70% | Typed work/edition/chapter models, cancellation, provider coordinator, identity matching, progress reconciliation, cache/effect/voice policies | More adversarial/property tests, manual identity corrections and end-to-end consumers |
-| Persistent state | 55% | SQLite schema and migrations for catalog/listings, library/progress/settings, creator credits, cache metadata, repositories and extensions | Verify all CRUD flows are composed into the runtime and native UI; migration/failure recovery and restore tests |
+| Persistent state and cache safety | 60% | SQLite schema/migrations plus a managed cache writer with byte-budget enforcement, serialized writes, pinned-content protection and rollback tests | Verify complete CRUD integration, interrupted-write recovery and physical-device storage behaviour |
 | Provider integration | 50% | Native MangaDex adapter and bounded provider runtime; declarative endpoint provider contract | Live flow validation, respectful per-provider pacing/health, more source adapters and robust schema-drift handling |
 | Repository / extension foundation | 65% | Preview/confirmation API, index/manifest checks, hashes/size caps, redirect rejection, DNS checks, persistent install records | Real repository UI, source permissions and compatibility display, update/uninstall recovery tests, deeper DNS pinning review |
 | Cross-source catalog and chapter merge | 45% | Identity matcher, catalog index, provenance models, candidate grouping, mini-chapter/edition concepts | End-to-end persisted merge pipeline, corrections/undo, creator pages and real multi-source fixtures |
@@ -31,7 +31,7 @@ Current verified build: commit `adde6fc27f96ef38e3a0e0abe38cf2b320924812`, relea
 | Voice, music, haptics and particle runtime | 10% | Timeline/voice license and size/hash policies | Real native adapters, consent UI, stop/lifecycle integration, downloadable packs, music discovery/playback, haptic and particle tuning |
 | Cross-platform releases | 10% | Shared Dart core is intended to be portable | iOS/iPadOS/Windows/Linux platform adapters, platform builds, accessibility and device test matrix |
 
-**Engineering estimate of the full product: about 40% complete.** This is a practical scope estimate, not an objective code-coverage statistic. The native build foundation is real and CI-verified; the product is not finished because the real reader, library, repository UI, cross-source integration, effects, and device acceptance are still major work. The separate backend-foundation estimate is roughly 55–60%; a larger portion of the foundations exists than is wired into an end-to-end user experience.
+**Engineering estimate of the full product: about 41% complete.** This is a practical scope estimate, not an objective code-coverage statistic. The native build foundation is real and CI-verified; the product is not finished because the real reader, library, repository UI, cross-source integration, effects, and device acceptance are still major work. The separate backend-foundation estimate is roughly 60–62%; a larger portion of the foundations exists than is wired into an end-to-end user experience.
 
 ## Phase A — Native foundation and release hygiene
 
@@ -39,7 +39,7 @@ Current verified build: commit `adde6fc27f96ef38e3a0e0abe38cf2b320924812`, relea
 - [x] Replace the experimental Capacitor APK path with a Flutter release build in CI.
 - [x] Run Flutter analysis/tests and Dart core checks in CI.
 - [x] Build and publish a downloadable APK artifact from main.
-- [ ] Maintain a stable `continuous-latest` APK URL in addition to immutable numbered releases.
+- [x] Maintain a stable `continuous-latest` APK URL in addition to immutable numbered releases.
 - [ ] Add artifact checksum and build metadata to the release page and README.
 - [ ] Test installation, launch, upgrade/reinstall and navigation on a physical Android device.
 - [ ] Verify app label, icon, application ID, minimum Android version and signing/version policy.
@@ -62,7 +62,8 @@ Current verified build: commit `adde6fc27f96ef38e3a0e0abe38cf2b320924812`, relea
 - [ ] Exercise every SQLite migration from a real previous-version database fixture.
 - [ ] Test app kill/crash during extension install/update/uninstall and recover orphan temp files safely.
 - [ ] Add a structured diagnostic export that redacts credentials, tokens and private user data.
-- [ ] Wire storage-budget planning to actual cache writes/evictions with dry-run and observable outcomes.
+- [x] Enforce storage budget on managed cache writes with serialized operations, pinned-content protection and staged rollback if SQLite metadata commit fails.
+- [ ] Add cache dry-run/metrics surfaces and recover interrupted cache writes after process death.
 - [ ] Add backup/export only with versioned schema, preview, validation and explicit user confirmation.
 
 **Exit gate:** interrupted network, source failure, app restart and storage failure never corrupt user-owned data or masquerade as a successful empty response.
