@@ -252,7 +252,10 @@ class ReaderPageManifest {
         segment.contains(backslash))) {
       throw ArgumentError.value(baseUrl, 'baseUrl', 'Base URL path contains an unsafe segment');
     }
-    if (!RegExp(r'^[A-Za-z0-9_-]{1,128}
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(hash)) {
+      throw ArgumentError.value(hash, 'hash', 'Must be a safe URL path token');
+    }
+    if (normalFilenames.isEmpty) throw ArgumentError('Page manifest contains no readable pages.');
     if (normalFilenames.any(_unsafeFilename) || dataSaverFilenames.any(_unsafeFilename)) {
       throw ArgumentError('Page filenames must be plain, relative filename segments.');
     }
@@ -285,37 +288,4 @@ class ReaderPageManifest {
       value.contains('/') ||
       value.contains(String.fromCharCode(92)) ||
       value.contains('\u0000');
-}
-).hasMatch(hash)) {
-      throw ArgumentError.value(hash, 'hash', 'Must be a safe URL path token');
-    }
-    if (normalFilenames.isEmpty) throw ArgumentError('Page manifest contains no readable pages.');
-    if (normalFilenames.any(_unsafeFilename) || dataSaverFilenames.any(_unsafeFilename)) {
-      throw ArgumentError('Page filenames must be plain, relative filename segments.');
-    }
-  }
-
-  final String chapterId;
-  final Uri baseUrl;
-  final String hash;
-  final List<String> normalFilenames;
-  final List<String> dataSaverFilenames;
-
-  List<Uri> urls({bool dataSaver = false}) {
-    final filenames = dataSaver && dataSaverFilenames.isNotEmpty
-        ? dataSaverFilenames
-        : normalFilenames;
-    final mode = identical(filenames, dataSaverFilenames) ? 'data-saver' : 'data';
-    return List.unmodifiable(filenames.map(
-      (filename) => baseUrl.replace(
-        path: '${baseUrl.path.replaceFirst(RegExp(r'/+$'), '')}/$mode/$hash/${Uri.encodeComponent(filename)}',
-        query: null,
-        fragment: null,
-      ),
-    ));
-  }
-
-  static bool _unsafeFilename(String value) =>
-      value.trim().isEmpty || value == '.' || value == '..' ||
-      value.contains('/') || value.contains(r'\\') || value.contains('\u0000');
 }
