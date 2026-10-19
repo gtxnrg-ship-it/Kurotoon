@@ -70,6 +70,10 @@ class CatalogIndex {
   }
 
   final WorkIdentityMatcher _matcher;
+  static const int maxIdentityCandidates = 512;
+  final Map<String, Set<String>> _exactTitleToWorks = {};
+  final Map<String, Set<String>> _titleTokenToWorks = {};
+  final Map<String, Set<String>> _creatorToWorks = {};
 
   /// Restores an already-persisted catalog entry without re-running identity
   /// matching. Conflicting stable IDs or provider listing keys are rejected.
@@ -85,6 +89,7 @@ class CatalogIndex {
       }
     }
     _works[entry.work.id] = entry;
+    _indexEntry(entry);
     for (final key in keys) {
       _listingToWork[key] = entry.work.id;
     }
@@ -130,15 +135,67 @@ class CatalogIndex {
       );
     }
 
+    // Candidate blocking avoids comparing every new listing with the entire
+    // catalog. If a common title/creator bucket is too large, we fail closed:
+    // retain the candidate for review rather than guessing or doing O(n^2) work.
+    final candidateWorkIds = <String>{};
+    var candidatePoolTooBroad = false;
+    void addBucket(Set<String>? bucket) {
+      if (bucket == null) return;
+      if (bucket.length > maxIdentityCandidates) candidatePoolTooBroad = true;
+      for (final workId in bucket) {
+        candidateWorkIds.add(workId);
+        if (candidateWorkIds.length > maxIdentityCandidates) {
+          candidatePoolTooBroad = true;
+          break;
+        }
+      }
+    }
+
+    final candidateTitles = <String>{
+      WorkIdentityMatcher.normalizeTitle(candidate.title),
+      ...candidate.alternateTitles.map(WorkIdentityMatcher.normalizeTitle),
+    }..remove('');
+    for (final title in candidateTitles) {
+      addBucket(_exactTitleToWorks[title]);
+      for (final token in title.split(' ').where((value) => value.length >= 3)) {
+        addBucket(_titleTokenToWorks[token]);
+      }
+    }
+    for (final creator in candidate.creatorNames
+        .map(WorkIdentityMatcher.normalizeTitle)
+        .where((value) => value.isNotEmpty)) {
+      addBucket(_creatorToWorks[creator]);
+    }
+
     final safeMatches = <CatalogEntry>[];
     final reviewMatches = <IdentityDecision>[];
-    for (final entry in _works.values) {
+    for (final workId in candidateWorkIds.take(maxIdentityCandidates)) {
+      final entry = _works[workId];
+      if (entry == null) continue;
       final decision = _matcher.compare(entry.work, candidate);
       if (decision.verdict == IdentityVerdict.safeMatch) {
         safeMatches.add(entry);
       } else if (decision.verdict == IdentityVerdict.needsReview) {
         reviewMatches.add(decision);
       }
+    }
+
+    if (candidatePoolTooBroad) {
+      final review = PendingIdentityReview(
+        key: key,
+        candidate: candidate,
+        possibleMatches: [
+          ...safeMatches.map((entry) => _matcher.compare(entry.work, candidate)),
+          ...reviewMatches,
+        ],
+      );
+      _pending[key] = review;
+      return CatalogUpsertResult(
+        status: CatalogUpsertStatus.reviewRequired,
+        review: review,
+        message: 'The catalog match pool is too broad for automatic resolution.',
+      );
     }
 
     if (safeMatches.length == 1 && reviewMatches.isEmpty) {
@@ -241,7 +298,32 @@ class CatalogIndex {
     final entry = CatalogEntry(work: work, listings: [candidate]);
     _works[id] = entry;
     _listingToWork[candidate.listingKey] = id;
+    _indexEntry(entry);
     return entry;
+  }
+
+  void _indexEntry(CatalogEntry entry) {
+    final workId = entry.work.id;
+    void add(Map<String, Set<String>> index, String key) {
+      if (key.isEmpty) return;
+      (index[key] ??= <String>{}).add(workId);
+    }
+
+    final titles = <String>{
+      WorkIdentityMatcher.normalizeTitle(entry.work.title),
+      ...entry.work.alternateTitles.map(WorkIdentityMatcher.normalizeTitle),
+    }..remove('');
+    for (final title in titles) {
+      add(_exactTitleToWorks, title);
+      for (final token in title.split(' ').where((value) => value.length >= 3)) {
+        add(_titleTokenToWorks, token);
+      }
+    }
+    for (final creator in entry.work.creatorNames
+        .map(WorkIdentityMatcher.normalizeTitle)
+        .where((value) => value.isNotEmpty)) {
+      add(_creatorToWorks, creator);
+    }
   }
 
   CatalogEntry _appendListing(CatalogEntry existing, WorkCandidate candidate) {
@@ -267,6 +349,7 @@ class CatalogIndex {
     );
     _works[existing.work.id] = rebuilt;
     _listingToWork[candidate.listingKey] = existing.work.id;
+    _indexEntry(rebuilt);
     return rebuilt;
   }
 }
