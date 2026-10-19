@@ -392,15 +392,21 @@ class KurotoonDatabase {
     final args = <Object?>[];
     final trimmedQuery = query?.trim();
     if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
-      // '!' is the SQL LIKE escape character, so user-supplied wildcards are
-      // treated literally instead of turning a short query into a table scan.
-      final escaped = trimmedQuery
-          .replaceAll('!', '!!')
-          .replaceAll('%', '!%')
-          .replaceAll('_', '!_');
-      final pattern = '%$escaped%';
-      clauses.add("(canonical_title LIKE ? ESCAPE '!' OR alternate_titles_json LIKE ? ESCAPE '!' OR creator_names_json LIKE ? ESCAPE '!' OR id IN (SELECT work_id FROM provider_listings WHERE title LIKE ? ESCAPE '!'))");
-      args.addAll([pattern, pattern, pattern, pattern]);
+      // This is an autocomplete-style prefix search over indexed tokens, not a
+      // leading-wildcard scan over the entire works table. Refuse SQL wildcard
+      // syntax rather than allowing user input to change query semantics.
+      if (trimmedQuery.contains('%') || trimmedQuery.contains('_')) {
+        return const <CatalogEntry>[];
+      }
+      await _ensureCatalogSearchIndexReady();
+      final normalized = WorkIdentityMatcher.normalizeTitle(trimmedQuery);
+      final tokens = normalized.split(' ').where((token) => token.isNotEmpty).toSet().take(8).toList();
+      if (tokens.isEmpty) return const <CatalogEntry>[];
+      for (final token in tokens) {
+        clauses.add("id IN (SELECT work_id FROM catalog_search_terms WHERE term LIKE ? ESCAPE '!')");
+        final escaped = token.replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_');
+        args.add('$escaped%');
+      }
     }
     if (afterTitle != null && afterId != null) {
       clauses.add('(canonical_title COLLATE NOCASE > ? OR (canonical_title COLLATE NOCASE = ? AND id > ?))');
