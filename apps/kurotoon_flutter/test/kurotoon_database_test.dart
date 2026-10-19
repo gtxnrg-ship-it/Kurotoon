@@ -282,7 +282,7 @@ void main() {
       throwsStateError,
     );
     expect(await database.loadLibrary(), isEmpty);
-    expect((await database.loadEdition('edition-blue-en')), isNull);
+    expect((await database.loadEdition('edition-blue-en'))!.workId, 'work/blue-star');
   });
   test('rolls back an ambiguous catalog entry if its review row cannot commit', () async {
     final reviewedCandidate = candidate();
