@@ -108,9 +108,12 @@ class IoJsonGetTransport implements JsonGetTransport {
   }
 
   void close({bool force = false}) => _client.close(force: force);
+
+  @override
+  void dispose() => close(force: true);
 }
 
-class MangaDexProvider implements SourceProvider {
+class MangaDexProvider implements SourceProvider, DisposableProvider {
   MangaDexProvider({
     JsonGetTransport? transport,
     Iterable<String> contentRatings = const ['safe', 'suggestive'],
