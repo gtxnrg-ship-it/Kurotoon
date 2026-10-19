@@ -57,7 +57,7 @@ class KurotoonDatabase {
     return _database;
   }
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   static Future<KurotoonDatabase> open({
     String? databasePath,
@@ -220,6 +220,33 @@ class KurotoonDatabase {
         install_path TEXT NOT NULL,
         installed_at INTEGER NOT NULL
       )''',
+      '''CREATE TABLE extension_repositories (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        index_url TEXT NOT NULL UNIQUE,
+        description TEXT,
+        website_url TEXT,
+        icon_url TEXT,
+        trust TEXT NOT NULL,
+        added_at INTEGER NOT NULL,
+        last_checked_at INTEGER,
+        last_index_digest TEXT
+      )''',
+      '''CREATE TABLE installed_extensions (
+        extension_id TEXT PRIMARY KEY NOT NULL,
+        repository_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        manifest_url TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        install_path TEXT,
+        installed_at INTEGER NOT NULL,
+        FOREIGN KEY(repository_id) REFERENCES extension_repositories(id)
+          ON UPDATE CASCADE ON DELETE RESTRICT
+      )''',
+      'CREATE INDEX installed_extensions_repo_idx ON installed_extensions(repository_id)',
     ];
     for (final statement in statements) {
       await db.execute(statement);
@@ -227,9 +254,38 @@ class KurotoonDatabase {
   }
 
   static Future<void> _upgradeSchema(DatabaseExecutor db, int oldVersion, int newVersion) async {
-    // Schema changes must be appended as explicit, ordered migrations.
-    // Version 1 is created by _createSchema; no older migration exists yet.
     if (oldVersion < 1 && newVersion >= 1) await _createSchema(db, newVersion);
+    if (oldVersion < 2 && newVersion >= 2) await _createExtensionSchema(db);
+  }
+
+  static Future<void> _createExtensionSchema(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS extension_repositories (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      index_url TEXT NOT NULL UNIQUE,
+      description TEXT,
+      website_url TEXT,
+      icon_url TEXT,
+      trust TEXT NOT NULL,
+      added_at INTEGER NOT NULL,
+      last_checked_at INTEGER,
+      last_index_digest TEXT
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS installed_extensions (
+      extension_id TEXT PRIMARY KEY NOT NULL,
+      repository_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      version TEXT NOT NULL,
+      manifest_url TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      install_path TEXT,
+      installed_at INTEGER NOT NULL,
+      FOREIGN KEY(repository_id) REFERENCES extension_repositories(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS installed_extensions_repo_idx ON installed_extensions(repository_id)');
   }
 
   Future<void> upsertCatalogEntry(CatalogEntry entry) async {
@@ -516,6 +572,117 @@ class KurotoonDatabase {
     if (rows.isEmpty) return null;
     final value = jsonDecode(rows.single['value_json'] as String);
     return value is T ? value : null;
+  }
+
+
+  Future<void> saveExtensionRepository(ExtensionRepository repository, {String? indexDigest}) async {
+    _ensureOpen();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _database.insert(
+      'extension_repositories',
+      {
+        'id': repository.id,
+        'name': repository.name,
+        'index_url': repository.indexUri.toString(),
+        'description': repository.description,
+        'website_url': repository.website?.toString(),
+        'icon_url': repository.iconUri?.toString(),
+        'trust': repository.trust.name,
+        'added_at': now,
+        'last_checked_at': now,
+        'last_index_digest': indexDigest,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, Object?>>> loadExtensionRepositories() async {
+    _ensureOpen();
+    final rows = await _database.query('extension_repositories', orderBy: 'name COLLATE NOCASE ASC');
+    return List.unmodifiable(rows.map((row) => Map<String, Object?>.unmodifiable(row)));
+  }
+
+  Future<void> markRepositoryChecked(String repositoryId, {String? indexDigest}) async {
+    _ensureOpen();
+    await _database.update(
+      'extension_repositories',
+      {
+        'last_checked_at': DateTime.now().millisecondsSinceEpoch,
+        if (indexDigest != null) 'last_index_digest': indexDigest,
+      },
+      where: 'id = ?',
+      whereArgs: [repositoryId],
+    );
+  }
+
+  Future<void> removeExtensionRepository(String repositoryId) async {
+    _ensureOpen();
+    final installed = await _database.query(
+      'installed_extensions',
+      columns: ['extension_id'],
+      where: 'repository_id = ?',
+      whereArgs: [repositoryId],
+      limit: 1,
+    );
+    if (installed.isNotEmpty) {
+      throw StateError('Uninstall or move this repository’s extensions before removing the repository.');
+    }
+    await _database.delete('extension_repositories', where: 'id = ?', whereArgs: [repositoryId]);
+  }
+
+  Future<void> recordInstalledExtension({
+    required ExtensionPackageEntry entry,
+    required String repositoryId,
+    required String installPath,
+    bool enabled = false,
+  }) async {
+    _ensureOpen();
+    final repo = await _database.query(
+      'extension_repositories',
+      columns: ['id'],
+      where: 'id = ?',
+      whereArgs: [repositoryId],
+      limit: 1,
+    );
+    if (repo.isEmpty) throw StateError('Cannot install from an unknown repository.');
+    await _database.insert(
+      'installed_extensions',
+      {
+        'extension_id': entry.id,
+        'repository_id': repositoryId,
+        'name': entry.name,
+        'version': entry.version,
+        'manifest_url': entry.manifestUri.toString(),
+        'sha256': entry.sha256,
+        'size_bytes': entry.sizeBytes,
+        'enabled': enabled ? 1 : 0,
+        'install_path': installPath,
+        'installed_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, Object?>>> loadInstalledExtensions() async {
+    _ensureOpen();
+    final rows = await _database.query('installed_extensions', orderBy: 'name COLLATE NOCASE ASC');
+    return List.unmodifiable(rows.map((row) => Map<String, Object?>.unmodifiable(row)));
+  }
+
+  Future<void> setExtensionEnabled(String extensionId, bool enabled) async {
+    _ensureOpen();
+    final changed = await _database.update(
+      'installed_extensions',
+      {'enabled': enabled ? 1 : 0},
+      where: 'extension_id = ?',
+      whereArgs: [extensionId],
+    );
+    if (changed == 0) throw ArgumentError.value(extensionId, 'extensionId', 'Extension is not installed.');
+  }
+
+  Future<void> removeInstalledExtension(String extensionId) async {
+    _ensureOpen();
+    await _database.delete('installed_extensions', where: 'extension_id = ?', whereArgs: [extensionId]);
   }
 
   Future<void> setProviderEnabled(String providerId, bool enabled) async {
