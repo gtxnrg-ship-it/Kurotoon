@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'cancellation.dart';
 import 'models.dart';
@@ -83,9 +84,13 @@ class IoJsonGetTransport implements JsonGetTransport {
       if (decoded is! Map<String, dynamic>) {
         throw const FormatException('API response was not a JSON object');
       }
+      final responseHeaders = <String, List<String>>{};
+      response.headers.forEach((name, values) {
+        responseHeaders[name] = List<String>.unmodifiable(values);
+      });
       return JsonHttpResponse(
         statusCode: response.statusCode,
-        headers: response.headers.map,
+        headers: Map<String, List<String>>.unmodifiable(responseHeaders),
         body: Map<String, Object?>.from(decoded),
       );
     } on TimeoutException {
@@ -142,13 +147,7 @@ class MangaDexProvider implements SourceProvider {
     id: 'mangadex',
     name: 'MangaDex',
     homepage: Uri(scheme: 'https', host: 'mangadex.org'),
-    capabilities: {
-      ProviderCapability.search,
-      ProviderCapability.series,
-      ProviderCapability.chapters,
-      ProviderCapability.pages,
-      ProviderCapability.creators,
-    },
+    capabilities: {ProviderCapability.search},
     isBuiltIn: true,
     enabledByDefault: true,
   );
@@ -170,18 +169,16 @@ class MangaDexProvider implements SourceProvider {
     }
     try {
       cancellationToken.throwIfCancelled();
-      final uri = Uri(
-        scheme: 'https',
-        host: 'api.mangadex.org',
-        path: '/manga',
-        queryParametersAll: {
-          'title': [title],
-          'limit': ['$resultLimit'],
-          'includes[]': ['cover_art', 'author', 'artist'],
-          'contentRating[]': contentRatings,
-          'order[relevance]': ['desc'],
-        },
-      );
+      String queryParam(String key, String value) =>
+          '${Uri.encodeQueryComponent(key)}=${Uri.encodeQueryComponent(value)}';
+      final queryParts = <String>[
+        queryParam('title', title),
+        queryParam('limit', '$resultLimit'),
+        for (final include in ['cover_art', 'author', 'artist']) queryParam('includes[]', include),
+        for (final rating in contentRatings) queryParam('contentRating[]', rating),
+        queryParam('order[relevance]', 'desc'),
+      ];
+      final uri = Uri.parse('https://api.mangadex.org/manga?${queryParts.join('&')}');
       final response = await transport.get(uri, cancellationToken: cancellationToken);
       cancellationToken.throwIfCancelled();
 
