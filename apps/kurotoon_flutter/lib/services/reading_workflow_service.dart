@@ -142,7 +142,7 @@ class ReadingWorkflowService {
         rethrow;
       } on Object catch (error) {
         detailsStatus = ProviderResultStatus.failed;
-        detailsMessage = 'Series details could not be loaded (\${error.runtimeType}).';
+        detailsMessage = 'Series details could not be loaded (${error.runtimeType}).';
       }
     } else {
       detailsStatus = ProviderResultStatus.unsupported;
@@ -476,7 +476,7 @@ class ReadingWorkflowService {
     } on Object catch (error) {
       return ProviderResponse(
         status: ProviderResultStatus.failed,
-        message: 'Reader page loading failed (\${error.runtimeType}).',
+        message: 'Reader page loading failed (${error.runtimeType}).',
       );
     }
   }
@@ -551,7 +551,7 @@ class ReadingWorkflowService {
       final saved = await database.getSetting<String>('device.installId');
       if (saved != null && saved.trim().isNotEmpty) return saved;
       final random = Random.secure();
-      final created = 'device-\${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-\${random.nextInt(1 << 32).toRadixString(36)}';
+      final created = 'device-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${random.nextInt(1 << 32).toRadixString(36)}';
       await database.setSetting('device.installId', created);
       return created;
     }();
