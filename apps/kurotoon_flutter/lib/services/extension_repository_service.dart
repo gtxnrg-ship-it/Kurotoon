@@ -98,6 +98,7 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     final manifest = parseDeclarativeExtensionManifest(Map<String, Object?>.from(decoded));
     if (manifest.id != entry.id || manifest.version != entry.version ||
         manifest.minimumAppApi != entry.minimumAppApi ||
+        manifest.capabilities.length != entry.capabilities.length ||
         !manifest.capabilities.containsAll(entry.capabilities)) {
       throw const FormatException('Extension manifest does not match its repository index entry.');
     }
@@ -185,9 +186,11 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       cancellationToken?.throwIfCancelled();
       final response = await activeRequest.close().timeout(requestTimeout);
       if (response.statusCode >= 300 && response.statusCode < 400) {
+        response.detachSocket().then((socket) => socket.destroy());
         throw HttpException('Repository redirects are not followed; add the final HTTPS URL instead.', uri: uri);
       }
       if (response.statusCode != HttpStatus.ok) {
+        response.detachSocket().then((socket) => socket.destroy());
         throw HttpException('Repository returned HTTP ' + response.statusCode.toString() + '.', uri: uri);
       }
       if (response.contentLength > maxBytes) {
