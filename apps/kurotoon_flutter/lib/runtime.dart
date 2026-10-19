@@ -173,6 +173,7 @@ class KurotoonRuntime {
   final ProviderRegistry providers;
   final StorageBudget storageBudget;
   final ReaderTimeline readerTimeline;
+  final ProviderHealthTracker providerHealth = ProviderHealthTracker();
 
   ProviderCoordinator createSearchCoordinator({
     int maxConcurrentProviders = 4,
@@ -182,5 +183,6 @@ class KurotoonRuntime {
         providers,
         maxConcurrentProviders: maxConcurrentProviders,
         providerTimeout: providerTimeout,
+        healthTracker: providerHealth,
       );
 }
