@@ -75,7 +75,8 @@ class ReadingWorkflowService {
     this.defaultChapterPageSize = 100,
     this.defaultMaxChapters = 2000,
     this.providerTimeout = const Duration(seconds: 8),
-  }) {
+    ProviderHealthTracker? healthTracker,
+  }) : healthTracker = healthTracker ?? ProviderHealthTracker() {
     if (defaultChapterPageSize < 1 || defaultChapterPageSize > 500) {
       throw ArgumentError.value(defaultChapterPageSize, 'defaultChapterPageSize');
     }
@@ -96,6 +97,7 @@ class ReadingWorkflowService {
   final int defaultChapterPageSize;
   final int defaultMaxChapters;
   final Duration providerTimeout;
+  final ProviderHealthTracker healthTracker;
   Future<String>? _deviceIdFuture;
 
   /// Resolves a persisted possible-duplicate review after an explicit choice.
@@ -259,6 +261,7 @@ class ReadingWorkflowService {
             candidate.externalId,
             cancellationToken: requestToken,
           ),
+          providerId: candidate.providerId,
           parentToken: token,
         );
         detailsStatus = response.status;
@@ -494,6 +497,7 @@ class ReadingWorkflowService {
             limit: size,
             offset: offset,
           ),
+          providerId: work.providerId,
           parentToken: token,
         );
       } on OperationCancelled {
@@ -680,6 +684,7 @@ class ReadingWorkflowService {
           cancellationToken: requestToken,
           dataSaver: dataSaver,
         ),
+        providerId: listing.providerId,
         parentToken: cancellationToken,
       );
       final manifest = response.data;
@@ -777,21 +782,53 @@ class ReadingWorkflowService {
     return chapters.any((chapter) => chapter.id == saved.chapterId) ? saved : null;
   }
 
-  Future<T> _boundedProviderCall<T>(
-    Future<T> Function(CancellationToken requestToken) operation, {
+  Future<ProviderResponse<T>> _boundedProviderCall<T>(
+    Future<ProviderResponse<T>> Function(CancellationToken requestToken) operation, {
+    required String providerId,
     CancellationToken? parentToken,
   }) async {
     parentToken?.throwIfCancelled();
+    final cooldown = healthTracker.remainingCooldown(providerId);
+    if (cooldown != null) {
+      return ProviderResponse<T>(
+        status: ProviderResultStatus.rateLimited,
+        message: 'Provider is cooling down after prior failures.',
+        retryAfter: cooldown,
+      );
+    }
+
     final requestToken = CancellationToken();
     final detach = parentToken?.onCancel((reason) => requestToken.cancel(reason));
     try {
-      return await operation(requestToken).timeout(
+      final response = await operation(requestToken).timeout(
         providerTimeout,
         onTimeout: () {
           requestToken.cancel('Provider request timed out');
           throw TimeoutException('Provider request exceeded $providerTimeout');
         },
       );
+      healthTracker.record(providerId, response);
+      return response;
+    } on OperationCancelled {
+      rethrow;
+    } on TimeoutException {
+      healthTracker.record(
+        providerId,
+        ProviderResponse<T>(
+          status: ProviderResultStatus.timedOut,
+          message: 'Provider request timed out.',
+        ),
+      );
+      rethrow;
+    } on Object {
+      healthTracker.record(
+        providerId,
+        ProviderResponse<T>(
+          status: ProviderResultStatus.failed,
+          message: 'Provider request failed.',
+        ),
+      );
+      rethrow;
     } finally {
       detach?.call();
     }
