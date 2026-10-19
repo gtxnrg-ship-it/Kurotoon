@@ -80,6 +80,30 @@ void main() {
     expect(await database.loadVoicePackInstall('../outside'), isNull);
   });
 
+  test('rejects path traversal in remote version metadata', () async {
+    final unsafeVersion = VoicePackManifest(
+      id: 'org.example.voice',
+      displayName: 'Unsafe Version',
+      version: '../../outside',
+      locale: 'en',
+      licenseId: 'Apache-2.0',
+      licenseUrl: Uri.parse('https://licenses.example.org/apache-2.0'),
+      downloadUrl: Uri.parse('https://models.example.org/voice.bin'),
+      sha256: manifest().sha256,
+      compressedBytes: 3,
+    );
+    await expectLater(
+      service.install(
+        unsafeVersion,
+        downloadsEnabled: true,
+        availableStorageBytes: 100,
+      ),
+      throwsA(isA<VoicePackInstallException>()),
+    );
+    expect(await database.loadVoicePackInstall('org.example.voice'), isNull);
+    expect(await Directory(p.join(temp.path, 'outside')).exists(), isFalse);
+  });
+
   test('only accepts the app-owned content-addressed install layout', () {
     final root = p.join(temp.path, 'voice_packs');
     final valid = p.join(
