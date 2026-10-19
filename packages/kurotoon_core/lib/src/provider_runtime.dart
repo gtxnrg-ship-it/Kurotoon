@@ -70,7 +70,7 @@ class ProviderRegistry {
 
   void dispose() {
     for (final provider in _providers.values) {
-      if (provider is DisposableProvider) provider.dispose();
+      if (provider is DisposableProvider) (provider as DisposableProvider).dispose();
     }
     _providers.clear();
     _enabled.clear();
