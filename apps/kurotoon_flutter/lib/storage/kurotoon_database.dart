@@ -289,48 +289,50 @@ class KurotoonDatabase {
 
   Future<void> upsertCatalogEntry(CatalogEntry entry) async {
     _ensureOpen();
-    await _database.transaction((tx) async {
-      final work = entry.work;
-      final workRow = <String, Object?>{
-        'id': work.id,
-        'canonical_title': work.title,
-        'alternate_titles_json': jsonEncode(work.alternateTitles),
-        'creator_names_json': jsonEncode(work.creatorNames),
-        'year': work.year,
-        'format': work.format.name,
-        'locked_distinct_identity': work.lockedDistinctIdentity ? 1 : 0,
-        'verified': entry.verified ? 1 : 0,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      };
-      final exists = await tx.query('works', columns: ['id'], where: 'id = ?', whereArgs: [work.id], limit: 1);
-      if (exists.isEmpty) {
-        await tx.insert('works', workRow);
-      } else {
-        await tx.update('works', workRow, where: 'id = ?', whereArgs: [work.id]);
-      }
+    await _database.transaction((tx) => _upsertCatalogEntry(tx, entry));
+  }
 
-      for (final listing in entry.listings) {
-        await tx.insert(
-          'provider_listings',
-          {
-            'provider_id': listing.providerId,
-            'external_id': listing.externalId,
-            'work_id': work.id,
-            'title': listing.title,
-            'alternate_titles_json': jsonEncode(listing.alternateTitles),
-            'creator_names_json': jsonEncode(listing.creatorNames),
-            'year': listing.year,
-            'format': listing.format.name,
-            'language': listing.language,
-            'description': listing.description,
-            'cover_url': listing.coverUrl?.toString(),
-            'provider_url': listing.providerUrl.toString(),
-            'tags_json': jsonEncode(listing.tags),
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      }
-    });
+  Future<void> _upsertCatalogEntry(DatabaseExecutor tx, CatalogEntry entry) async {
+    final work = entry.work;
+    final workRow = <String, Object?>{
+      'id': work.id,
+      'canonical_title': work.title,
+      'alternate_titles_json': jsonEncode(work.alternateTitles),
+      'creator_names_json': jsonEncode(work.creatorNames),
+      'year': work.year,
+      'format': work.format.name,
+      'locked_distinct_identity': work.lockedDistinctIdentity ? 1 : 0,
+      'verified': entry.verified ? 1 : 0,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    };
+    final exists = await tx.query('works', columns: ['id'], where: 'id = ?', whereArgs: [work.id], limit: 1);
+    if (exists.isEmpty) {
+      await tx.insert('works', workRow);
+    } else {
+      await tx.update('works', workRow, where: 'id = ?', whereArgs: [work.id]);
+    }
+
+    for (final listing in entry.listings) {
+      await tx.insert(
+        'provider_listings',
+        {
+          'provider_id': listing.providerId,
+          'external_id': listing.externalId,
+          'work_id': work.id,
+          'title': listing.title,
+          'alternate_titles_json': jsonEncode(listing.alternateTitles),
+          'creator_names_json': jsonEncode(listing.creatorNames),
+          'year': listing.year,
+          'format': listing.format.name,
+          'language': listing.language,
+          'description': listing.description,
+          'cover_url': listing.coverUrl?.toString(),
+          'provider_url': listing.providerUrl.toString(),
+          'tags_json': jsonEncode(listing.tags),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
   }
 
   Future<List<CatalogEntry>> loadCatalog() async {
@@ -867,6 +869,227 @@ class KurotoonDatabase {
   Future<void> deletePendingIdentityReview(String listingKey) async {
     _ensureOpen();
     await _database.delete('identity_review_queue', where: 'listing_key = ?', whereArgs: [listingKey]);
+  }
+
+  /// Confirms that a review candidate is a distinct work. The listing remains
+  /// readable as its own catalog entry, but later matcher passes cannot silently
+  /// merge it into another work.
+  Future<void> resolvePendingIdentityReviewAsDistinct(String listingKey) async {
+    _ensureOpen();
+    await _database.transaction((tx) async {
+      final rows = await tx.query(
+        'identity_review_queue',
+        where: 'listing_key = ?',
+        whereArgs: [listingKey],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('No pending identity review exists for this listing.');
+      final candidate = _candidateFromJson(rows.single['candidate_json'] as String);
+      if (candidate == null || candidate.listingKey != listingKey) {
+        throw const FormatException('Pending identity review contains an invalid provider listing.');
+      }
+      final listing = await tx.query(
+        'provider_listings',
+        columns: ['work_id'],
+        where: 'provider_id = ? AND external_id = ?',
+        whereArgs: [candidate.providerId, candidate.externalId],
+        limit: 1,
+      );
+      if (listing.isEmpty) throw StateError('The pending listing is not present in the local catalog.');
+      await tx.update(
+        'works',
+        {'locked_distinct_identity': 1, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [listing.single['work_id']],
+      );
+      await tx.delete('identity_review_queue', where: 'listing_key = ?', whereArgs: [listingKey]);
+    });
+  }
+
+  /// Atomically merges the work that owns a reviewed provider listing into a
+  /// chosen target work. The caller must supply the full merged entry, including
+  /// every listing currently attached to the source work.
+  Future<void> mergePendingIdentityReview({
+    required String listingKey,
+    required String targetWorkId,
+    required CatalogEntry mergedEntry,
+  }) async {
+    _ensureOpen();
+    if (mergedEntry.work.id != targetWorkId) {
+      throw ArgumentError('Merged catalog entry must retain the selected target work ID.');
+    }
+    final mergedKeys = mergedEntry.listings.map((item) => item.listingKey).toSet();
+    if (mergedKeys.length != mergedEntry.listings.length) {
+      throw ArgumentError('Merged catalog entry contains duplicate provider listing identities.');
+    }
+
+    await _database.transaction((tx) async {
+      final reviews = await tx.query(
+        'identity_review_queue',
+        where: 'listing_key = ?',
+        whereArgs: [listingKey],
+        limit: 1,
+      );
+      if (reviews.isEmpty) throw StateError('No pending identity review exists for this listing.');
+      final candidate = _candidateFromJson(reviews.single['candidate_json'] as String);
+      if (candidate == null || candidate.listingKey != listingKey) {
+        throw const FormatException('Pending identity review contains an invalid provider listing.');
+      }
+      final sourceListingRows = await tx.query(
+        'provider_listings',
+        columns: ['work_id'],
+        where: 'provider_id = ? AND external_id = ?',
+        whereArgs: [candidate.providerId, candidate.externalId],
+        limit: 1,
+      );
+      if (sourceListingRows.isEmpty) {
+        throw StateError('The pending listing is not present in the local catalog.');
+      }
+      final sourceWorkId = sourceListingRows.single['work_id'] as String;
+      if (sourceWorkId == targetWorkId) {
+        await tx.delete('identity_review_queue', where: 'listing_key = ?', whereArgs: [listingKey]);
+        return;
+      }
+
+      final target = await tx.query('works', columns: ['id'], where: 'id = ?', whereArgs: [targetWorkId], limit: 1);
+      if (target.isEmpty) throw ArgumentError.value(targetWorkId, 'targetWorkId', 'Target work does not exist.');
+      final sourceRows = await tx.query(
+        'provider_listings',
+        columns: ['provider_id', 'external_id'],
+        where: 'work_id = ?',
+        whereArgs: [sourceWorkId],
+      );
+      for (final row in sourceRows) {
+        final key = '${row['provider_id']}:${row['external_id']}';
+        if (!mergedKeys.contains(key)) {
+          throw StateError('Merged entry omitted source listing $key; refusing a partial identity merge.');
+        }
+      }
+      if (!mergedKeys.contains(listingKey)) {
+        throw StateError('Merged entry omitted the reviewed provider listing.');
+      }
+
+      // Upsert the target entry and its full listing set first. That reassigns
+      // the listing rows before the source work is deleted.
+      await _upsertCatalogEntry(tx, mergedEntry);
+
+      // Preserve every language edition and its chapter IDs; chapter rows and
+      // chapter-listing provenance remain attached to their unchanged edition.
+      await tx.update('editions', {'work_id': targetWorkId}, where: 'work_id = ?', whereArgs: [sourceWorkId]);
+
+      final sourceLibrary = await tx.query(
+        'library_entries',
+        where: 'work_id = ?',
+        whereArgs: [sourceWorkId],
+      );
+      for (final row in sourceLibrary) {
+        final editionId = row['edition_id'] as String;
+        final targetLibrary = await tx.query(
+          'library_entries',
+          where: 'work_id = ? AND edition_id = ?',
+          whereArgs: [targetWorkId, editionId],
+          limit: 1,
+        );
+        if (targetLibrary.isEmpty) {
+          await tx.update(
+            'library_entries',
+            {'work_id': targetWorkId},
+            where: 'work_id = ? AND edition_id = ?',
+            whereArgs: [sourceWorkId, editionId],
+          );
+        } else {
+          final existing = targetLibrary.single;
+          final sourceOpened = row['last_opened_at'] as int?;
+          final targetOpened = existing['last_opened_at'] as int?;
+          final sourceIsNewer = sourceOpened != null && (targetOpened == null || sourceOpened > targetOpened);
+          final addedAt = min(
+            row['added_at'] as int,
+            existing['added_at'] as int,
+          );
+          final openedAt = sourceOpened == null
+              ? targetOpened
+              : targetOpened == null
+                  ? sourceOpened
+                  : max(sourceOpened, targetOpened);
+          await tx.update(
+            'library_entries',
+            {
+              'status': sourceIsNewer ? row['status'] : existing['status'],
+              'added_at': addedAt,
+              'last_opened_at': openedAt,
+              'sort_order': existing['sort_order'],
+            },
+            where: 'work_id = ? AND edition_id = ?',
+            whereArgs: [targetWorkId, editionId],
+          );
+          await tx.delete(
+            'library_entries',
+            where: 'work_id = ? AND edition_id = ?',
+            whereArgs: [sourceWorkId, editionId],
+          );
+        }
+      }
+
+      final sourceProgressRows = await tx.query(
+        'reading_progress',
+        where: 'work_id = ?',
+        whereArgs: [sourceWorkId],
+      );
+      for (final row in sourceProgressRows) {
+        final sourceProgress = _progressFromRow(row);
+        final remapped = ReadingProgress(
+          workId: targetWorkId,
+          editionId: sourceProgress.editionId,
+          chapterId: sourceProgress.chapterId,
+          anchor: sourceProgress.anchor,
+          fraction: sourceProgress.fraction,
+          updatedAt: sourceProgress.updatedAt,
+          deviceId: sourceProgress.deviceId,
+          revision: sourceProgress.revision,
+        );
+        final targetProgressRows = await tx.query(
+          'reading_progress',
+          where: 'work_id = ? AND edition_id = ?',
+          whereArgs: [targetWorkId, remapped.editionId],
+          limit: 1,
+        );
+        final current = targetProgressRows.isEmpty ? null : _progressFromRow(targetProgressRows.single);
+        final resolved = mergeProgress(current, remapped);
+        await tx.insert(
+          'reading_progress',
+          {
+            'work_id': resolved.workId,
+            'edition_id': resolved.editionId,
+            'chapter_id': resolved.chapterId,
+            'anchor': resolved.anchor,
+            'fraction': resolved.fraction,
+            'updated_at': resolved.updatedAt.millisecondsSinceEpoch,
+            'device_id': resolved.deviceId,
+            'revision': resolved.revision,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await tx.delete('reading_progress', where: 'work_id = ?', whereArgs: [sourceWorkId]);
+
+      final sourceCredits = await tx.query('creator_credits', where: 'work_id = ?', whereArgs: [sourceWorkId]);
+      for (final row in sourceCredits) {
+        await tx.insert(
+          'creator_credits',
+          {
+            'creator_id': row['creator_id'],
+            'work_id': targetWorkId,
+            'edition_id': row['edition_id'],
+            'provider_id': row['provider_id'],
+            'role': row['role'],
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+      await tx.delete('creator_credits', where: 'work_id = ?', whereArgs: [sourceWorkId]);
+      await tx.delete('works', where: 'id = ?', whereArgs: [sourceWorkId]);
+      await tx.delete('identity_review_queue', where: 'listing_key = ?', whereArgs: [listingKey]);
+    });
   }
 
   Future<CreatorProfile?> loadCreatorProfile(String creatorId) async {
