@@ -165,6 +165,43 @@ class CatalogIndex {
     return CatalogUpsertResult(status: CatalogUpsertStatus.created, entry: _createWork(candidate));
   }
 
+  /// Refreshes one existing provider listing without changing the canonical
+  /// work identity or accidentally merging it with a different series.
+  CatalogEntry refreshKnownListing(WorkCandidate candidate) {
+    final workId = _listingToWork[candidate.listingKey];
+    if (workId == null) {
+      throw ArgumentError.value(candidate.listingKey, 'candidate', 'Provider listing is not in the catalog.');
+    }
+    final current = _works[workId];
+    if (current == null) throw StateError('Catalog listing points to a missing work.');
+
+    final aliases = <String>{...current.work.alternateTitles};
+    if (WorkIdentityMatcher.normalizeTitle(candidate.title) !=
+        WorkIdentityMatcher.normalizeTitle(current.work.title)) {
+      aliases.add(candidate.title);
+    }
+    aliases.addAll(candidate.alternateTitles);
+    final creators = <String>{...current.work.creatorNames, ...candidate.creatorNames};
+    final listings = current.listings
+        .map((listing) => listing.listingKey == candidate.listingKey ? candidate : listing)
+        .toList(growable: false);
+    final refreshed = CatalogEntry(
+      work: WorkRecord(
+        id: current.work.id,
+        title: current.work.title,
+        alternateTitles: aliases.toList(growable: false),
+        creatorNames: creators.toList(growable: false),
+        year: current.work.year ?? candidate.year,
+        format: current.work.format == WorkFormat.unknown ? candidate.format : current.work.format,
+        lockedDistinctIdentity: current.work.lockedDistinctIdentity,
+      ),
+      listings: listings,
+      verified: current.verified,
+    );
+    _works[workId] = refreshed;
+    return refreshed;
+  }
+
   /// Explicitly resolve a candidate. Pass [targetWorkId] to link it to a work,
   /// or [createAsDistinctWork] to affirm that it deserves a separate identity.
   CatalogUpsertResult resolveReview(
