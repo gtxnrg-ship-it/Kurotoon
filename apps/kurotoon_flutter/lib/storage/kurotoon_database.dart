@@ -1080,6 +1080,12 @@ class KurotoonDatabase {
       }
       await tx.delete('creator_credits', where: 'work_id = ?', whereArgs: [sourceWorkId]);
       await tx.delete('works', where: 'id = ?', whereArgs: [sourceWorkId]);
+      // Any other pending review attached to this source work is now stale:
+      // all its listings were explicitly accepted as part of the chosen work.
+      for (final row in sourceRows) {
+        final movedKey = '${row['provider_id']}:${row['external_id']}';
+        await tx.delete('identity_review_queue', where: 'listing_key = ?', whereArgs: [movedKey]);
+      }
       await tx.delete('identity_review_queue', where: 'listing_key = ?', whereArgs: [listingKey]);
     });
   }
