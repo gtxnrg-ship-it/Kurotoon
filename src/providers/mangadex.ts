@@ -236,7 +236,7 @@ export class MangaDexProvider implements ComicProvider {
 
   async getChapterPages(providerChapterId: string, signal?: AbortSignal): Promise<string[]> {
     const response = await this.request<AtHomeResponse>(`/at-home/server/${encodeURIComponent(providerChapterId)}`, signal);
-    const base = response.baseUrl?.replace(/\\/+$/, '');
+    const base = response.baseUrl?.replace(/\/+$/, '');
     const chapter = response.chapter;
     let safeBase = false;
     try {
