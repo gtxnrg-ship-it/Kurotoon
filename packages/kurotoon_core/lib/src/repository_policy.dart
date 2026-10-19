@@ -23,6 +23,9 @@ class RepositoryPolicy {
     if (uri.userInfo.isNotEmpty) {
       return const RepositoryDecision(allowed: false, reason: 'URLs with embedded credentials are not allowed');
     }
+    if ((uri.hasPort && uri.port != 443) || uri.hasFragment) {
+      return const RepositoryDecision(allowed: false, reason: 'Repositories must use HTTPS on the default port without fragments');
+    }
 
     final host = uri.host.toLowerCase().replaceAll(RegExp(r'^\[|\]$'), '');
     if (_isLocalHost(host) || _isPrivateIp(host)) {
