@@ -33,18 +33,20 @@ void main() {
     }
   });
 
-  test('rejects encoded or explicit traversal in a base URL path', () {
+  test('rejects encoded traversal and encoded separators in a base URL path', () {
     for (final baseUrl in [
-      Uri.parse('https://cdn.example.org/root/../private'),
       Uri.parse('https://cdn.example.org/%2e%2e/private'),
       Uri.parse('https://cdn.example.org/root%2F..%2Fprivate'),
     ]) {
       expect(
         () => manifest(baseUrl: baseUrl),
         throwsArgumentError,
-        reason: 'Unsafe base path should be rejected: $baseUrl',
+        reason: 'Unsafe encoded base path should be rejected: $baseUrl',
       );
     }
+    // A normal absolute path is valid; URI parsing normalizes literal dot
+    // segments before this model receives the value.
+    expect(manifest(baseUrl: Uri.parse('https://cdn.example.org/private')).baseUrl.path, '/private');
   });
 
   test('rejects credentials, query strings, fragments and non-default ports', () {
