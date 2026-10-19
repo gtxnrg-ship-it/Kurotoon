@@ -3,6 +3,9 @@ import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, ChevronRight,
 import { CosmicBackdrop } from './components/CosmicBackdrop';
 import { ReaderScreen, SeriesPage } from './components/ReaderExperience';
 import { RepositoryManager } from './components/RepositoryManager';
+import { LibraryScreen } from './components/LibraryScreen';
+import { getDataServices } from './data/services';
+import { libraryKey, type SavedSeries } from './data/repositories';
 import type { ChapterListing, ProviderListing } from './domain/models';
 import { isProviderRequestError } from './domain/provider';
 import { mangaDexProvider } from './providers/mangadex';
@@ -29,6 +32,10 @@ function App() {
   const [results, setResults] = useState<ProviderListing[]>([]);
   const [searchStatus, setSearchStatus] = useState<'idle' | 'loading' | 'success' | 'empty' | 'error'>('idle');
   const [searchError, setSearchError] = useState('');
+  const [savedEntries, setSavedEntries] = useState<SavedSeries[]>([]);
+  const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
+  const [libraryBusyIds, setLibraryBusyIds] = useState<string[]>([]);
+  const [libraryFeedback, setLibraryFeedback] = useState('');
   const [selectedListing, setSelectedListing] = useState<ProviderListing | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<ChapterListing | null>(null);
   const [readerChapters, setReaderChapters] = useState<ChapterListing[]>([]);
@@ -38,6 +45,44 @@ function App() {
     setReaderChapters([]);
     setActive('Browser');
   };
+
+  const toggleSavedListing = async (listing: ProviderListing) => {
+    const id = libraryKey(listing);
+    if (libraryBusyIds.includes(id)) return;
+    setLibraryBusyIds(current => [...current, id]);
+    setLibraryFeedback('');
+    try {
+      const data = await getDataServices();
+      const existing = await data.library.get(id);
+      if (existing) {
+        await data.library.remove(id);
+        setLibraryFeedback('Removed “' + listing.title + '” from your library.');
+      } else {
+        await data.library.add(listing, 'planned');
+        setLibraryFeedback(data.store.mode === 'memory'
+          ? 'Saved “' + listing.title + '” for this session. Persistent storage is unavailable.'
+          : 'Saved “' + listing.title + '” to your library.');
+      }
+      setSavedEntries(await data.library.list());
+      setLibraryRefreshToken(value => value + 1);
+    } catch (error) {
+      setLibraryFeedback(error instanceof Error ? error.message : 'Kurotoon could not update your library.');
+    } finally {
+      setLibraryBusyIds(current => current.filter(value => value !== id));
+    }
+  };
+  useEffect(() => {
+    if (active !== 'Browser') return;
+    let alive = true;
+    void getDataServices().then(async data => {
+      const entries = await data.library.list();
+      if (alive) setSavedEntries(entries);
+    }).catch(() => {
+      // The Browser search still works if local persistence is unavailable.
+    });
+    return () => { alive = false; };
+  }, [active, libraryRefreshToken]);
+
   useEffect(() => {
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -110,11 +155,11 @@ function App() {
         <section className="hero"><div className="hero-copy"><div className="hero-kicker"><Sparkles size={14}/> YOUR NEXT CHAPTER STARTS HERE</div><h1>Read beyond<br/>the <span>page.</span></h1><p>All your worlds, all your stories — one beautifully connected universe.</p><button className="primary" onClick={()=>setActive('Browser')}>Explore the universe <ArrowRight size={16}/></button><div className="hero-foot"><span>✦</span> Built around the way you love to read</div></div><div className="cosmos" aria-hidden="true"><div className="ring ring-a"/><div className="ring ring-b"/><div className="planet"><i/><i/><i/></div><b className="star star-a">✦</b><b className="star star-b">✧</b><span className="float float-a"><AudioLines size={14}/> Immersive reading</span><span className="float float-b"><Bookmark size={14}/> Your library</span></div><div className="hero-index">01 <span>/ THE BEGINNING</span></div></section>
         <section className="section"><div className="section-head"><div><div className="eyebrow">PICK UP WHERE YOU LEFT OFF</div><h2>Your story continues.</h2></div><button className="subtle-link" onClick={()=>setActive('Library')}>Open library <ArrowRight size={14}/></button></div><div className="continue-card"><div className="continue-icon"><BookOpen size={23}/></div><div><h3>Your next read is waiting</h3><p>When your library is connected, your in-progress stories will find their place here.</p></div><button className="round-link" onClick={()=>setActive('Library')} aria-label="Open library"><ArrowUpRight size={18}/></button></div></section>
         <section className="section"><div className="section-head"><div><div className="eyebrow">WIDE OPEN WORLDS</div><h2>Find your next obsession.</h2></div><button className="subtle-link" onClick={()=>setActive('Browser')}>Browse stories <ArrowRight size={14}/></button></div><div className="feature-grid"><button className="feature purple" onClick={()=>setActive('Browser')}><Compass size={19}/><small>01 / DISCOVER</small><h3>One search.<br/>Many worlds.</h3><p>A unified doorway to your comic sources.</p><ArrowRight className="feature-arrow" size={17}/></button><button className="feature blue" onClick={()=>setActive('Library')}><Library size={19}/><small>02 / COLLECT</small><h3>Your worlds,<br/>in one place.</h3><p>A library that remembers your progress.</p><ArrowRight className="feature-arrow" size={17}/></button><button className="feature pink" onClick={()=>setActive('Me')}><Headphones size={19}/><small>03 / EXPERIENCE</small><h3>More than<br/>just pages.</h3><p>Optional sound and cinematic reading.</p><ArrowRight className="feature-arrow" size={17}/></button></div></section>
-        <div className="notice"><ShieldCheck size={16}/><span>MangaDex Browser search is live. The built-in reader, durable library, and additional providers are later milestones.</span></div>
+        <div className="notice"><ShieldCheck size={16}/><span>MangaDex search and the in-app chapter reader are available. Saved series are stored locally when durable browser storage is supported.</span></div>
       </>}
-      {active==='Browser'&&<><Heading eyebrow="THE MULTIVERSE IS YOURS" title="Find your next world." description="Search live MangaDex listings. More providers can join this catalog as they are implemented."/><form className="search-box" onSubmit={event=>{event.preventDefault();setSearchKey(value=>value+1)}}><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search titles or alternate names…" aria-label="Search comics"/><button type="submit" aria-label="Search" disabled={!query.trim()}><ArrowRight size={18}/></button></form><div className="source-caption"><span className="source-dot"/> MangaDex · live source <span>·</span> results open at the source for now</div>{searchStatus==='loading'&&<div className="status-panel" role="status"><span className="loading-spinner"/><div><strong>Searching the universe…</strong><p>Fetching real results from MangaDex.</p></div></div>}{searchStatus==='error'&&<div className="status-panel status-error" role="alert"><i/><div><strong>Search couldn't complete</strong><p>{searchError}</p><button className="text-link" onClick={()=>setSearchKey(value=>value+1)}>Try again <ArrowRight size={15}/></button></div></div>}{searchStatus==='empty'&&<div className="section"><EmptyState icon={Search} title="No matching titles found" text="MangaDex returned no matches for this query. Try an alternate title or fewer words."/></div>}{searchStatus==='idle'&&<div className="section"><EmptyState icon={Compass} title="Your next world is waiting" text="Search for a title to fetch real listings. Results are never filled with pretend demo series."/></div>}{searchStatus==='success'&&<section className="section"><div className="section-head"><div><div className="eyebrow">LIVE PROVIDER RESULTS</div><h2>{results.length} {results.length===1?'series':'series'} found</h2></div><span className="result-source">MangaDex</span></div><div className="results-grid">{results.map(item=><article className="result-card" key={item.providerWorkId}><div className="result-cover">{item.coverUrl?<img src={item.coverUrl} alt={item.title+' cover'} loading="lazy" decoding="async"/>:<div className="cover-fallback"><BookOpen size={23}/></div>}</div><div className="result-info"><h3>{item.title}</h3>{item.creators.length>0&&<p className="result-creators">{item.creators.slice(0,2).map(creator=>creator.name).join(' · ')}</p>}<span className={'status-chip '+item.publicationStatus}>{item.publicationStatus==='unknown'?'Status unknown':item.publicationStatus}</span>{item.description&&<p className="result-description">{item.description}</p>}<button className="result-link" onClick={() => openSeries(item)}>Open series in Kurotoon <ArrowUpRight size={14}/></button></div></article>)}</div><p className="results-footnote">Listings and cover art are supplied by MangaDex. Opening a result currently takes you to the source website; Kurotoon's built-in chapter reader is a separate upcoming milestone.</p></section>}</>}
+      {active==='Browser'&&<><Heading eyebrow="THE MULTIVERSE IS YOURS" title="Find your next world." description="Search live MangaDex listings. More providers can join this catalog as they are implemented."/><form className="search-box" onSubmit={event=>{event.preventDefault();setSearchKey(value=>value+1)}}><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search titles or alternate names…" aria-label="Search comics"/><button type="submit" aria-label="Search" disabled={!query.trim()}><ArrowRight size={18}/></button></form><div className="source-caption"><span className="source-dot"/> MangaDex · live source <span>·</span> series and chapters open inside Kurotoon</div>{libraryFeedback && <div className="library-feedback" role="status"><ShieldCheck size={15}/><span>{libraryFeedback}</span></div>}{searchStatus==='loading'&&<div className="status-panel" role="status"><span className="loading-spinner"/><div><strong>Searching the universe…</strong><p>Fetching real results from MangaDex.</p></div></div>}{searchStatus==='error'&&<div className="status-panel status-error" role="alert"><i/><div><strong>Search couldn't complete</strong><p>{searchError}</p><button className="text-link" onClick={()=>setSearchKey(value=>value+1)}>Try again <ArrowRight size={15}/></button></div></div>}{searchStatus==='empty'&&<div className="section"><EmptyState icon={Search} title="No matching titles found" text="MangaDex returned no matches for this query. Try an alternate title or fewer words."/></div>}{searchStatus==='idle'&&<div className="section"><EmptyState icon={Compass} title="Your next world is waiting" text="Search for a title to fetch real listings. Results are never filled with pretend demo series."/></div>}{searchStatus==='success'&&<section className="section"><div className="section-head"><div><div className="eyebrow">LIVE PROVIDER RESULTS</div><h2>{results.length} {results.length===1?'series':'series'} found</h2></div><span className="result-source">MangaDex</span></div><div className="results-grid">{results.map(item=><article className="result-card" key={item.providerWorkId}><div className="result-cover">{item.coverUrl?<img src={item.coverUrl} alt={item.title+' cover'} loading="lazy" decoding="async"/>:<div className="cover-fallback"><BookOpen size={23}/></div>}</div><div className="result-info"><h3>{item.title}</h3>{item.creators.length>0&&<p className="result-creators">{item.creators.slice(0,2).map(creator=>creator.name).join(' · ')}</p>}<span className={'status-chip '+item.publicationStatus}>{item.publicationStatus==='unknown'?'Status unknown':item.publicationStatus}</span>{item.description&&<p className="result-description">{item.description}</p>}<div className="result-card-actions"><button className="result-link" onClick={() => openSeries(item)}>Open series in Kurotoon <ArrowUpRight size={14}/></button><button className="result-save-button" disabled={libraryBusyIds.includes(libraryKey(item))} aria-pressed={savedEntries.some(entry => entry.id === libraryKey(item))} onClick={() => void toggleSavedListing(item)}>{savedEntries.some(entry => entry.id === libraryKey(item)) ? <Check size={14}/> : <Bookmark size={14}/>}<span>{libraryBusyIds.includes(libraryKey(item)) ? 'Saving…' : savedEntries.some(entry => entry.id === libraryKey(item)) ? 'Saved' : 'Save'}</span></button></div></div></article>)}</div><p className="results-footnote">Series metadata and cover art come from MangaDex. Kurotoon opens the series, chapter list, and reader in-app; the original source link remains available for attribution.</p></section>}</>}
       {active==='Shop'&&<><Heading eyebrow="A LITTLE EXTRA MAGIC" title="The Shop." description="A dedicated space in the Kurotoon universe, waiting for its rules."/><div className="shop-panel"><div className="shop-sigil"><WandSparkles size={30}/></div><div className="eyebrow">INTENTIONALLY UNDEFINED</div><h2>This space is yours to design.</h2><p>The reward system needs your full explanation before its currencies, actions, progression, or rewards can be designed. Nothing is being guessed or quietly locked in.</p><div className="shop-foot"><Sparkles size={16}/> Reserved for your original reward system</div></div></>}
-      {active==='Library'&&<><Heading eyebrow="YOUR PERSONAL COLLECTION" title="Your library." description="Every series you save, every chapter you finish, every place you return to."/><div className="stats"><div><small>COLLECTED</small><strong>—</strong><span>Saved series</span></div><div><small>IN PROGRESS</small><strong>—</strong><span>Stories you're reading</span></div><div><small>UPDATES</small><strong>—</strong><span>New chapters found</span></div></div><EmptyState icon={Library} title="Your collection starts here" text="Once catalog and provider integration is implemented, saved series, progress, categories, and update tracking will live here." action="Explore the browser" onAction={()=>setActive('Browser')}/></>}
+      {active==='Library'&&<LibraryScreen active={active==='Library'} refreshToken={libraryRefreshToken} onOpenSeries={openSeries} onBrowse={()=>setActive('Browser')}/>} 
       {active==='Me'&&meSection==='repositories'&&<RepositoryManager onBack={()=>setMeSection('settings')}/>}
       {active==='Me'&&meSection==='download'&&<>
         <button className="download-back" onClick={()=>setMeSection('settings')}>← Back to settings</button>
