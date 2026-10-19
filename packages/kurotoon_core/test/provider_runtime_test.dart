@@ -112,4 +112,82 @@ void main() {
     ).search('test');
     expect(batch.results.single.response.status, ProviderResultStatus.timedOut);
   });
+  test('backs off a failing source and resets health after a successful retry', () async {
+    var now = DateTime.utc(2026, 1, 1);
+    var calls = 0;
+    var shouldSucceed = false;
+    final health = ProviderHealthTracker(
+      clock: () => now,
+      failureThreshold: 2,
+      baseCooldown: const Duration(seconds: 10),
+      maxCooldown: const Duration(minutes: 1),
+    );
+    final registry = ProviderRegistry()
+      ..register(FakeProvider(
+        descriptor: descriptor('flaky'),
+        handler: (query, token) async {
+          calls++;
+          return shouldSucceed
+              ? const ProviderResponse(status: ProviderResultStatus.success, data: [])
+              : const ProviderResponse(status: ProviderResultStatus.failed, message: 'temporary failure');
+        },
+      ));
+    final coordinator = ProviderCoordinator(registry, healthTracker: health);
+
+    expect((await coordinator.search('test')).results.single.response.status, ProviderResultStatus.failed);
+    expect(health.snapshotFor('flaky').state, ProviderHealthState.degraded);
+    expect(health.snapshotFor('flaky').consecutiveFailures, 1);
+
+    expect((await coordinator.search('test')).results.single.response.status, ProviderResultStatus.failed);
+    expect(health.snapshotFor('flaky').state, ProviderHealthState.coolingDown);
+    expect(health.remainingCooldown('flaky'), const Duration(seconds: 10));
+
+    final skipped = await coordinator.search('test');
+    expect(skipped.results.single.response.status, ProviderResultStatus.rateLimited);
+    expect(calls, 2, reason: 'A source in cooldown must not receive another request.');
+
+    now = now.add(const Duration(seconds: 11));
+    shouldSucceed = true;
+    expect((await coordinator.search('test')).results.single.response.status, ProviderResultStatus.success);
+    expect(calls, 3);
+    expect(health.snapshotFor('flaky').state, ProviderHealthState.healthy);
+    expect(health.snapshotFor('flaky').consecutiveFailures, 0);
+  });
+
+  test('honours upstream Retry-After without repeatedly querying a rate-limited source', () async {
+    var now = DateTime.utc(2026, 1, 1);
+    var calls = 0;
+    final health = ProviderHealthTracker(clock: () => now);
+    final registry = ProviderRegistry()
+      ..register(FakeProvider(
+        descriptor: descriptor('limited'),
+        handler: (query, token) async {
+          calls++;
+          return const ProviderResponse(
+            status: ProviderResultStatus.rateLimited,
+            message: 'Please slow down',
+            retryAfter: Duration(minutes: 1),
+          );
+        },
+      ));
+    final coordinator = ProviderCoordinator(registry, healthTracker: health);
+
+    expect((await coordinator.search('test')).results.single.response.status, ProviderResultStatus.rateLimited);
+    now = now.add(const Duration(seconds: 30));
+    final skipped = await coordinator.search('test');
+    expect(skipped.results.single.response.status, ProviderResultStatus.rateLimited);
+    expect(skipped.results.single.response.retryAfter, const Duration(seconds: 30));
+    expect(calls, 1);
+  });
+
+  test('cancellation does not increase provider failure streak', () {
+    final health = ProviderHealthTracker();
+    health.record(
+      'source',
+      const ProviderResponse(status: ProviderResultStatus.cancelled, message: 'user cancelled'),
+    );
+    expect(health.snapshotFor('source').consecutiveFailures, 0);
+    expect(health.snapshotFor('source').state, ProviderHealthState.healthy);
+  });
+
 }
