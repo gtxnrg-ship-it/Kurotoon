@@ -131,7 +131,9 @@ export class MangaDexProvider implements ComicProvider {
         });
       }
       const body: unknown = await response.json();
-      if (!isRecord(body) || !('result' in body)) {
+      // MangaDex API endpoints usually include "result", but its At-Home endpoint
+      // returns { baseUrl, chapter } without that envelope field.
+      if (!isRecord(body)) {
         throw new ProviderRequestError({ providerId: this.id, code: 'invalid-response', message: 'MangaDex returned an unexpected response.', retryable: false });
       }
       return body as T;
