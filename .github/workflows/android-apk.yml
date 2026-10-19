@@ -53,16 +53,19 @@ jobs:
         working-directory: apps/kurotoon_flutter
         run: flutter build apk --release
 
-      - name: Name the APK Kurotoon.apk
+      - name: Name APK and create checksum
         run: |
           mkdir -p release
           cp apps/kurotoon_flutter/build/app/outputs/flutter-apk/app-release.apk release/Kurotoon.apk
+          sha256sum release/Kurotoon.apk > release/Kurotoon.apk.sha256
 
       - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kurotoon-Flutter-APK
-          path: release/Kurotoon.apk
+          path: |
+            release/Kurotoon.apk
+            release/Kurotoon.apk.sha256
           if-no-files-found: error
           retention-days: 14
 
@@ -74,14 +77,17 @@ jobs:
           name: Kurotoon Flutter development build
           prerelease: true
           make_latest: false
-          files: release/Kurotoon.apk
+          files: |
+            release/Kurotoon.apk
+            release/Kurotoon.apk.sha256
           body: |
             Native Flutter/Dart Kurotoon Android development build.
             File: Kurotoon.apk
+            SHA-256 checksum: Kurotoon.apk.sha256
             Commit: ${{ github.sha }}
 
       # Stable URL for the README and in-app/update surfaces. Historical
-      # continuous-N releases remain immutable, while this tag tracks the last
+      # continuous-N releases remain available, while this tag tracks the last
       # successful main-branch build.
       - name: Publish stable latest APK download
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
@@ -92,18 +98,19 @@ jobs:
           Latest successful native Flutter/Dart Kurotoon Android development build.
           Built from commit: $GITHUB_SHA
           Artifact: Kurotoon.apk
+          Checksum: Kurotoon.apk.sha256
           This is a development build, not a store release; validate on device before relying on it.
           EOF
           git tag -f continuous-latest "$GITHUB_SHA"
           git push --force origin refs/tags/continuous-latest
           if gh release view continuous-latest >/dev/null 2>&1; then
-            gh release upload continuous-latest release/Kurotoon.apk --clobber
+            gh release upload continuous-latest release/Kurotoon.apk release/Kurotoon.apk.sha256 --clobber
             gh release edit continuous-latest \
               --title "Kurotoon latest Flutter development build" \
               --notes-file release-notes.md \
               --prerelease
           else
-            gh release create continuous-latest release/Kurotoon.apk \
+            gh release create continuous-latest release/Kurotoon.apk release/Kurotoon.apk.sha256 \
               --title "Kurotoon latest Flutter development build" \
               --notes-file release-notes.md \
               --prerelease \
@@ -117,8 +124,11 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Kurotoon
           prerelease: false
-          files: release/Kurotoon.apk
+          files: |
+            release/Kurotoon.apk
+            release/Kurotoon.apk.sha256
           body: |
             Native Flutter/Dart Kurotoon Android release.
             File: Kurotoon.apk
+            SHA-256 checksum: Kurotoon.apk.sha256
             Commit: ${{ github.sha }}
