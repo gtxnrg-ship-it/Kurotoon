@@ -10,7 +10,9 @@ Status: **In progress** — the PWA install path and Capacitor Android APK pipel
 - [x] Select the initial web UI stack: React + TypeScript + Vite, with Capacitor as the initial Android packaging path; validate further native requirements against device and extension feasibility.
 - [x] Define type-check/production-build and unit-test commands.
 - [x] Add CI checks for pull requests and main-branch pushes.
-- [x] Add the PWA manifest, bounded app-shell service worker, Capacitor app identity, download UI, and CI workflow for an installable `Kurotoon.apk` (first successful APK build still pending).\n- [ ] Verify the generated APK by installing it on a real Android device.\n- [ ] Document local setup and environment variables; commit no secrets.
+- [x] Add the PWA manifest, bounded app-shell service worker, Capacitor app identity, download UI, and CI workflow for an installable Kurotoon.apk (CI has generated a debug APK artifact; physical installation remains pending).
+- [ ] Verify the generated APK by installing it on a real Android device.
+- [ ] Document local setup and environment variables; commit no secrets.
 - [ ] Record a baseline performance budget for mid-range Android devices.
 
 **Exit gate:** a clean checkout can install dependencies, run checks, and build a minimal responsive shell using documented commands.
@@ -38,8 +40,12 @@ Status: **In progress**
 - [x] Define typed models for Work, Edition, ProviderListing, Chapter, ChapterListing, Creator references, ReadingProgress, LibraryEntry, and ProviderHealth.
 - [x] Define source adapter contract for search, details, chapter list, and page retrieval.
 - [x] Define provider capability flags, cancellation signals, and structured provider errors; request budgets/timeouts still need enforcement.
-- [x] Add conservative work identity matching with confidence, reasons, and an explicit auto-merge threshold; persistence/provenance UI remains.
-- [ ] Expand domain tests to cover editions, mini-chapters, specials, progress remapping, and provider failures (initial identity tests exist).
+- [x] Add conservative work identity matching with confidence, reasons, and an explicit auto-merge threshold; provider-local creator IDs are not treated as globally comparable by default.
+- [x] Add the first source-agnostic batch catalog engine with canonical display titles, alternate titles, source provenance, and guarded high-confidence grouping.
+- [x] Add bounded potential-duplicate suggestions for review, rejecting contradictory cross-source IDs and ambiguous bridge merges.
+- [x] Rank latest chapter observations by publication date, with clearly identified fallback to chapter number or source verification time.
+- [ ] Persist canonical title overrides and manual identity corrections without changing stable Work/library/progress IDs.
+- [ ] Expand domain tests to cover edition mapping, mini-chapters, specials, progress remapping, and provider failures.
 
 **Exit gate:** domain logic can be tested without UI or a live provider, and source failures are distinguishable from empty results.
 
@@ -77,13 +83,14 @@ Status: **In progress — metadata-only web proof of concept; extension compatib
 
 ## Phase 5 — Unified catalog and discovery
 
-Status: **Planned**
+Status: **In progress — the first source-agnostic grouping engine exists; live multi-provider search and UI integration remain open.**
 
-- [ ] Cross-provider search with bounded parallel requests and cancellation.
-- [ ] Local search index for already-seen metadata.
-- [ ] Aliases and alternate titles.
-- [ ] High-confidence duplicate grouping with manual correction.
-- [ ] Separate works, editions/translations, listings, and chapters.
+- [ ] Cross-provider search with bounded parallel requests, provider-specific limits, cancellation, and partial-result reporting.
+- [ ] Local incremental search index for already-seen metadata.
+- [x] Canonical display titles with retained aliases/alternate titles and source URLs.
+- [x] High-confidence duplicate grouping plus bounded review suggestions; ambiguous matches are not silently merged.
+- [ ] Persist the Work/Edition/listing/chapter relationships and make user corrections reversible.
+- [ ] Merge equivalent chapter observations without flattening languages, adaptations, specials, mini-chapters, seasons, or doujin structure.
 - [ ] Creator/artist pages with provenance.
 - [ ] Explicit handling for specials, mini-chapters, seasons, and doujin structure.
 - [ ] Explain partial results when a source is slow, blocked, or offline.
