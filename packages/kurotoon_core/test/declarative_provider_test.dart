@@ -19,6 +19,99 @@ class FakeFetcher implements DeclarativeJsonFetcher {
     if (error != null) throw error!;
     return payload;
   }
+
+  test('maps chapter feeds and reader page manifests through declared paths', () async {
+    final manifest = parseDeclarativeExtensionManifest({
+      'id': 'org.example.fullsource',
+      'name': 'Full Example Source',
+      'version': '1.0.0',
+      'minimumAppApi': 1,
+      'homepage': 'https://source.example.org',
+      'baseUrl': 'https://api.source.example.org/v1',
+      'license': 'MIT',
+      'developer': 'Example Maintainers',
+      'allowedHosts': ['api.source.example.org', 'source.example.org', 'images.example.org'],
+      'endpoints': [
+        {
+          'id': 'chapters',
+          'capability': 'chapterFeed',
+          'path': '/series/{seriesId}/chapters',
+          'query': {'page': '{page}', 'limit': '{limit}', 'language': '{language}'},
+          'resultPath': ['data', 'items'],
+          'fields': {
+            'id': ['id'],
+            'title': ['title'],
+            'url': ['url'],
+            'chapterNumber': ['number'],
+            'kind': ['kind'],
+            'miniGroupId': ['miniGroupId'],
+            'miniIndex': ['miniIndex'],
+            'miniCount': ['miniCount'],
+            'languageCode': ['language'],
+          },
+        },
+        {
+          'id': 'pages',
+          'capability': 'readerPages',
+          'path': '/chapter/{chapterId}/pages',
+          'query': {},
+          'resultPath': ['data'],
+          'fields': {
+            'baseUrl': ['baseUrl'],
+            'hash': ['hash'],
+            'filenames': ['filenames'],
+            'dataSaverFilenames': ['dataSaverFilenames'],
+          },
+        },
+      ],
+    });
+
+    final chapterFetcher = FakeFetcher({
+      'data': {
+        'items': [
+          {
+            'id': 'mini-1',
+            'title': 'Part 1',
+            'url': 'https://source.example.org/chapter/mini-1',
+            'number': 3,
+            'kind': 'miniChapter',
+            'miniGroupId': 'chapter-3',
+            'miniIndex': 1,
+            'miniCount': 6,
+            'language': 'en',
+          },
+        ],
+      },
+    });
+    final provider = DeclarativeJsonProvider(manifest: manifest, fetcher: chapterFetcher);
+    final chapterResponse = await provider.getChapters(
+      'series-1',
+      cancellationToken: CancellationToken(),
+    );
+    expect(chapterResponse.status, ProviderResultStatus.success);
+    expect(chapterResponse.data!.single.kind, ChapterKind.miniChapter);
+    expect(chapterResponse.data!.single.miniCount, 6);
+    expect(chapterResponse.data!.single.listings.single.languageCode, 'en');
+
+    final pageFetcher = FakeFetcher({
+      'data': {
+        'baseUrl': 'https://images.example.org/pages',
+        'hash': 'abc123',
+        'filenames': ['001.webp', '002.webp'],
+        'dataSaverFilenames': ['001-small.webp'],
+      },
+    });
+    final pageProvider = DeclarativeJsonProvider(manifest: manifest, fetcher: pageFetcher);
+    final pageResponse = await pageProvider.getPages(
+      'chapter-1',
+      cancellationToken: CancellationToken(),
+      dataSaver: true,
+    );
+    expect(pageResponse.status, ProviderResultStatus.success);
+    expect(pageResponse.data!.normalFilenames, ['001.webp', '002.webp']);
+    expect(pageResponse.data!.urls(dataSaver: true).length, 1);
+  });
+
 }
 
 DeclarativeExtensionManifest makeManifest() => parseDeclarativeExtensionManifest({
