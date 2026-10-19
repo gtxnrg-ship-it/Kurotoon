@@ -9,6 +9,18 @@ import 'package:path_provider/path_provider.dart';
 
 import '../storage/kurotoon_database.dart';
 
+class RepositoryPreview {
+  const RepositoryPreview({
+    required this.indexUri,
+    required this.index,
+    required this.indexDigest,
+  });
+
+  final Uri indexUri;
+  final ExtensionRepositoryIndex index;
+  final String indexDigest;
+}
+
 class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   ExtensionRepositoryService({
     required this.database,
@@ -28,7 +40,7 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   final int maxIndexBytes;
   final int maxManifestBytes;
 
-  Future<ExtensionRepositoryIndex> addRepository(String rawUrl) async {
+  Future<RepositoryPreview> previewRepository(String rawUrl) async {
     final decision = const RepositoryPolicy().validate(rawUrl);
     if (!decision.allowed || decision.uri == null) throw FormatException(decision.reason);
     final indexUri = decision.uri!;
@@ -37,16 +49,27 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       body: utf8.decode(bytes, allowMalformed: false),
       indexUri: indexUri,
     );
+    return RepositoryPreview(indexUri: indexUri, index: index, indexDigest: _sha256Of(bytes));
+  }
+
+  /// Call only after the UI has shown the repository identity and obtained confirmation.
+  /// The index is fetched again so a stale preview cannot silently approve changed metadata.
+  Future<ExtensionRepositoryIndex> addRepository(String rawUrl, {String? expectedPreviewDigest}) async {
+    final preview = await previewRepository(rawUrl);
+    if (expectedPreviewDigest != null && preview.indexDigest != expectedPreviewDigest) {
+      throw const FormatException('Repository changed after preview. Review the new index before adding it.');
+    }
+    final index = preview.index;
     await database.saveExtensionRepository(
       ExtensionRepository(
         id: index.id,
         name: index.name,
-        indexUri: indexUri,
+        indexUri: preview.indexUri,
         description: index.description,
         website: index.website,
         trust: RepositoryTrust.userAdded,
       ),
-      indexDigest: _sha256Of(bytes),
+      indexDigest: preview.indexDigest,
     );
     return index;
   }
