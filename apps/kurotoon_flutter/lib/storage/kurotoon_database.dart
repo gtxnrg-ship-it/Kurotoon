@@ -474,9 +474,15 @@ class KurotoonDatabase {
     _ensureOpen();
     await _database.transaction((tx) async {
       final work = await tx.query('works', columns: ['id'], where: 'id = ?', whereArgs: [record.workId], limit: 1);
-      final edition = await tx.query('editions', columns: ['id'], where: 'id = ?', whereArgs: [record.editionId], limit: 1);
+      final edition = await tx.query(
+        'editions',
+        columns: ['id'],
+        where: 'id = ? AND work_id = ?',
+        whereArgs: [record.editionId, record.workId],
+        limit: 1,
+      );
       if (work.isEmpty || edition.isEmpty) {
-        throw StateError('Catalog work and edition must exist before adding them to the library.');
+        throw StateError('Catalog work and a matching edition must exist before adding them to the library.');
       }
       await tx.insert(
         'library_entries',
