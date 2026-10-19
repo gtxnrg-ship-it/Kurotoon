@@ -284,4 +284,36 @@ void main() {
     expect(await database.loadLibrary(), isEmpty);
     expect((await database.loadEdition('edition-blue-en')), isNull);
   });
+  test('rolls back an ambiguous catalog entry if its review row cannot commit', () async {
+    final reviewedCandidate = candidate();
+    final review = PendingIdentityReview(
+      key: reviewedCandidate.listingKey,
+      candidate: reviewedCandidate,
+      possibleMatches: const [
+        IdentityDecision(
+          verdict: IdentityVerdict.needsReview,
+          score: 0.72,
+          evidence: ['matching title'],
+        ),
+      ],
+    );
+    await database.rawDatabase.execute("""
+      CREATE TRIGGER reject_review_queue_insert
+      BEFORE INSERT ON identity_review_queue
+      BEGIN
+        SELECT RAISE(ABORT, 'simulated review metadata failure');
+      END;
+    """);
+
+    await expectLater(
+      database.upsertCatalogEntryWithPendingIdentityReview(entry(), review),
+      throwsA(anything),
+    );
+
+    expect(await database.loadCatalog(), isEmpty);
+    expect(await database.loadPendingIdentityReviews(), isEmpty);
+    expect(await database.rawDatabase.query('works'), isEmpty);
+    expect(await database.rawDatabase.query('provider_listings'), isEmpty);
+  });
+
 }
