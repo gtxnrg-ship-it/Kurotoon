@@ -82,8 +82,8 @@ npm run preview
 
 ## Current implementation status
 
-**Implemented and CI-verified:** Vite + React + TypeScript application shell, responsive cosmic-themed navigation, Home/Browser/Shop/Library/Me page scaffolds, and a pull-request build workflow.
+**Implemented and CI-verified:** Vite + React + TypeScript application shell, responsive cosmic-themed navigation, Home/Browser/Shop/Library/Me page scaffolds, typed catalog domain models, provider adapter contract, conservative work identity matching, seven unit tests, and CI build/test/security checks.
 
-**Not implemented yet:** live source providers, real catalog search, reader/page loading, library persistence, extension installation/runtime, audio generation, account sync, downloads, and reward mechanics. The visible search box and settings rows are intentionally presentation-only at this stage.
+**Not implemented yet:** live source providers, real catalog search, reader/page loading, durable library/progress persistence, extension installation/runtime, audio generation, account sync, downloads, and reward mechanics. The visible search box and settings rows are intentionally presentation-only at this stage.
 
-The UI currently uses remote Google Fonts with system fallbacks. A later offline/privacy pass should decide whether to self-host fonts and add a lockfile for fully reproducible dependency installs.
+The UI currently uses remote Google Fonts with system fallbacks. A later offline/privacy pass should decide whether to self-host fonts. CI currently verifies the build, seven domain tests, and a high/critical dependency audit; the package lockfile and exact dependency pinning remain follow-up reliability work.
