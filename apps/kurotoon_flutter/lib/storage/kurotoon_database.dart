@@ -578,9 +578,25 @@ class KurotoonDatabase {
   Future<void> saveExtensionRepository(ExtensionRepository repository, {String? indexDigest}) async {
     _ensureOpen();
     final now = DateTime.now().millisecondsSinceEpoch;
-    await _database.insert(
-      'extension_repositories',
-      {
+    await _database.transaction((tx) async {
+      final sameUrl = await tx.query(
+        'extension_repositories',
+        columns: ['id'],
+        where: 'index_url = ?',
+        whereArgs: [repository.indexUri.toString()],
+        limit: 1,
+      );
+      if (sameUrl.isNotEmpty && sameUrl.single['id'] != repository.id) {
+        throw StateError('This repository URL is already registered under another identity.');
+      }
+      final existing = await tx.query(
+        'extension_repositories',
+        columns: ['id', 'added_at'],
+        where: 'id = ?',
+        whereArgs: [repository.id],
+        limit: 1,
+      );
+      final values = <String, Object?>{
         'id': repository.id,
         'name': repository.name,
         'index_url': repository.indexUri.toString(),
@@ -588,12 +604,16 @@ class KurotoonDatabase {
         'website_url': repository.website?.toString(),
         'icon_url': repository.iconUri?.toString(),
         'trust': repository.trust.name,
-        'added_at': now,
+        'added_at': existing.isEmpty ? now : existing.single['added_at'],
         'last_checked_at': now,
         'last_index_digest': indexDigest,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+      };
+      if (existing.isEmpty) {
+        await tx.insert('extension_repositories', values);
+      } else {
+        await tx.update('extension_repositories', values, where: 'id = ?', whereArgs: [repository.id]);
+      }
+    });
   }
 
   Future<List<Map<String, Object?>>> loadExtensionRepositories() async {
