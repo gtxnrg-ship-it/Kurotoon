@@ -590,7 +590,7 @@ class KurotoonDatabase {
       }
       final existing = await tx.query(
         'extension_repositories',
-        columns: ['id', 'added_at'],
+        columns: ['id', 'added_at', 'index_url'],
         where: 'id = ?',
         whereArgs: [repository.id],
         limit: 1,
