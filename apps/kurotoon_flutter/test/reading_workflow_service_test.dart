@@ -9,7 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeedProvider, ReaderPagesProvider {
-  _FakeReaderProvider({required this.providerId, this.editionIdOverride, this.languageOverride, this.hangChapterRequests = false})
+  _FakeReaderProvider({required this.providerId, this.editionIdOverride, this.languageOverride, this.hangChapterRequests = false, this.hangSeriesRequests = false})
       : _chapters = List<ChapterUnit>.generate(3, (index) {
           final id = 'chapter-${index + 1}';
           return ChapterUnit(
@@ -34,6 +34,7 @@ class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeed
   final String? editionIdOverride;
   final String? languageOverride;
   final bool hangChapterRequests;
+  final bool hangSeriesRequests;
   final String title = 'Blue Star';
   final List<ChapterUnit> _chapters;
   int pageRequests = 0;
@@ -78,8 +79,11 @@ class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeed
   Future<ProviderResponse<WorkCandidate>> getSeries(
     String seriesId, {
     required CancellationToken cancellationToken,
-  }) async =>
-      ProviderResponse(status: ProviderResultStatus.success, data: _candidate(seriesId));
+  }) async {
+    cancellationToken.throwIfCancelled();
+    if (hangSeriesRequests) return Completer<ProviderResponse<WorkCandidate>>().future;
+    return ProviderResponse(status: ProviderResultStatus.success, data: _candidate(seriesId));
+  }
 
   @override
   Future<ProviderResponse<List<ChapterUnit>>> getChapters(
@@ -355,6 +359,30 @@ void main() {
     );
     expect(persisted.work.lockedDistinctIdentity, isTrue);
     expect((await database.loadEdition(duplicate.edition.id))!.workId, duplicate.workId);
+
+    providers.dispose();
+  });
+
+  test('times out series-detail refresh but preserves the selected search candidate', () async {
+    final provider = _FakeReaderProvider(
+      providerId: 'reader-a',
+      hangSeriesRequests: true,
+    );
+    final providers = ProviderRegistry()..register(provider);
+    final workflow = ReadingWorkflowService(
+      database: database,
+      providers: providers,
+      deviceId: 'test-device',
+      providerTimeout: const Duration(milliseconds: 20),
+    );
+
+    final work = await workflow.prepareWork(candidate('reader-a'));
+
+    expect(work.detailsStatus, ProviderResultStatus.timedOut);
+    expect(work.detailsMessage, contains('search result was retained'));
+    expect(work.catalogEntry.listings.single.listingKey, 'reader-a:series-1');
+    expect((await database.loadCatalog()), hasLength(1));
+    expect((await database.loadEdition(work.edition.id))!.workId, work.workId);
 
     providers.dispose();
   });
