@@ -1,0 +1,88 @@
+name: Native Android Preview
+
+on:
+  pull_request:
+    paths:
+      - 'native-android/**'
+      - '.github/workflows/native-android.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'native-android/**'
+      - '.github/workflows/native-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: native-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-android:
+    name: Build and test native Android app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and build tools
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Run unit tests and assemble native APK
+        working-directory: native-android
+        run: gradle --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Stage installable native preview
+        run: |
+          set -euo pipefail
+          APK_PATH="$(find native-android/app/build/outputs/apk/debug -type f -name '*.apk' -print -quit)"
+          test -n "$APK_PATH"
+          mkdir -p release
+          cp "$APK_PATH" release/Kurotoon-Native-Preview.apk
+          sha256sum release/Kurotoon-Native-Preview.apk > release/Kurotoon-Native-Preview.apk.sha256
+
+      - name: Upload native preview APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kurotoon-Native-Preview
+          path: |
+            release/Kurotoon-Native-Preview.apk
+            release/Kurotoon-Native-Preview.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish continuous native preview release
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: native-continuous-${{ github.run_number }}
+          name: KuroToon Native Preview
+          prerelease: true
+          make_latest: false
+          files: |
+            release/Kurotoon-Native-Preview.apk
+            release/Kurotoon-Native-Preview.apk.sha256
+          body: |
+            Experimental native Kotlin + Jetpack Compose preview.
+            This is separate from the legacy Capacitor prototype.
+            Home loads live MangaDex metadata and cover thumbnails when online.
+            Preview access intentionally locks Browser, categories, Shop, Library, Me and settings.
+            Commit: ${{ github.sha }}
