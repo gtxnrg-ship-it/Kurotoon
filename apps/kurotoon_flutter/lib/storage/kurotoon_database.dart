@@ -1,9 +1,7 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
 import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 enum LibraryStatus { reading, completed, planned, paused, dropped, rereading }
@@ -604,11 +602,11 @@ class KurotoonDatabase {
 
   Future<CacheWritePlan> planCacheWrite({
     required int incomingBytes,
-    StorageBudget budget = const StorageBudget(),
+    StorageBudget? budget,
   }) async {
     _ensureOpen();
     final entries = await loadCacheEntries();
-    final plan = budget.plan(
+    final plan = (budget ?? StorageBudget()).plan(
       currentEntries: entries.map((item) => item.entry),
       incomingBytes: incomingBytes,
     );
