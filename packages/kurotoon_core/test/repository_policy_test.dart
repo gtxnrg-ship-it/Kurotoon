@@ -27,4 +27,18 @@ void main() {
       expect(policy.validate(url).allowed, isFalse, reason: url);
     }
   });
+
+  test('rejects custom ports fragments and additional reserved IPv4 ranges', () {
+    expect(policy.validate('https://extensions.example.org:8443/repo.json').allowed, isFalse);
+    expect(policy.validate('https://extensions.example.org/repo.json#fragment').allowed, isFalse);
+    for (final url in [
+      'https://100.64.0.1/repo.json',
+      'https://192.0.2.1/repo.json',
+      'https://198.18.0.1/repo.json',
+      'https://203.0.113.1/repo.json',
+    ]) {
+      expect(policy.validate(url).allowed, isFalse, reason: url);
+    }
+  });
+
 }

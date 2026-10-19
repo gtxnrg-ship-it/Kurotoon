@@ -28,7 +28,7 @@ class ProviderDescriptor {
     required this.id,
     required this.name,
     required this.homepage,
-    required this.capabilities,
+    required Set<ProviderCapability> capabilities,
     this.isBuiltIn = false,
     this.enabledByDefault = true,
   }) : capabilities = UnmodifiableSetView(Set<ProviderCapability>.from(capabilities)) {
@@ -84,14 +84,14 @@ class WorkCandidate {
     required this.externalId,
     required this.title,
     required this.providerUrl,
-    this.alternateTitles = const [],
-    this.creatorNames = const [],
+    List<String> alternateTitles = const [],
+    List<String> creatorNames = const [],
     this.year,
     this.format = WorkFormat.unknown,
     this.language,
     this.description,
     this.coverUrl,
-    this.tags = const [],
+    List<String> tags = const [],
   })  : alternateTitles = List.unmodifiable(alternateTitles),
         creatorNames = List.unmodifiable(creatorNames),
         tags = List.unmodifiable(tags) {
@@ -107,6 +107,7 @@ class WorkCandidate {
   final String providerId;
   final String externalId;
   final String title;
+  final Uri providerUrl;
   final List<String> alternateTitles;
   final List<String> creatorNames;
   final int? year;
@@ -123,8 +124,8 @@ class WorkRecord {
   WorkRecord({
     required this.id,
     required this.title,
-    this.alternateTitles = const [],
-    this.creatorNames = const [],
+    List<String> alternateTitles = const [],
+    List<String> creatorNames = const [],
     this.year,
     this.format = WorkFormat.unknown,
     this.lockedDistinctIdentity = false,

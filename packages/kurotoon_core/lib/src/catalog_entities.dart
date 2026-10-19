@@ -66,7 +66,7 @@ class ChapterUnit {
     required this.id,
     required this.editionId,
     required this.kind,
-    required this.listings,
+    required List<ChapterListing> listings,
     this.title,
     this.chapterNumber,
     this.volumeNumber,
@@ -126,7 +126,7 @@ class ChapterUnit {
 }
 
 class ChapterGroup {
-  ChapterGroup({required this.id, required this.units}) : units = List.unmodifiable(units);
+  ChapterGroup({required this.id, required List<ChapterUnit> units}) : units = List.unmodifiable(units);
 
   final String id;
   final List<ChapterUnit> units;
@@ -137,10 +137,18 @@ class ChapterGroup {
   String get displayTitle {
     if (!isMiniChapterGroup) {
       final unit = units.first;
-      return unit.title ?? (unit.chapterNumber == null ? 'Special' : 'Chapter ${unit.chapterNumber}');
+      final number = unit.chapterNumber;
+      final numberText = number == null
+          ? null
+          : (number == number.roundToDouble() ? number.toInt().toString() : number.toString());
+      return unit.title ?? (numberText == null ? 'Special' : 'Chapter $numberText');
     }
     final first = units.first;
-    final base = first.chapterNumber == null ? 'Mini-chapters' : 'Chapter ${first.chapterNumber}';
+    final number = first.chapterNumber;
+    final numberText = number == null
+        ? null
+        : (number == number.roundToDouble() ? number.toInt().toString() : number.toString());
+    final base = numberText == null ? 'Mini-chapters' : 'Chapter $numberText';
     final count = first.miniCount ?? units.length;
     return '$base · $count mini-chapters';
   }
@@ -197,8 +205,8 @@ class CreatorProfile {
   CreatorProfile({
     required this.id,
     required this.name,
-    this.aliases = const [],
-    this.credits = const [],
+    List<String> aliases = const [],
+    List<CreatorCredit> credits = const [],
   })  : aliases = List.unmodifiable(aliases),
         credits = List.unmodifiable(credits) {
     if (id.trim().isEmpty || name.trim().isEmpty) {
@@ -210,4 +218,53 @@ class CreatorProfile {
   final String name;
   final List<String> aliases;
   final List<CreatorCredit> credits;
+}
+
+
+/// A fresh MangaDex chapter-page manifest. At-home URLs are temporary and
+/// must be requested again rather than persisted as permanent media URLs.
+class ReaderPageManifest {
+  ReaderPageManifest({
+    required this.chapterId,
+    required this.baseUrl,
+    required this.hash,
+    required List<String> normalFilenames,
+    required List<String> dataSaverFilenames,
+  })  : normalFilenames = List.unmodifiable(normalFilenames),
+        dataSaverFilenames = List.unmodifiable(dataSaverFilenames) {
+    if (chapterId.trim().isEmpty || hash.trim().isEmpty) {
+      throw ArgumentError('Page manifest requires a chapter id and hash.');
+    }
+    if (!baseUrl.isAbsolute || baseUrl.scheme != 'https' || baseUrl.host.isEmpty) {
+      throw ArgumentError.value(baseUrl, 'baseUrl', 'Must be an absolute HTTPS URL');
+    }
+    if (normalFilenames.isEmpty) throw ArgumentError('Page manifest contains no readable pages.');
+    if (normalFilenames.any(_unsafeFilename) || dataSaverFilenames.any(_unsafeFilename)) {
+      throw ArgumentError('Page filenames must be plain, relative filename segments.');
+    }
+  }
+
+  final String chapterId;
+  final Uri baseUrl;
+  final String hash;
+  final List<String> normalFilenames;
+  final List<String> dataSaverFilenames;
+
+  List<Uri> urls({bool dataSaver = false}) {
+    final filenames = dataSaver && dataSaverFilenames.isNotEmpty
+        ? dataSaverFilenames
+        : normalFilenames;
+    final mode = identical(filenames, dataSaverFilenames) ? 'data-saver' : 'data';
+    return List.unmodifiable(filenames.map(
+      (filename) => baseUrl.replace(
+        path: '${baseUrl.path.replaceFirst(RegExp(r'/+$'), '')}/$mode/$hash/${Uri.encodeComponent(filename)}',
+        query: null,
+        fragment: null,
+      ),
+    ));
+  }
+
+  static bool _unsafeFilename(String value) =>
+      value.trim().isEmpty || value == '.' || value == '..' ||
+      value.contains('/') || value.contains(r'\\') || value.contains('\u0000');
 }

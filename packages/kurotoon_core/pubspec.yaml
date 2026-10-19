@@ -3,6 +3,9 @@ description: Platform-independent domain and backend logic for Kurotoon.
 version: 0.1.0
 publish_to: none
 
+dependencies:
+  crypto: ^3.0.6
+
 environment:
   sdk: '>=3.4.0 <4.0.0'
 

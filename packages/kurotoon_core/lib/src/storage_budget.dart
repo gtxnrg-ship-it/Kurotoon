@@ -81,7 +81,7 @@ class StorageBudget {
     if (projected > maxBytes) {
       return StoragePlan(
         accepted: false,
-        evictKeys: List.unmodifiable(evict),
+        evictKeys: const [],
         projectedBytes: projected,
         reason: 'Pinned/offline data prevents safe eviction within the configured budget',
       );

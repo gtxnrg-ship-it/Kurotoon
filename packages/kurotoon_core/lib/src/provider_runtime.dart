@@ -1,7 +1,12 @@
 import 'dart:async';
 
 import 'cancellation.dart';
+import 'catalog_entities.dart';
 import 'models.dart';
+
+abstract interface class DisposableProvider {
+  void dispose();
+}
 
 abstract interface class SourceProvider {
   ProviderDescriptor get descriptor;
@@ -9,6 +14,40 @@ abstract interface class SourceProvider {
   Future<ProviderResponse<List<WorkCandidate>>> search(
     String query, {
     required CancellationToken cancellationToken,
+  });
+}
+
+abstract interface class SeriesProvider implements SourceProvider {
+  Future<ProviderResponse<WorkCandidate>> getSeries(
+    String seriesId, {
+    required CancellationToken cancellationToken,
+  });
+}
+
+abstract interface class ChapterFeedProvider implements SourceProvider {
+  Future<ProviderResponse<List<ChapterUnit>>> getChapters(
+    String seriesId, {
+    required CancellationToken cancellationToken,
+    List<String> translatedLanguages = const ['en'],
+    int limit = 100,
+    int offset = 0,
+  });
+}
+
+abstract interface class CreatorWorksProvider implements SourceProvider {
+  Future<ProviderResponse<List<WorkCandidate>>> getCreatorWorks(
+    String creatorId, {
+    required CancellationToken cancellationToken,
+    int limit = 100,
+    int offset = 0,
+  });
+}
+
+abstract interface class ReaderPagesProvider implements SourceProvider {
+  Future<ProviderResponse<ReaderPageManifest>> getPages(
+    String chapterId, {
+    required CancellationToken cancellationToken,
+    bool dataSaver = false,
   });
 }
 
@@ -38,6 +77,14 @@ class ProviderRegistry {
     _enabled[id] = enabled;
   }
 
+  void dispose() {
+    for (final provider in _providers.values) {
+      if (provider is DisposableProvider) (provider as DisposableProvider).dispose();
+    }
+    _providers.clear();
+    _enabled.clear();
+  }
+
   void removeCommunityProvider(String id) {
     final provider = _providers[id];
     if (provider == null) throw ArgumentError.value(id, 'id', 'Unknown provider');
@@ -62,7 +109,7 @@ class ProviderSearchResult {
 }
 
 class SearchBatch {
-  SearchBatch({required this.results, required this.cancelled})
+  SearchBatch({required List<ProviderSearchResult> results, required this.cancelled})
       : results = List.unmodifiable(results);
 
   final List<ProviderSearchResult> results;

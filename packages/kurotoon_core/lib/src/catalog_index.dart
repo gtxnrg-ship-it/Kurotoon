@@ -1,6 +1,3 @@
-import 'dart:collection';
-
-import 'catalog_entities.dart';
 import 'identity_matcher.dart';
 import 'models.dart';
 
@@ -9,7 +6,7 @@ enum CatalogUpsertStatus { created, linked, alreadyKnown, reviewRequired }
 class CatalogEntry {
   CatalogEntry({
     required this.work,
-    required this.listings,
+    required List<WorkCandidate> listings,
     this.verified = false,
   }) : listings = List.unmodifiable(listings);
 
@@ -24,7 +21,7 @@ class PendingIdentityReview {
   PendingIdentityReview({
     required this.key,
     required this.candidate,
-    required this.possibleMatches,
+    required List<IdentityDecision> possibleMatches,
   }) : possibleMatches = List.unmodifiable(possibleMatches);
 
   final String key;
@@ -88,7 +85,7 @@ class CatalogIndex {
       }
     }
 
-    if (safeMatches.length == 1) {
+    if (safeMatches.length == 1 && reviewMatches.isEmpty) {
       final linked = _appendListing(safeMatches.single, candidate);
       return CatalogUpsertResult(status: CatalogUpsertStatus.linked, entry: linked);
     }

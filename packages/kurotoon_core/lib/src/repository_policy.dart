@@ -23,6 +23,9 @@ class RepositoryPolicy {
     if (uri.userInfo.isNotEmpty) {
       return const RepositoryDecision(allowed: false, reason: 'URLs with embedded credentials are not allowed');
     }
+    if ((uri.hasPort && uri.port != 443) || uri.hasFragment) {
+      return const RepositoryDecision(allowed: false, reason: 'Repositories must use HTTPS on the default port without fragments');
+    }
 
     final host = uri.host.toLowerCase().replaceAll(RegExp(r'^\[|\]$'), '');
     if (_isLocalHost(host) || _isPrivateIp(host)) {
@@ -58,10 +61,13 @@ class RepositoryPolicy {
     return a == 0 ||
         a == 10 ||
         a == 127 ||
+        a >= 224 ||
+        (a == 100 && b >= 64 && b <= 127) ||
         (a == 169 && b == 254) ||
         (a == 172 && b >= 16 && b <= 31) ||
-        (a == 192 && b == 168) ||
-        a >= 224;
+        (a == 192 && (b == 168 || (b == 0 && (values[2] == 0 || values[2] == 2)))) ||
+        (a == 198 && (b == 18 || b == 19 || (b == 51 && values[2] == 100))) ||
+        (a == 203 && b == 0 && values[2] == 113);
   }
 
   /// This check is only the first gate. Before a request/redirect is followed,
