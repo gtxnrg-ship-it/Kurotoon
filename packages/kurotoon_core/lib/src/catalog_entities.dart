@@ -235,8 +235,25 @@ class ReaderPageManifest {
     if (chapterId.trim().isEmpty || hash.trim().isEmpty) {
       throw ArgumentError('Page manifest requires a chapter id and hash.');
     }
-    if (!baseUrl.isAbsolute || baseUrl.scheme != 'https' || baseUrl.host.isEmpty) {
-      throw ArgumentError.value(baseUrl, 'baseUrl', 'Must be an absolute HTTPS URL');
+    if (!baseUrl.isAbsolute ||
+        baseUrl.scheme != 'https' ||
+        baseUrl.host.isEmpty ||
+        baseUrl.userInfo.isNotEmpty ||
+        (baseUrl.hasPort && baseUrl.port != 443) ||
+        baseUrl.hasQuery ||
+        baseUrl.hasFragment) {
+      throw ArgumentError.value(baseUrl, 'baseUrl', 'Must be a clean public HTTPS URL');
+    }
+    final backslash = String.fromCharCode(92);
+    if (baseUrl.pathSegments.any((segment) =>
+        segment == '.' ||
+        segment == '..' ||
+        segment.contains('/') ||
+        segment.contains(backslash))) {
+      throw ArgumentError.value(baseUrl, 'baseUrl', 'Base URL path contains an unsafe segment');
+    }
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(hash)) {
+      throw ArgumentError.value(hash, 'hash', 'Must be a safe URL path token');
     }
     if (normalFilenames.isEmpty) throw ArgumentError('Page manifest contains no readable pages.');
     if (normalFilenames.any(_unsafeFilename) || dataSaverFilenames.any(_unsafeFilename)) {
@@ -265,6 +282,10 @@ class ReaderPageManifest {
   }
 
   static bool _unsafeFilename(String value) =>
-      value.trim().isEmpty || value == '.' || value == '..' ||
-      value.contains('/') || value.contains(r'\\') || value.contains('\u0000');
+      value.trim().isEmpty ||
+      value == '.' ||
+      value == '..' ||
+      value.contains('/') ||
+      value.contains(String.fromCharCode(92)) ||
+      value.contains('\u0000');
 }
