@@ -262,3 +262,95 @@ class DeclarativeJsonExtractor {
     return Map.unmodifiable(result);
   }
 }
+
+
+
+/// Parses a declarative extension manifest. No downloaded source code is executed.
+DeclarativeExtensionManifest parseDeclarativeExtensionManifest(Map<String, Object?> json) {
+  String requiredString(Map<String, Object?> map, String key) {
+    final value = map[key];
+    if (value is! String || value.trim().isEmpty) {
+      throw FormatException('Extension manifest is missing ' + key + '.');
+    }
+    return value;
+  }
+
+  List<Object> pathSegments(Object? value, String label) {
+    if (value is! List || value.isEmpty ||
+        value.any((item) => !(item is String && item.isNotEmpty) && !(item is int && item >= 0))) {
+      throw FormatException(label + ' must be a non-empty JSON path.');
+    }
+    return List<Object>.from(value);
+  }
+
+  final id = requiredString(json, 'id');
+  final name = requiredString(json, 'name');
+  final version = requiredString(json, 'version');
+  final homepage = Uri.tryParse(requiredString(json, 'homepage'));
+  final baseUri = Uri.tryParse(requiredString(json, 'baseUrl'));
+  final license = requiredString(json, 'license');
+  final developer = requiredString(json, 'developer');
+  final api = json['minimumAppApi'];
+  final hostsJson = json['allowedHosts'];
+  final endpointsJson = json['endpoints'];
+  if (homepage == null || baseUri == null || api is! int ||
+      hostsJson is! List || hostsJson.any((item) => item is! String) ||
+      endpointsJson is! List) {
+    throw const FormatException('Extension manifest contains invalid metadata.');
+  }
+  final endpoints = <JsonEndpointSpec>[];
+  for (final value in endpointsJson) {
+    if (value is! Map) throw const FormatException('Endpoint definition must be an object.');
+    final endpoint = Map<String, Object?>.from(value);
+    final capabilityName = requiredString(endpoint, 'capability');
+    final capabilities = ExtensionCapability.values.where((item) => item.name == capabilityName);
+    if (capabilities.isEmpty) throw FormatException('Unsupported capability: ' + capabilityName);
+    final queryJson = endpoint['query'] ?? const <String, Object?>{};
+    final fieldsJson = endpoint['fields'];
+    if (queryJson is! Map || fieldsJson is! Map) {
+      throw const FormatException('Endpoint query and field mappings must be objects.');
+    }
+    final query = <String, String>{};
+    for (final entry in queryJson.entries) {
+      if (entry.key is! String || entry.value is! String) {
+        throw const FormatException('Endpoint query values must be strings.');
+      }
+      query[entry.key as String] = entry.value as String;
+    }
+    final fields = <String, JsonPath>{};
+    for (final entry in fieldsJson.entries) {
+      if (entry.key is! String) throw const FormatException('Field mapping keys must be strings.');
+      fields[entry.key as String] = JsonPath(pathSegments(entry.value, 'Field mapping'));
+    }
+    final responseBytes = endpoint['maxResponseBytes'] ?? 1048576;
+    if (responseBytes is! int) throw const FormatException('Endpoint response limit must be an integer.');
+    endpoints.add(JsonEndpointSpec(
+      id: requiredString(endpoint, 'id'),
+      capability: capabilities.single,
+      path: requiredString(endpoint, 'path'),
+      query: query,
+      resultPath: JsonPath(pathSegments(endpoint['resultPath'], 'Result path')),
+      fields: fields,
+      maxResponseBytes: responseBytes,
+    ));
+  }
+
+  final enabledByDefault = json['enabledByDefault'] ?? false;
+  if (enabledByDefault is! bool) throw const FormatException('enabledByDefault must be boolean.');
+  final manifest = DeclarativeExtensionManifest(
+    id: id,
+    name: name,
+    version: version,
+    minimumAppApi: api,
+    homepage: homepage,
+    baseUri: baseUri,
+    licenseId: license,
+    developer: developer,
+    allowedHosts: Set<String>.from(hostsJson.cast<String>()),
+    endpoints: endpoints,
+    enabledByDefault: enabledByDefault,
+  );
+  final validation = const ExtensionManifestPolicy().validate(manifest);
+  if (!validation.accepted) throw FormatException(validation.issues.join('; '));
+  return manifest;
+}
