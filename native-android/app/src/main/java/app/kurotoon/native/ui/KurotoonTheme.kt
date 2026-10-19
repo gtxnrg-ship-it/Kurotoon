@@ -1,4 +1,4 @@
-package app.kurotoon.native.ui
+package app.kurotoon.android.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
