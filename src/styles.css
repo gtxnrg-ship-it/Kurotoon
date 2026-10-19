@@ -433,3 +433,10 @@
   .download-option-copy>p{font-size:11px}
   .download-action{width:100%;min-height:44px}
 }
+
+
+/* Quiet, actionable storage diagnostics inside the reader controls. */
+.reader-storage-warning{
+  margin:10px 0;padding:10px 12px;border:1px solid rgba(235,190,113,.2);
+  border-radius:9px;background:rgba(148,102,34,.08);color:#d8c38e;font-size:10px;line-height:1.7
+}
