@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "app.kurotoon.native"
+    namespace = "app.kurotoon.android"
     compileSdk = 36
 
     defaultConfig {
