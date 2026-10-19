@@ -43,6 +43,72 @@ class ExtensionInstallPathPolicy {
   }
 }
 
+class MihonRepositoryPreview {
+  MihonRepositoryPreview({
+    required this.index,
+    required List<MihonExtensionRecord> extensions,
+    required this.totalExtensionCount,
+    required this.totalSourceCount,
+    required this.indexDigest,
+  }) : extensions = List.unmodifiable(extensions);
+
+  final MihonRepositoryIndex index;
+  /// A bounded sample for the preview UI, not the full repository catalog.
+  final List<MihonExtensionRecord> extensions;
+  final int totalExtensionCount;
+  final int totalSourceCount;
+  final String indexDigest;
+  int get extensionCount => totalExtensionCount;
+  int get sourceCount => totalSourceCount;
+  bool get hasMorePreviewEntries => extensions.length < totalExtensionCount;
+}
+
+/// Parses a fetched Mihon index and, when it uses an external extension list,
+/// the already-fetched list payload. Kept pure so payload handling is testable
+/// without making network requests.
+MihonRepositoryPreview parseMihonRepositoryPreviewBytes({
+  required Uri indexUri,
+  required List<int> indexBytes,
+  List<int>? extensionListBytes,
+  int previewLimit = 50,
+}) {
+  if (previewLimit < 1 || previewLimit > 100) {
+    throw ArgumentError.value(previewLimit, 'previewLimit', 'Must be between 1 and 100.');
+  }
+  final index = MihonRepositoryIndex.parse(indexBytes, indexUri: indexUri);
+  final sample = <MihonExtensionRecord>[];
+  var totalExtensions = 0;
+  var totalSources = 0;
+  String listDigest = 'embedded';
+  if (index.extensionListUrl != null) {
+    if (extensionListBytes == null) {
+      throw const FormatException('Mihon repository requires its external extension-list payload.');
+    }
+    for (final extension in MihonRepositoryIndex.decodeExtensionList(extensionListBytes)) {
+      totalExtensions++;
+      totalSources += extension.sources.length;
+      if (sample.length < previewLimit) sample.add(extension);
+    }
+    listDigest = sha256.convert(extensionListBytes).toString();
+  } else {
+    if (extensionListBytes != null) {
+      throw const FormatException('An external extension list was supplied for an embedded-list index.');
+    }
+    totalExtensions = index.extensions.length;
+    totalSources = index.sourceCount;
+    sample.addAll(index.extensions.take(previewLimit));
+  }
+  final rootDigest = sha256.convert(indexBytes).toString();
+  final digest = sha256.convert(utf8.encode('$rootDigest:$listDigest')).toString();
+  return MihonRepositoryPreview(
+    index: index,
+    extensions: sample,
+    totalExtensionCount: totalExtensions,
+    totalSourceCount: totalSources,
+    indexDigest: digest,
+  );
+}
+
 class RepositoryPreview {
   const RepositoryPreview({
     required this.indexUri,
@@ -88,6 +154,37 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
 
   /// Call only after the UI has shown the repository identity and obtained confirmation.
   /// The index is fetched again so a stale preview cannot silently approve changed metadata.
+  /// Fetches a Mihon/Tachiyomi protobuf repository safely for metadata preview.
+  /// This does not install or execute the repository's compiled APKs.
+  Future<MihonRepositoryPreview> previewMihonRepository(
+    Uri indexUri, {
+    CancellationToken? cancellationToken,
+    int previewLimit = 50,
+  }) async {
+    final indexBytes = await _getBytes(
+      indexUri,
+      maxBytes: 4 * 1024 * 1024,
+      cancellationToken: cancellationToken,
+    );
+    cancellationToken?.throwIfCancelled();
+    final index = MihonRepositoryIndex.parse(indexBytes, indexUri: indexUri);
+    List<int>? extensionListBytes;
+    if (index.extensionListUrl != null) {
+      extensionListBytes = await _getBytes(
+        index.extensionListUrl!,
+        maxBytes: 16 * 1024 * 1024,
+        cancellationToken: cancellationToken,
+      );
+      cancellationToken?.throwIfCancelled();
+    }
+    return parseMihonRepositoryPreviewBytes(
+      indexUri: indexUri,
+      indexBytes: indexBytes,
+      extensionListBytes: extensionListBytes,
+      previewLimit: previewLimit,
+    );
+  }
+
   Future<ExtensionRepositoryIndex> addRepository(String rawUrl, {String? expectedPreviewDigest}) async {
     final preview = await previewRepository(rawUrl);
     if (expectedPreviewDigest != null && preview.indexDigest != expectedPreviewDigest) {
