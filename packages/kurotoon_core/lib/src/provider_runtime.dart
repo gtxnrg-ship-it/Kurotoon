@@ -131,12 +131,150 @@ class SearchBatch {
       );
 }
 
+enum ProviderHealthState { healthy, degraded, coolingDown }
+
+class ProviderHealthSnapshot {
+  const ProviderHealthSnapshot({
+    required this.providerId,
+    required this.state,
+    required this.consecutiveFailures,
+    this.lastSuccessAt,
+    this.lastFailureAt,
+    this.cooldownUntil,
+    this.lastStatus,
+    this.lastMessage,
+  });
+
+  final String providerId;
+  final ProviderHealthState state;
+  final int consecutiveFailures;
+  final DateTime? lastSuccessAt;
+  final DateTime? lastFailureAt;
+  final DateTime? cooldownUntil;
+  final ProviderResultStatus? lastStatus;
+  final String? lastMessage;
+}
+
+/// In-memory per-provider circuit breaker. It backs off noisy or failing
+/// sources without hiding their status from the caller. Success resets the
+/// consecutive-failure streak; cancellation and unsupported operations do not
+/// count as source failures.
+class ProviderHealthTracker {
+  ProviderHealthTracker({
+    DateTime Function()? clock,
+    this.failureThreshold = 2,
+    this.baseCooldown = const Duration(seconds: 15),
+    this.maxCooldown = const Duration(minutes: 5),
+  }) : _clock = clock ?? DateTime.now {
+    if (failureThreshold < 1) {
+      throw ArgumentError.value(failureThreshold, 'failureThreshold');
+    }
+    if (baseCooldown <= Duration.zero || maxCooldown < baseCooldown) {
+      throw ArgumentError('Cooldowns must be positive and maxCooldown >= baseCooldown.');
+    }
+  }
+
+  final DateTime Function() _clock;
+  final int failureThreshold;
+  final Duration baseCooldown;
+  final Duration maxCooldown;
+  final Map<String, _ProviderHealthRecord> _records = {};
+
+  ProviderHealthSnapshot snapshotFor(String providerId) {
+    final record = _records[providerId];
+    final now = _clock();
+    final cooling = record?.cooldownUntil?.isAfter(now) ?? false;
+    final state = cooling
+        ? ProviderHealthState.coolingDown
+        : (record?.consecutiveFailures ?? 0) > 0
+            ? ProviderHealthState.degraded
+            : ProviderHealthState.healthy;
+    return ProviderHealthSnapshot(
+      providerId: providerId,
+      state: state,
+      consecutiveFailures: record?.consecutiveFailures ?? 0,
+      lastSuccessAt: record?.lastSuccessAt,
+      lastFailureAt: record?.lastFailureAt,
+      cooldownUntil: record?.cooldownUntil,
+      lastStatus: record?.lastStatus,
+      lastMessage: record?.lastMessage,
+    );
+  }
+
+  Duration? remainingCooldown(String providerId) {
+    final until = _records[providerId]?.cooldownUntil;
+    if (until == null) return null;
+    final remaining = until.difference(_clock());
+    return remaining > Duration.zero ? remaining : null;
+  }
+
+  void record(String providerId, ProviderResponse<Object?> response) {
+    final record = _records.putIfAbsent(providerId, _ProviderHealthRecord.new);
+    record.lastStatus = response.status;
+    record.lastMessage = response.message;
+
+    if (response.status == ProviderResultStatus.success ||
+        response.status == ProviderResultStatus.partial) {
+      record.consecutiveFailures = 0;
+      record.lastSuccessAt = _clock();
+      record.cooldownUntil = null;
+      return;
+    }
+
+    if (response.status == ProviderResultStatus.cancelled ||
+        response.status == ProviderResultStatus.disabled ||
+        response.status == ProviderResultStatus.unsupported) {
+      return;
+    }
+
+    if (response.status != ProviderResultStatus.failed &&
+        response.status != ProviderResultStatus.timedOut &&
+        response.status != ProviderResultStatus.rateLimited &&
+        response.status != ProviderResultStatus.blocked) {
+      return;
+    }
+
+    final now = _clock();
+    record.consecutiveFailures++;
+    record.lastFailureAt = now;
+    if (response.status == ProviderResultStatus.rateLimited) {
+      final requested = response.retryAfter;
+      final delay = requested != null && requested > Duration.zero
+          ? requested
+          : _cooldownFor(record.consecutiveFailures);
+      record.cooldownUntil = now.add(delay);
+    } else if (response.status == ProviderResultStatus.blocked) {
+      record.cooldownUntil = now.add(baseCooldown);
+    } else if (record.consecutiveFailures >= failureThreshold) {
+      record.cooldownUntil = now.add(_cooldownFor(record.consecutiveFailures));
+    }
+  }
+
+  Duration _cooldownFor(int failures) {
+    final exponent = (failures - failureThreshold).clamp(0, 30);
+    final delay = baseCooldown * (1 << exponent);
+    return delay > maxCooldown ? maxCooldown : delay;
+  }
+
+  void reset(String providerId) => _records.remove(providerId);
+}
+
+class _ProviderHealthRecord {
+  int consecutiveFailures = 0;
+  DateTime? lastSuccessAt;
+  DateTime? lastFailureAt;
+  DateTime? cooldownUntil;
+  ProviderResultStatus? lastStatus;
+  String? lastMessage;
+}
+
 class ProviderCoordinator {
   ProviderCoordinator(
     this.registry, {
     this.maxConcurrentProviders = 4,
     this.providerTimeout = const Duration(seconds: 8),
-  }) {
+    ProviderHealthTracker? healthTracker,
+  }) : healthTracker = healthTracker ?? ProviderHealthTracker() {
     if (maxConcurrentProviders < 1) {
       throw ArgumentError.value(maxConcurrentProviders, 'maxConcurrentProviders');
     }
@@ -148,6 +286,7 @@ class ProviderCoordinator {
   final ProviderRegistry registry;
   final int maxConcurrentProviders;
   final Duration providerTimeout;
+  final ProviderHealthTracker healthTracker;
 
   Future<SearchBatch> search(
     String query, {
@@ -189,6 +328,18 @@ class ProviderCoordinator {
     CancellationToken parent,
   ) async {
     final started = DateTime.now();
+    final cooldown = healthTracker.remainingCooldown(provider.descriptor.id);
+    if (cooldown != null) {
+      return ProviderSearchResult(
+        providerId: provider.descriptor.id,
+        response: ProviderResponse<List<WorkCandidate>>(
+          status: ProviderResultStatus.rateLimited,
+          message: 'Provider temporarily paused after repeated failures',
+          retryAfter: cooldown,
+        ),
+        elapsed: Duration.zero,
+      );
+    }
     final child = CancellationToken();
     final detach = parent.onCancel((reason) => child.cancel(reason));
     try {
@@ -202,21 +353,32 @@ class ProviderCoordinator {
           message: 'Provider exceeded its request time budget',
         );
       });
+      healthTracker.record(provider.descriptor.id, response);
       return ProviderSearchResult(
         providerId: provider.descriptor.id,
         response: response,
         elapsed: DateTime.now().difference(started),
       );
     } on OperationCancelled catch (error) {
+      final response = ProviderResponse<List<WorkCandidate>>(
+        status: ProviderResultStatus.cancelled,
+        message: error.reason,
+      );
+      healthTracker.record(provider.descriptor.id, response);
       return ProviderSearchResult(
         providerId: provider.descriptor.id,
-        response: ProviderResponse(status: ProviderResultStatus.cancelled, message: error.reason),
+        response: response,
         elapsed: DateTime.now().difference(started),
       );
     } catch (error) {
+      final response = ProviderResponse<List<WorkCandidate>>(
+        status: ProviderResultStatus.failed,
+        message: _safeError(error),
+      );
+      healthTracker.record(provider.descriptor.id, response);
       return ProviderSearchResult(
         providerId: provider.descriptor.id,
-        response: ProviderResponse(status: ProviderResultStatus.failed, message: _safeError(error)),
+        response: response,
         elapsed: DateTime.now().difference(started),
       );
     } finally {
