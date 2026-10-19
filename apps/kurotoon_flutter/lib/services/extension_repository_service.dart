@@ -103,28 +103,54 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       throw const FormatException('Extension manifest does not match its repository index entry.');
     }
 
+    final installedRows = await database.loadInstalledExtensions();
+    String? previousPath;
+    for (final row in installedRows) {
+      if (row['extension_id'] == entry.id && row['install_path'] is String) {
+        previousPath = row['install_path'] as String;
+        break;
+      }
+    }
     final root = await getApplicationSupportDirectory();
-    final targetDirectory = Directory(path.join(root.path, 'extensions', manifest.id, manifest.version));
+    final targetDirectory = Directory(path.join(
+      root.path,
+      'extensions',
+      manifest.id,
+      manifest.version,
+      entry.sha256.substring(0, 12),
+    ));
     await targetDirectory.create(recursive: true);
     final target = File(path.join(targetDirectory.path, 'manifest.json'));
     final temp = File(path.join(
       targetDirectory.path,
       '.manifest-' + DateTime.now().microsecondsSinceEpoch.toString() + '.tmp',
     ));
+    var createdTarget = false;
     try {
       await temp.writeAsBytes(bytes, flush: true);
-      if (await target.exists()) await target.delete();
-      await temp.rename(target.path);
+      if (!await target.exists()) {
+        await temp.rename(target.path);
+        createdTarget = true;
+      }
     } finally {
       if (await temp.exists()) await temp.delete();
     }
 
-    await database.recordInstalledExtension(
-      entry: entry,
-      repositoryId: repositoryId,
-      installPath: target.path,
-      enabled: false,
-    );
+    try {
+      await database.recordInstalledExtension(
+        entry: entry,
+        repositoryId: repositoryId,
+        installPath: target.path,
+        enabled: false,
+      );
+    } catch (_) {
+      if (createdTarget && await target.exists()) await target.delete();
+      rethrow;
+    }
+    if (previousPath != null && previousPath != target.path) {
+      final previousFile = File(previousPath);
+      if (await previousFile.exists()) await previousFile.delete();
+    }
     return target.path;
   }
 
