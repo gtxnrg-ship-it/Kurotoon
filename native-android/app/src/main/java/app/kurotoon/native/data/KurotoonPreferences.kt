@@ -1,4 +1,4 @@
-package app.kurotoon.native.data
+package app.kurotoon.android.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
