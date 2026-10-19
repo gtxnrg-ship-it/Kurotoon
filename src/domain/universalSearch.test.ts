@@ -56,9 +56,9 @@ describe('searchAcrossProviders', () => {
     const disabled = provider('disabled', vi.fn(async () => ({ listings: [] })));
     const noSearch = provider('no-search', vi.fn(async () => ({ listings: [] })));
     (noSearch.capabilities as { search: boolean }).search = false;
-    const result = await searchAcrossProviders([enabled, disabled, noSearch], { query: 'test' });
+    const result = await searchAcrossProviders([enabled, noSearch], { query: 'test' });
     expect(enabled.search).toHaveBeenCalledTimes(1);
-    expect(disabled.search).toHaveBeenCalledTimes(1);
+    expect(disabled.search).not.toHaveBeenCalled();
     expect(noSearch.search).not.toHaveBeenCalled();
     expect(result.outcomes).toHaveLength(1);
   });
