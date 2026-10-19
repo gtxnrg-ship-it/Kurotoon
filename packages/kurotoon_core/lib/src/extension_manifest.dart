@@ -59,7 +59,7 @@ class JsonEndpointSpec {
     String decodedPath;
     try {
       decodedPath = Uri.decodeComponent(path);
-    } on FormatException {
+    } on Object {
       return const ['Endpoint path contains malformed percent encoding.'];
     }
     if (!path.startsWith('/') || path.startsWith('//') || path.contains('://') ||
