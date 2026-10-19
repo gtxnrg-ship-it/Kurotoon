@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -119,6 +120,17 @@ class _FakeSource implements SourceProvider, SeriesProvider, ChapterFeedProvider
   }
 }
 
+class _HangingSeriesSource extends _FakeSource {
+  _HangingSeriesSource({required super.searchResult});
+
+  @override
+  Future<ProviderResponse<WorkCandidate>> getSeries(
+    String seriesId, {
+    required CancellationToken cancellationToken,
+  }) =>
+      Completer<ProviderResponse<WorkCandidate>>().future;
+}
+
 WorkCandidate _candidate() => WorkCandidate(
       providerId: 'fake.source',
       externalId: 'series-1',
@@ -229,5 +241,26 @@ void main() {
       ),
       throwsArgumentError,
     );
+  }); 
+  test('bounds source detail calls that ignore cancellation', () async {
+    await workflow.dispose();
+    providers.dispose();
+
+    providers = ProviderRegistry()..register(_HangingSeriesSource(searchResult: _candidate()));
+    workflow = CatalogWorkflowService(
+      providers: providers,
+      database: database,
+      deviceId: 'test-device',
+      providerTimeout: const Duration(milliseconds: 60),
+      clock: () => DateTime.utc(2026, 10, 19, 12),
+    );
+
+    final outcome = await workflow.searchAndCatalog('Blue Star');
+    final response = await workflow.refreshSeries(
+      workId: outcome.entries.single.work.id,
+      providerId: 'fake.source',
+    );
+    expect(response.status, ProviderResultStatus.timedOut);
   });
+
 }
