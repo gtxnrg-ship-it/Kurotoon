@@ -14,7 +14,7 @@
 - [ ] Run the native product flows against live sources on-device.
 - [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
-Last verified APK build: commit `383c7e7b477543643405d2cdea7f3324c33211df`; stable alias: `continuous-latest`. The cache-enforcement change is now merged at `9148265e6a180e228e50318d6c029abe001b011e`; its main-branch APK rebuild is pending, so the direct link will update when that build succeeds.
+Last verified APK build: commit `23aaff78f50a1f804a04dd3cd3c41e920bb521a2`; stable alias: `continuous-latest`. Provider-health/backoff changes are now merged at `026b282110914f6f4c2c92092d4a25da8ec6cb8f`; their main-branch APK rebuild is pending, so the direct link will update when that build succeeds.
 
 ## Progress dashboard
 
@@ -22,8 +22,8 @@ Last verified APK build: commit `383c7e7b477543643405d2cdea7f3324c33211df`; stab
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter APK build, analysis, tests and release workflow pass | Real-device install, package metadata/signing strategy, smoke-test automation and other platforms |
 | Pure Dart domain and policy core | 70% | Typed work/edition/chapter models, cancellation, provider coordinator, identity matching, progress reconciliation, cache/effect/voice policies | More adversarial/property tests, manual identity corrections and end-to-end consumers |
-| Persistent state and cache safety | 60% | SQLite schema/migrations plus a managed cache writer with byte-budget enforcement, serialized writes, pinned-content protection and rollback tests | Verify complete CRUD integration, interrupted-write recovery and physical-device storage behaviour |
-| Provider integration | 50% | Native MangaDex adapter and bounded provider runtime; declarative endpoint provider contract | Live flow validation, respectful per-provider pacing/health, more source adapters and robust schema-drift handling |
+| Persistent state and cache safety | 62% | SQLite schema/migrations, managed cache budget enforcement, serialized writes, pinned-content protection, rollback tests and persisted provider-health snapshots | Verify complete CRUD integration, interrupted-write recovery and physical-device storage behaviour |
+| Provider integration | 58% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns and upstream `Retry-After` handling | Live flow validation, provider-specific request policies, diagnostics UI, more source adapters and schema-drift handling |
 | Repository / extension foundation | 65% | Preview/confirmation API, index/manifest checks, hashes/size caps, redirect rejection, DNS checks, persistent install records | Real repository UI, source permissions and compatibility display, update/uninstall recovery tests, deeper DNS pinning review |
 | Cross-source catalog and chapter merge | 45% | Identity matcher, catalog index, provenance models, candidate grouping, mini-chapter/edition concepts | End-to-end persisted merge pipeline, corrections/undo, creator pages and real multi-source fixtures |
 | Reader and library end-to-end | 20% | Core models/persistence foundation and previous product prototype evidence | Flutter-native reader, chapters/pages, progress resume, durable library CRUD, sorting, empty/error/offline states |
@@ -31,7 +31,7 @@ Last verified APK build: commit `383c7e7b477543643405d2cdea7f3324c33211df`; stab
 | Voice, music, haptics and particle runtime | 10% | Timeline/voice license and size/hash policies | Real native adapters, consent UI, stop/lifecycle integration, downloadable packs, music discovery/playback, haptic and particle tuning |
 | Cross-platform releases | 10% | Shared Dart core is intended to be portable | iOS/iPadOS/Windows/Linux platform adapters, platform builds, accessibility and device test matrix |
 
-**Engineering estimate of the full product: about 41% complete.** This is a practical scope estimate, not an objective code-coverage statistic. The native build foundation is real and CI-verified; the product is not finished because the real reader, library, repository UI, cross-source integration, effects, and device acceptance are still major work. The separate backend-foundation estimate is roughly 60–62%; a larger portion of the foundations exists than is wired into an end-to-end user experience.
+**Engineering estimate of the full product: about 42% complete.** This is a practical scope estimate, not an objective code-coverage statistic. The native build foundation is real and CI-verified; the product is not finished because the real reader, library, repository UI, cross-source integration, effects, and device acceptance are still major work. The separate backend-foundation estimate is roughly 63–65%; a larger portion of the foundations exists than is wired into an end-to-end user experience.
 
 ## Phase A — Native foundation and release hygiene
 
@@ -58,7 +58,8 @@ Last verified APK build: commit `383c7e7b477543643405d2cdea7f3324c33211df`; stab
 - [x] Add repository preview-before-add, identity/URL checks and declarative manifest verification.
 - [x] Store installed extension metadata and restore enabled provider state on runtime initialization.
 - [ ] Test provider cancellation under real HTTP read/write stalls and ensure socket/resource disposal.
-- [ ] Make provider health/backoff/rate limiting observable and persist meaningful health states.
+- [x] Track provider failure streaks and cooldowns, honor upstream `Retry-After`, and persist validated health snapshots without raw provider error text.
+- [ ] Surface provider health in diagnostics/settings UI and encode provider-specific request policies.
 - [ ] Exercise every SQLite migration from a real previous-version database fixture.
 - [ ] Test app kill/crash during extension install/update/uninstall and recover orphan temp files safely.
 - [ ] Add a structured diagnostic export that redacts credentials, tokens and private user data.
