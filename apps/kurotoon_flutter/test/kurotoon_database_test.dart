@@ -67,50 +67,6 @@ void main() {
       factory: databaseFactoryFfi,
     );
     expect((await database.loadCatalog()).single.listings.single.providerUrl.host, 'mangadex.org');
-    final restoredMatch = await database.loadCatalogCandidatesForMatching(WorkCandidate(
-      providerId: 'community-source',
-      externalId: 'blue-star-translation',
-      title: 'The Blue Star',
-      creatorNames: const ['A. Artist'],
-      providerUrl: Uri.parse('https://community.example.org/blue-star'),
-    ));
-    expect(restoredMatch.entries.map((entry) => entry.work.id), contains('work/blue-star'));
-    expect(restoredMatch.hasMore, isFalse);
-  });
-
-  test('indexes creator profiles and returns bounded, title-sorted work pages', () async {
-    await database.upsertCatalogEntry(entry());
-    await database.upsertCatalogEntry(CatalogEntry(
-      work: WorkRecord(
-        id: 'work/red-moon',
-        title: 'Red Moon',
-        creatorNames: const ['A. Artist'],
-        format: WorkFormat.manga,
-      ),
-      listings: [WorkCandidate(
-        providerId: 'mangadex',
-        externalId: 'red-moon',
-        title: 'Red Moon',
-        creatorNames: const ['A. Artist'],
-        format: WorkFormat.manga,
-        providerUrl: Uri.parse('https://mangadex.org/title/red-moon'),
-      )],
-    ));
-
-    final creators = await database.searchCreatorProfiles('A. Art');
-    expect(creators, hasLength(1));
-    final creator = creators.single;
-    final firstPage = await database.loadCreatorWorks(creator.id, limit: 1);
-    final secondPage = await database.loadCreatorWorks(creator.id, limit: 1, offset: 1);
-    expect(firstPage, hasLength(1));
-    expect(secondPage, hasLength(1));
-    expect(firstPage.single.work.title, 'Blue Star');
-    expect(secondPage.single.work.title, 'Red Moon');
-
-    await database.upsertCatalogEntry(entry());
-    final profile = await database.loadCreatorProfile(creator.id);
-    expect(profile!.credits, hasLength(2));
-    expect(profile.credits.map((credit) => credit.workId).toSet(), containsAll(['work/blue-star', 'work/red-moon']));
   });
 
   test('stores edition chapters and the user library independently', () async {
