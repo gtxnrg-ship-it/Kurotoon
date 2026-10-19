@@ -220,7 +220,7 @@ export class MangaDexProvider implements ComicProvider {
           numberLabel: chapter || (attributes.title ? 'Oneshot / special' : 'Unnumbered'),
           volumeLabel: attributes.volume || undefined,
           sortOrder: numericChapter,
-          kind: chapter ? 'regular' : 'special',
+          kind: chapter ? ('regular' as const) : ('special' as const),
           languageCode: attributes.translatedLanguage,
           pageCount: attributes.pages,
           publishedAt: attributes.publishAt,
