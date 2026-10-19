@@ -43,6 +43,48 @@ class ExtensionInstallPathPolicy {
   }
 }
 
+class MihonRepositoryPreview {
+  MihonRepositoryPreview({
+    required this.index,
+    required List<MihonExtensionRecord> extensions,
+    required this.indexDigest,
+  }) : extensions = List.unmodifiable(extensions);
+
+  final MihonRepositoryIndex index;
+  final List<MihonExtensionRecord> extensions;
+  final String indexDigest;
+  int get extensionCount => extensions.length;
+  int get sourceCount => extensions.fold<int>(0, (sum, extension) => sum + extension.sources.length);
+}
+
+/// Parses a fetched Mihon index and, when it uses an external extension list,
+/// the already-fetched list payload. Kept pure so payload handling is testable
+/// without making network requests.
+MihonRepositoryPreview parseMihonRepositoryPreviewBytes({
+  required Uri indexUri,
+  required List<int> indexBytes,
+  List<int>? extensionListBytes,
+}) {
+  final index = MihonRepositoryIndex.parse(indexBytes, indexUri: indexUri);
+  final List<MihonExtensionRecord> extensions;
+  String listDigest = 'embedded';
+  if (index.extensionListUrl != null) {
+    if (extensionListBytes == null) {
+      throw const FormatException('Mihon repository requires its external extension-list payload.');
+    }
+    extensions = MihonRepositoryIndex.parseExtensionList(extensionListBytes);
+    listDigest = sha256.convert(extensionListBytes).toString();
+  } else {
+    if (extensionListBytes != null) {
+      throw const FormatException('An external extension list was supplied for an embedded-list index.');
+    }
+    extensions = index.extensions;
+  }
+  final rootDigest = sha256.convert(indexBytes).toString();
+  final digest = sha256.convert(utf8.encode('$rootDigest:$listDigest')).toString();
+  return MihonRepositoryPreview(index: index, extensions: extensions, indexDigest: digest);
+}
+
 class RepositoryPreview {
   const RepositoryPreview({
     required this.indexUri,
@@ -88,6 +130,35 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
 
   /// Call only after the UI has shown the repository identity and obtained confirmation.
   /// The index is fetched again so a stale preview cannot silently approve changed metadata.
+  /// Fetches a Mihon/Tachiyomi protobuf repository safely for metadata preview.
+  /// This does not install or execute the repository's compiled APKs.
+  Future<MihonRepositoryPreview> previewMihonRepository(
+    Uri indexUri, {
+    CancellationToken? cancellationToken,
+  }) async {
+    final indexBytes = await _getBytes(
+      indexUri,
+      maxBytes: 4 * 1024 * 1024,
+      cancellationToken: cancellationToken,
+    );
+    cancellationToken?.throwIfCancelled();
+    final index = MihonRepositoryIndex.parse(indexBytes, indexUri: indexUri);
+    List<int>? extensionListBytes;
+    if (index.extensionListUrl != null) {
+      extensionListBytes = await _getBytes(
+        index.extensionListUrl!,
+        maxBytes: 16 * 1024 * 1024,
+        cancellationToken: cancellationToken,
+      );
+      cancellationToken?.throwIfCancelled();
+    }
+    return parseMihonRepositoryPreviewBytes(
+      indexUri: indexUri,
+      indexBytes: indexBytes,
+      extensionListBytes: extensionListBytes,
+    );
+  }
+
   Future<ExtensionRepositoryIndex> addRepository(String rawUrl, {String? expectedPreviewDigest}) async {
     final preview = await previewRepository(rawUrl);
     if (expectedPreviewDigest != null && preview.indexDigest != expectedPreviewDigest) {
