@@ -485,11 +485,310 @@ class _MePageState extends State<_MePage> {
           onChanged: (value) => setState(() => _motionEnabled = value),
         ),
         const SizedBox(height: 22),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          tileColor: Colors.white.withValues(alpha: 0.05),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          leading: const Icon(Icons.hub_rounded, color: _cyan),
+          title: const Text('Repositories & extensions'),
+          subtitle: const Text('Add catalogs and manage providers'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => _RepositoryManagerPage(runtime: widget.runtime),
+          )),
+        ),
+        const SizedBox(height: 12),
         const _InlineNotice(
-          icon: Icons.extension_rounded,
-          text: 'Repository management and individual extension installation are implemented in the backend; their settings screens are still being connected.',
+          icon: Icons.shield_outlined,
+          text: 'Only supported KuroToon declarative JSON extensions are loaded; downloaded code is never executed.',
         ),
       ],
+    );
+  }
+}
+
+class _RepositoryManagerPage extends StatefulWidget {
+  const _RepositoryManagerPage({required this.runtime});
+  final KurotoonRuntime runtime;
+
+  @override
+  State<_RepositoryManagerPage> createState() => _RepositoryManagerPageState();
+}
+
+class _RepositoryManagerPageState extends State<_RepositoryManagerPage> {
+  final _url = TextEditingController();
+  bool _busy = false;
+  String? _error;
+  String? _message;
+  int _revision = 0;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    super.dispose();
+  }
+
+  Future<void> _add() async {
+    final raw = _url.text.trim();
+    if (raw.isEmpty) {
+      setState(() => _error = 'Enter an HTTPS repository index URL.');
+      return;
+    }
+    setState(() { _busy = true; _error = null; _message = null; });
+    try {
+      final preview = await widget.runtime.previewExtensionRepository(raw);
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Review \${preview.index.name}'),
+          content: SingleChildScrollView(child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(preview.index.description ?? 'No description provided.'),
+              const SizedBox(height: 10),
+              Text('Repository ID: \${preview.index.id}'),
+              Text('Extensions: \${preview.index.extensions.length}'),
+              Text('Index digest: \${preview.indexDigest}'),
+              const SizedBox(height: 10),
+              const Text('This trusts repository metadata only. KuroToon does not execute downloaded extension code.'),
+            ],
+          )),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add repository')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      await widget.runtime.addExtensionRepository(raw, expectedPreviewDigest: preview.indexDigest);
+      _url.clear();
+      if (mounted) setState(() { _message = 'Repository added.'; _revision++; });
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _friendly(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _friendly(Object error) => error.toString()
+      .replaceFirst('FormatException: ', '')
+      .replaceFirst('StateError: ', '');
+
+  Future<void> _removeRepository(String id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Remove $name?'),
+        content: const Text('Uninstall its extensions first. Your library and reading progress are not affected.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.runtime.database!.removeExtensionRepository(id);
+      if (mounted) setState(() { _message = 'Repository removed.'; _revision++; });
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _friendly(error));
+    }
+  }
+
+  Future<void> _install(String extensionId, String repositoryId) async {
+    setState(() { _busy = true; _error = null; _message = null; });
+    try {
+      await widget.runtime.installExtension(extensionId: extensionId, repositoryId: repositoryId);
+      if (mounted) setState(() { _message = 'Installed. Enable it when you are ready.'; _revision++; });
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _friendly(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _uninstall(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Uninstall extension?'),
+        content: Text('Remove $id from this device? Your library and reading progress remain untouched.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Uninstall')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.runtime.uninstallExtension(id);
+      if (mounted) setState(() { _message = 'Extension uninstalled.'; _revision++; });
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _friendly(error));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final database = widget.runtime.database;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Repositories & extensions')),
+      body: _GalaxyScaffold(child: SafeArea(
+        child: database == null
+            ? const Center(child: Text('Persistent storage is required.'))
+            : ListView(padding: const EdgeInsets.all(18), children: [
+                const _SectionHeading(
+                  title: 'Add a source catalog',
+                  subtitle: 'Paste the HTTPS URL of a KuroToon repository index. Review its identity before saving.',
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _url,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    hintText: 'https://example.org/kurotoon/index.json',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.link_rounded),
+                  ),
+                  onSubmitted: (_) { if (!_busy) _add(); },
+                ),
+                const SizedBox(height: 10),
+                SizedBox(width: double.infinity, child: FilledButton.icon(
+                  onPressed: _busy ? null : _add,
+                  icon: _busy
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.preview_rounded),
+                  label: Text(_busy ? 'Working…' : 'Preview repository'),
+                )),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  _InlineNotice(icon: Icons.error_outline_rounded, text: _error!),
+                ],
+                if (_message != null) ...[
+                  const SizedBox(height: 12),
+                  _InlineNotice(icon: Icons.check_circle_outline_rounded, text: _message!),
+                ],
+                const SizedBox(height: 24),
+                const _SectionHeading(title: 'Your repositories', subtitle: 'Refresh checks the saved identity and current index.'),
+                const SizedBox(height: 10),
+                FutureBuilder<List<Map<String, Object?>>>(
+                  key: ValueKey(_revision),
+                  future: database.loadExtensionRepositories(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return _InlineNotice(icon: Icons.error_outline_rounded, text: 'Could not load repositories: \${snapshot.error}');
+                    }
+                    final repos = snapshot.data ?? const <Map<String, Object?>>[];
+                    if (repos.isEmpty) {
+                      return const _InlineNotice(icon: Icons.inventory_2_outlined, text: 'No repositories yet. Add a compatible KuroToon JSON index above.');
+                    }
+                    return Column(children: repos.map((row) {
+                      final id = row['id'] as String? ?? '';
+                      final name = row['name'] as String? ?? id;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                        ),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            const Icon(Icons.hub_outlined, color: _cyan),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w800))),
+                            IconButton(
+                              tooltip: 'Remove repository',
+                              onPressed: _busy ? null : () => _removeRepository(id, name),
+                              icon: const Icon(Icons.delete_outline_rounded),
+                            ),
+                          ]),
+                          if (row['description'] is String) Text(row['description'] as String, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                          const SizedBox(height: 6),
+                          Text(row['index_url'] as String? ?? '', style: const TextStyle(color: _violet, fontSize: 11)),
+                          const SizedBox(height: 10),
+                          FutureBuilder<ExtensionRepositoryIndex>(
+                            future: widget.runtime.loadExtensionRepositoryIndex(id),
+                            builder: (context, indexSnapshot) {
+                              if (indexSnapshot.connectionState != ConnectionState.done) return const LinearProgressIndicator(minHeight: 2);
+                              if (indexSnapshot.hasError) return _InlineNotice(icon: Icons.warning_amber_rounded, text: 'Refresh failed: \${indexSnapshot.error}');
+                              final index = indexSnapshot.data!;
+                              if (index.extensions.isEmpty) return const Text('No extensions listed.', style: TextStyle(color: Colors.white54, fontSize: 12));
+                              return Column(children: index.extensions.map((entry) {
+                                final installed = widget.runtime.providers.all.any((p) => p.descriptor.id == entry.id);
+                                final enabled = installed && widget.runtime.providers.isEnabled(entry.id);
+                                return Container(
+                                  margin: const EdgeInsets.only(top: 10),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(14)),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    const SizedBox(height: 4),
+                                    Text('\${entry.version} · \${entry.languageCodes.isEmpty ? 'Languages unspecified' : entry.languageCodes.join(', ')} · \${entry.contentRating}',
+                                      style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                    if (entry.description != null) Padding(
+                                      padding: const EdgeInsets.only(top: 5),
+                                      child: Text(entry.description!, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(spacing: 5, runSpacing: 4, children: entry.capabilities.map((capability) => Chip(
+                                      label: Text(capability.name, style: const TextStyle(fontSize: 10)),
+                                      visualDensity: VisualDensity.compact,
+                                    )).toList()),
+                                    if (installed) SwitchListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text('Enabled'),
+                                      subtitle: const Text('Declarative endpoints only; no downloaded code executes.'),
+                                      value: enabled,
+                                      onChanged: _busy ? null : (value) async {
+                                        try {
+                                          await widget.runtime.setExtensionEnabled(entry.id, value);
+                                          if (mounted) setState(() => _revision++);
+                                        } on Object catch (error) {
+                                          if (mounted) setState(() => _error = _friendly(error));
+                                        }
+                                      },
+                                    ) else Align(
+                                      alignment: Alignment.centerRight,
+                                      child: FilledButton.tonalIcon(
+                                        onPressed: _busy ? null : () => _install(entry.id, id),
+                                        icon: const Icon(Icons.download_rounded, size: 18),
+                                        label: const Text('Install'),
+                                      ),
+                                    ),
+                                    if (installed) Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton.icon(
+                                        onPressed: _busy ? null : () => _uninstall(entry.id),
+                                        icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                                        label: const Text('Uninstall'),
+                                      ),
+                                    ),
+                                  ]),
+                                );
+                              }).toList());
+                            },
+                          ),
+                        ]),
+                      );
+                    }).toList());
+                  },
+                ),
+                const SizedBox(height: 16),
+                const _InlineNotice(
+                  icon: Icons.info_outline_rounded,
+                  text: 'Mihon/Tachiyomi APK extensions use a different runtime and are not compatible with this declarative JSON installer.',
+                ),
+              ]),
+      )),
     );
   }
 }
