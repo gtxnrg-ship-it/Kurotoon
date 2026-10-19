@@ -118,11 +118,13 @@ class JsonEndpointSpec {
       // Uri.pathSegments encodes each segment; a supplied slash stays inside one segment.
       segments.add(segment);
     }
-    return baseUri.replace(
+    return Uri(
+      scheme: baseUri.scheme,
+      userInfo: baseUri.userInfo.isEmpty ? null : baseUri.userInfo,
+      host: baseUri.host,
+      port: baseUri.hasPort ? baseUri.port : null,
       pathSegments: segments,
-      query: parameters.isEmpty ? '' : null,
       queryParameters: parameters.isEmpty ? null : parameters,
-      fragment: '',
     );
   }
 }
