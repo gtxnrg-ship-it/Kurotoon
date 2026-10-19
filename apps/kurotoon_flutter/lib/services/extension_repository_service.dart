@@ -238,11 +238,25 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     required String manifestPath,
   }) async {
     final root = await getApplicationSupportDirectory();
-    return ExtensionInstallPathPolicy.isSafeManifestPath(
-      extensionsRoot: path.join(root.path, 'extensions'),
+    final extensionsRoot = path.join(root.path, 'extensions');
+    if (!await isSafeInstalledManifestPath(
       extensionId: extensionId,
       manifestPath: manifestPath,
-    );
+    )) {
+      return false;
+    }
+
+    // Lexical containment alone does not stop a symlink planted in an
+    // otherwise well-formed extension directory from redirecting file access.
+    final relative = path.relative(path.absolute(manifestPath), from: path.absolute(extensionsRoot));
+    var current = path.absolute(extensionsRoot);
+    for (final segment in path.split(relative)) {
+      current = path.join(current, segment);
+      if (await FileSystemEntity.type(current, followLinks: false) == FileSystemEntityType.link) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> uninstallExtension(String extensionId) async {
