@@ -49,20 +49,44 @@ jobs:
         working-directory: apps/kurotoon_flutter
         run: flutter test
 
-      - name: Build release APK
+      # Split by Android ABI so the default download contains only arm64-v8a
+      # native libraries rather than bundling ARM32, ARM64 and x86_64 together.
+      - name: Build ABI-specific release APKs
         working-directory: apps/kurotoon_flutter
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
-      - name: Name the APK Kurotoon.apk
+      - name: Name APKs and create checksums
         run: |
+          set -euo pipefail
+          output="apps/kurotoon_flutter/build/app/outputs/flutter-apk"
           mkdir -p release
-          cp apps/kurotoon_flutter/build/app/outputs/flutter-apk/app-release.apk release/Kurotoon.apk
+          test -s "$output/app-arm64-v8a-release.apk"
+          test -s "$output/app-armeabi-v7a-release.apk"
+          test -s "$output/app-x86_64-release.apk"
+          cp "$output/app-arm64-v8a-release.apk" release/Kurotoon.apk
+          cp "$output/app-armeabi-v7a-release.apk" release/Kurotoon-armeabi-v7a.apk
+          cp "$output/app-x86_64-release.apk" release/Kurotoon-x86_64.apk
+          (cd release && sha256sum Kurotoon.apk Kurotoon-armeabi-v7a.apk Kurotoon-x86_64.apk > SHA256SUMS.txt)
+          echo "ABI-specific APK sizes:"
+          du -h release/Kurotoon.apk release/Kurotoon-armeabi-v7a.apk release/Kurotoon-x86_64.apk
+          # Keep a generous guardrail for the primary phone download.
+          arm64_bytes="$(stat -c%s release/Kurotoon.apk)"
+          arm64_budget_bytes="$((40 * 1024 * 1024))"
+          if [ "$arm64_bytes" -gt "$arm64_budget_bytes" ]; then
+            echo "::error::arm64 APK exceeds the 40 MiB download budget ($arm64_bytes bytes). Inspect APK contents before raising the budget."
+            exit 1
+          fi
+          echo "arm64 APK is within the 40 MiB download budget ($arm64_bytes bytes)."
 
       - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kurotoon-Flutter-APK
-          path: release/Kurotoon.apk
+          path: |
+            release/Kurotoon.apk
+            release/Kurotoon-armeabi-v7a.apk
+            release/Kurotoon-x86_64.apk
+            release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -74,14 +98,19 @@ jobs:
           name: Kurotoon Flutter development build
           prerelease: true
           make_latest: false
-          files: release/Kurotoon.apk
+          files: |
+            release/Kurotoon.apk
+            release/Kurotoon-armeabi-v7a.apk
+            release/Kurotoon-x86_64.apk
+            release/SHA256SUMS.txt
           body: |
             Native Flutter/Dart Kurotoon Android development build.
             File: Kurotoon.apk
+            SHA-256 checksums: SHA256SUMS.txt
             Commit: ${{ github.sha }}
 
       # Stable URL for the README and in-app/update surfaces. Historical
-      # continuous-N releases remain immutable, while this tag tracks the last
+      # continuous-N releases remain available, while this tag tracks the last
       # successful main-branch build.
       - name: Publish stable latest APK download
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
@@ -91,19 +120,22 @@ jobs:
           cat > release-notes.md <<EOF
           Latest successful native Flutter/Dart Kurotoon Android development build.
           Built from commit: $GITHUB_SHA
-          Artifact: Kurotoon.apk
+          Default artifact: Kurotoon.apk (arm64-v8a; architecture-specific downloads also available)
+          Checksums: SHA256SUMS.txt
           This is a development build, not a store release; validate on device before relying on it.
           EOF
-          git tag -f continuous-latest "$GITHUB_SHA"
-          git push --force origin refs/tags/continuous-latest
           if gh release view continuous-latest >/dev/null 2>&1; then
-            gh release upload continuous-latest release/Kurotoon.apk --clobber
+            # Upload both files before moving the stable tag, so the alias is
+            # not switched to a build whose assets have not finished uploading.
+            gh release upload continuous-latest release/Kurotoon.apk release/Kurotoon-armeabi-v7a.apk release/Kurotoon-x86_64.apk release/SHA256SUMS.txt --clobber
             gh release edit continuous-latest \
               --title "Kurotoon latest Flutter development build" \
               --notes-file release-notes.md \
               --prerelease
+            git tag -f continuous-latest "$GITHUB_SHA"
+            git push --force origin refs/tags/continuous-latest
           else
-            gh release create continuous-latest release/Kurotoon.apk \
+            gh release create continuous-latest release/Kurotoon.apk release/Kurotoon-armeabi-v7a.apk release/Kurotoon-x86_64.apk release/SHA256SUMS.txt \
               --title "Kurotoon latest Flutter development build" \
               --notes-file release-notes.md \
               --prerelease \
@@ -117,8 +149,13 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Kurotoon
           prerelease: false
-          files: release/Kurotoon.apk
+          files: |
+            release/Kurotoon.apk
+            release/Kurotoon-armeabi-v7a.apk
+            release/Kurotoon-x86_64.apk
+            release/SHA256SUMS.txt
           body: |
             Native Flutter/Dart Kurotoon Android release.
             File: Kurotoon.apk
+            SHA-256 checksums: SHA256SUMS.txt
             Commit: ${{ github.sha }}
