@@ -23,7 +23,7 @@ DeclarativeExtensionManifest makeManifest({
           path: endpointPath,
           query: const {'q': '{query}', 'page': '{page}', 'limit': '{limit}'},
           resultPath: JsonPath(const ['data', 'items']),
-          fields: const {
+          fields: {
             'id': JsonPath(['id']),
             'title': JsonPath(['title']),
             'url': JsonPath(['url']),
@@ -90,7 +90,7 @@ void main() {
       path: '/series/{seriesId}',
       query: const {},
       resultPath: JsonPath(const ['data']),
-      fields: const {
+      fields: {
         'id': JsonPath(['id']),
         'title': JsonPath(['title']),
         'url': JsonPath(['url']),
