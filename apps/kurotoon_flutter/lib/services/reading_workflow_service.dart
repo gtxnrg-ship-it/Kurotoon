@@ -676,7 +676,7 @@ class ReadingWorkflowService {
     }
     try {
       final response = await _boundedProviderCall(
-        (requestToken) => source!.getPages(
+        (requestToken) => (source as ReaderPagesProvider).getPages(
           listing!.externalId,
           cancellationToken: requestToken,
           dataSaver: dataSaver,
