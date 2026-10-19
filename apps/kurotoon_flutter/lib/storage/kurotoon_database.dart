@@ -205,7 +205,6 @@ class KurotoonDatabase {
         aliases_json TEXT NOT NULL DEFAULT '[]'
       )''',
       'CREATE INDEX creator_profiles_name_idx ON creator_profiles(name COLLATE NOCASE, id)',
-      'CREATE INDEX creator_credits_work_idx ON creator_credits(work_id, creator_id)',
       '''CREATE TABLE creator_credits (
         creator_id TEXT NOT NULL,
         work_id TEXT NOT NULL,
@@ -216,6 +215,7 @@ class KurotoonDatabase {
         FOREIGN KEY(creator_id) REFERENCES creator_profiles(id) ON UPDATE CASCADE ON DELETE CASCADE,
         FOREIGN KEY(work_id) REFERENCES works(id) ON UPDATE CASCADE ON DELETE RESTRICT
       )''',
+      'CREATE INDEX creator_credits_work_idx ON creator_credits(work_id, creator_id)',
       '''CREATE TABLE identity_review_queue (
         listing_key TEXT PRIMARY KEY NOT NULL,
         candidate_json TEXT NOT NULL,
