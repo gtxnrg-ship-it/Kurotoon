@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../storage/kurotoon_database.dart';
 
-class ExtensionRepositoryService {
+class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   ExtensionRepositoryService({
     required this.database,
     HttpClient? client,
@@ -125,15 +125,40 @@ class ExtensionRepositoryService {
     await database.removeInstalledExtension(extensionId);
   }
 
-  Future<List<int>> _getBytes(Uri uri, {required int maxBytes}) async {
+  @override
+  Future<Object?> getJson(
+    Uri uri, {
+    required CancellationToken cancellationToken,
+    required int maxResponseBytes,
+  }) async {
+    final bytes = await _getBytes(
+      uri,
+      maxBytes: maxResponseBytes,
+      cancellationToken: cancellationToken,
+    );
+    cancellationToken.throwIfCancelled();
+    return jsonDecode(utf8.decode(bytes, allowMalformed: false));
+  }
+
+  Future<List<int>> _getBytes(
+    Uri uri, {
+    required int maxBytes,
+    CancellationToken? cancellationToken,
+  }) async {
+    cancellationToken?.throwIfCancelled();
     _validatePublicHttps(uri);
     await _validateResolvedAddresses(uri.host);
-    final request = await _client.getUrl(uri).timeout(requestTimeout);
-    request.followRedirects = false;
-    request.maxRedirects = 0;
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    request.headers.set(HttpHeaders.userAgentHeader, 'KuroToon/0.1 repository-client');
-    final response = await request.close().timeout(requestTimeout);
+    HttpClientRequest? request;
+    void Function()? detach;
+    try {
+      request = await _client.getUrl(uri).timeout(requestTimeout);
+      request.followRedirects = false;
+      request.maxRedirects = 0;
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(HttpHeaders.userAgentHeader, 'KuroToon/0.1 repository-client');
+      detach = cancellationToken?.onCancel((_) => request?.abort());
+      cancellationToken?.throwIfCancelled();
+      final response = await request.close().timeout(requestTimeout);
     if (response.statusCode >= 300 && response.statusCode < 400) {
       throw HttpException('Repository redirects are not followed; add the final HTTPS URL instead.', uri: uri);
     }
@@ -144,14 +169,28 @@ class ExtensionRepositoryService {
       response.detachSocket().then((socket) => socket.destroy());
       throw HttpException('Repository response exceeds the configured size limit.', uri: uri);
     }
-    final result = <int>[];
-    await for (final chunk in response.timeout(requestTimeout)) {
-      if (result.length + chunk.length > maxBytes) {
-        throw HttpException('Repository response exceeded the configured size limit.', uri: uri);
+      final result = <int>[];
+      await for (final chunk in response.timeout(requestTimeout)) {
+        cancellationToken?.throwIfCancelled();
+        if (result.length + chunk.length > maxBytes) {
+          request.abort();
+          throw HttpException('Repository response exceeded the configured size limit.', uri: uri);
+        }
+        result.addAll(chunk);
       }
-      result.addAll(chunk);
+      cancellationToken?.throwIfCancelled();
+      return result;
+    } on TimeoutException {
+      request?.abort();
+      rethrow;
+    } on Object {
+      if (cancellationToken?.isCancelled == true) {
+        throw OperationCancelled(cancellationToken!.reason);
+      }
+      rethrow;
+    } finally {
+      detach?.call();
     }
-    return result;
   }
 
   void _validatePublicHttps(Uri uri) {
