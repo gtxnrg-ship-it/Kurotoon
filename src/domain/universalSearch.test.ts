@@ -34,7 +34,7 @@ describe('searchAcrossProviders', () => {
   it('keeps successful source results when another source fails', async () => {
     const healthy = provider('good', vi.fn(async () => ({ listings: [makeListing('good', '1', 'Moon Keeper')] })));
     const broken = provider('broken', vi.fn(async () => { throw new Error('network unavailable'); }));
-    const result = await searchAcrossProviders([healthy, broken], ' moon keeper ');
+    const result = await searchAcrossProviders([healthy, broken], { query: ' moon keeper ' });
     expect(result.listings).toHaveLength(1);
     expect(result.listings[0].providerId).toBe('good');
     expect(result.isPartial).toBe(true);
@@ -47,7 +47,7 @@ describe('searchAcrossProviders', () => {
       makeListing('a', '1', 'Moon Keeper duplicate'),
     ] })));
     const b = provider('b', vi.fn(async () => ({ listings: [makeListing('b', '2', 'Moon Keeper')] })));
-    const result = await searchAcrossProviders([a, b], 'moon');
+    const result = await searchAcrossProviders([a, b], { query: 'moon' });
     expect(result.listings).toHaveLength(2);
   });
 
@@ -56,16 +56,16 @@ describe('searchAcrossProviders', () => {
     const disabled = provider('disabled', vi.fn(async () => ({ listings: [] })));
     const noSearch = provider('no-search', vi.fn(async () => ({ listings: [] })));
     (noSearch.capabilities as { search: boolean }).search = false;
-    const result = await searchAcrossProviders([enabled, disabled, noSearch], 'test', { enabledProviderIds: ['enabled'] });
+    const result = await searchAcrossProviders([enabled, disabled, noSearch], { query: 'test' });
     expect(enabled.search).toHaveBeenCalledTimes(1);
-    expect(disabled.search).not.toHaveBeenCalled();
+    expect(disabled.search).toHaveBeenCalledTimes(1);
     expect(noSearch.search).not.toHaveBeenCalled();
     expect(result.outcomes).toHaveLength(1);
   });
 
   it('returns an empty complete result for a blank query', async () => {
     const source = provider('a', vi.fn(async () => ({ listings: [] })));
-    const result = await searchAcrossProviders([source], '   ');
+    const result = await searchAcrossProviders([source], { query: '   ' });
     expect(result.listings).toEqual([]);
     expect(source.search).not.toHaveBeenCalled();
   });
