@@ -88,7 +88,7 @@ class CatalogIndex {
       }
     }
 
-    if (safeMatches.length == 1) {
+    if (safeMatches.length == 1 && reviewMatches.isEmpty) {
       final linked = _appendListing(safeMatches.single, candidate);
       return CatalogUpsertResult(status: CatalogUpsertStatus.linked, entry: linked);
     }
