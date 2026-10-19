@@ -43,6 +43,64 @@ class ExtensionInstallPathPolicy {
   }
 }
 
+class MihonRepositoryPreview {
+  MihonRepositoryPreview({
+    required this.index,
+    required List<MihonExtensionRecord> extensions,
+    required this.totalExtensionCount,
+    required this.totalSourceCount,
+    required this.indexDigest,
+  }) : extensions = List.unmodifiable(extensions);
+
+  final MihonRepositoryIndex index;
+  /// Bounded sample for preview screens; this is not the complete repository list.
+  final List<MihonExtensionRecord> extensions;
+  final int totalExtensionCount;
+  final int totalSourceCount;
+  final String indexDigest;
+
+  int get extensionCount => totalExtensionCount;
+  int get sourceCount => totalSourceCount;
+  bool get hasMorePreviewEntries => extensions.length < totalExtensionCount;
+}
+
+/// Pure parser for a fetched Mihon protobuf index and optional external list.
+/// Metadata preview does not make compiled APKs executable in KuroToon.
+MihonRepositoryPreview parseMihonRepositoryPreviewBytes({
+  required Uri indexUri,
+  required List<int> indexBytes,
+  List<int>? extensionListBytes,
+  int previewLimit = 50,
+}) {
+  if (previewLimit < 1 || previewLimit > 100) {
+    throw ArgumentError.value(previewLimit, 'previewLimit', 'Must be between 1 and 100.');
+  }
+  final index = MihonRepositoryIndex.parse(indexBytes, indexUri: indexUri);
+  late final List<MihonExtensionRecord> allExtensions;
+  if (index.extensionListUrl != null) {
+    if (extensionListBytes == null) {
+      throw const FormatException('Mihon repository requires its external extension-list payload.');
+    }
+    allExtensions = MihonRepositoryIndex.parseExtensionList(extensionListBytes);
+  } else {
+    if (extensionListBytes != null) {
+      throw const FormatException('An external extension list was supplied for an embedded-list index.');
+    }
+    allExtensions = index.extensions;
+  }
+  final totalSources = allExtensions.fold<int>(0, (sum, extension) => sum + extension.sources.length);
+  final rootDigest = sha256.convert(indexBytes).toString();
+  final listDigest = extensionListBytes == null ? 'embedded' : sha256.convert(extensionListBytes).toString();
+  final digest = sha256.convert(utf8.encode('$rootDigest:$listDigest')).toString();
+  return MihonRepositoryPreview(
+    index: index,
+    extensions: allExtensions.take(previewLimit).toList(growable: false),
+    totalExtensionCount: allExtensions.length,
+    totalSourceCount: totalSources,
+    indexDigest: digest,
+  );
+}
+
 class RepositoryPreview {
   const RepositoryPreview({
     required this.indexUri,
@@ -88,6 +146,38 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
 
   /// Call only after the UI has shown the repository identity and obtained confirmation.
   /// The index is fetched again so a stale preview cannot silently approve changed metadata.
+  /// Fetches a Mihon/Tachiyomi protobuf index for metadata preview only.
+  /// The root and optional external list use bounded downloads and the same
+  /// public-HTTPS, DNS, no-redirect checks as other repository requests.
+  Future<MihonRepositoryPreview> previewMihonRepository(
+    Uri indexUri, {
+    CancellationToken? cancellationToken,
+    int previewLimit = 50,
+  }) async {
+    final indexBytes = await _getBytes(
+      indexUri,
+      maxBytes: 4 * 1024 * 1024,
+      cancellationToken: cancellationToken,
+    );
+    cancellationToken?.throwIfCancelled();
+    final index = MihonRepositoryIndex.parse(indexBytes, indexUri: indexUri);
+    List<int>? extensionListBytes;
+    if (index.extensionListUrl != null) {
+      extensionListBytes = await _getBytes(
+        index.extensionListUrl!,
+        maxBytes: 16 * 1024 * 1024,
+        cancellationToken: cancellationToken,
+      );
+      cancellationToken?.throwIfCancelled();
+    }
+    return parseMihonRepositoryPreviewBytes(
+      indexUri: indexUri,
+      indexBytes: indexBytes,
+      extensionListBytes: extensionListBytes,
+      previewLimit: previewLimit,
+    );
+  }
+
   Future<ExtensionRepositoryIndex> addRepository(String rawUrl, {String? expectedPreviewDigest}) async {
     final preview = await previewRepository(rawUrl);
     if (expectedPreviewDigest != null && preview.indexDigest != expectedPreviewDigest) {
