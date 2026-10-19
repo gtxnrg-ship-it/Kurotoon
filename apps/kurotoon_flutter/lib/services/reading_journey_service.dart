@@ -113,6 +113,7 @@ class ReadingJourneyService {
 
   String? _resolvedDeviceId;
   bool _disposed = false;
+  Future<void> _catalogWriteQueue = Future<void>.value();
 
   Future<SearchBatch> search(
     String query, {
@@ -182,9 +183,15 @@ class ReadingJourneyService {
     return _upsertListing(candidate);
   }
 
-  Future<CatalogUpsertResult> _upsertListing(WorkCandidate candidate) async {
-    final catalog = await database.loadCatalog();
-    final priorEntry = _entryForListing(catalog, candidate.listingKey);
+  Future<CatalogUpsertResult> _upsertListing(WorkCandidate candidate) {
+    _ensureActive();
+    return _serializeCatalogWrite(() => _upsertListingSerialized(candidate));
+  }
+
+  Future<CatalogUpsertResult> _upsertListingSerialized(WorkCandidate candidate) async {
+    final matchPage = await database.loadCatalogCandidatesForMatching(candidate);
+    final priorEntry = _entryForListing(matchPage.entries, candidate.listingKey);
+    final pending = await database.loadPendingIdentityReview(candidate.listingKey);
 
     if (priorEntry != null) {
       final aliases = <String>{...priorEntry.work.alternateTitles};
@@ -200,20 +207,15 @@ class ReadingJourneyService {
         alternateTitles: aliases.toList(),
         creatorNames: creators.toList(),
         year: priorEntry.work.year ?? candidate.year,
-        format: priorEntry.work.format == WorkFormat.unknown
-            ? candidate.format
-            : priorEntry.work.format,
+        format: priorEntry.work.format == WorkFormat.unknown ? candidate.format : priorEntry.work.format,
         lockedDistinctIdentity: priorEntry.work.lockedDistinctIdentity,
       );
       final refreshedListings = priorEntry.listings
           .map((item) => item.listingKey == candidate.listingKey ? candidate : item)
           .toList();
-      final refreshedEntry = CatalogEntry(
-        work: refreshedWork,
-        listings: refreshedListings,
-        verified: priorEntry.verified,
-      );
+      final refreshedEntry = CatalogEntry(work: refreshedWork, listings: refreshedListings, verified: priorEntry.verified);
       await database.upsertCatalogEntry(refreshedEntry);
+      if (pending != null) await database.deletePendingIdentityReview(candidate.listingKey);
       return CatalogUpsertResult(
         status: CatalogUpsertStatus.alreadyKnown,
         entry: refreshedEntry,
@@ -221,10 +223,18 @@ class ReadingJourneyService {
       );
     }
 
+    if (pending != null) {
+      return CatalogUpsertResult(
+        status: CatalogUpsertStatus.alreadyKnown,
+        review: pending,
+        message: 'This listing is already awaiting identity review.',
+      );
+    }
+
     const matcher = WorkIdentityMatcher();
     final safeMatches = <CatalogEntry>[];
     final reviewMatches = <IdentityDecision>[];
-    for (final entry in catalog) {
+    for (final entry in matchPage.entries) {
       final decision = matcher.compare(entry.work, candidate);
       if (decision.verdict == IdentityVerdict.safeMatch) {
         safeMatches.add(entry);
@@ -233,7 +243,7 @@ class ReadingJourneyService {
       }
     }
 
-    if (safeMatches.length == 1 && reviewMatches.isEmpty) {
+    if (!matchPage.hasMore && safeMatches.length == 1 && reviewMatches.isEmpty) {
       final target = safeMatches.single;
       final aliases = <String>{...target.work.alternateTitles};
       if (WorkIdentityMatcher.normalizeTitle(candidate.title) !=
@@ -259,7 +269,7 @@ class ReadingJourneyService {
       return CatalogUpsertResult(status: CatalogUpsertStatus.linked, entry: linked);
     }
 
-    if (safeMatches.length > 1 || reviewMatches.isNotEmpty) {
+    if (matchPage.hasMore || safeMatches.length > 1 || reviewMatches.isNotEmpty) {
       final review = PendingIdentityReview(
         key: candidate.listingKey,
         candidate: candidate,
@@ -272,7 +282,9 @@ class ReadingJourneyService {
       return CatalogUpsertResult(
         status: CatalogUpsertStatus.reviewRequired,
         review: review,
-        message: 'A possible duplicate needs an explicit decision; no automatic merge was performed.',
+        message: matchPage.hasMore
+            ? 'The catalog has too many possible matches to resolve safely automatically.'
+            : 'A possible duplicate needs an explicit decision; no automatic merge was performed.',
       );
     }
 
@@ -297,26 +309,28 @@ class ReadingJourneyService {
     String listingKey, {
     String? targetWorkId,
     bool createAsDistinctWork = false,
-  }) async {
+  }) {
     _ensureActive();
+    return _serializeCatalogWrite(() => _resolveIdentityReviewSerialized(
+      listingKey,
+      targetWorkId: targetWorkId,
+      createAsDistinctWork: createAsDistinctWork,
+    ));
+  }
+
+  Future<CatalogUpsertResult> _resolveIdentityReviewSerialized(
+    String listingKey, {
+    String? targetWorkId,
+    bool createAsDistinctWork = false,
+  }) async {
     if ((targetWorkId == null) == !createAsDistinctWork) {
       throw ArgumentError('Choose exactly one of targetWorkId or createAsDistinctWork.');
     }
+    final review = await database.loadPendingIdentityReview(listingKey);
+    if (review == null) throw ArgumentError.value(listingKey, 'listingKey', 'No pending identity review exists.');
 
-    final pending = await database.loadPendingIdentityReviews();
-    PendingIdentityReview? review;
-    for (final candidateReview in pending) {
-      if (candidateReview.key == listingKey) {
-        review = candidateReview;
-        break;
-      }
-    }
-    if (review == null) {
-      throw ArgumentError.value(listingKey, 'listingKey', 'No pending identity review exists.');
-    }
-
-    final catalog = await database.loadCatalog();
-    final alreadyKnown = _entryForListing(catalog, listingKey);
+    final matchPage = await database.loadCatalogCandidatesForMatching(review.candidate);
+    final alreadyKnown = _entryForListing(matchPage.entries, listingKey);
     if (alreadyKnown != null) {
       await database.deletePendingIdentityReview(listingKey);
       return CatalogUpsertResult(
@@ -328,20 +342,14 @@ class ReadingJourneyService {
 
     if (targetWorkId != null) {
       CatalogEntry? target;
-      for (final entry in catalog) {
-        if (entry.work.id == targetWorkId) {
-          target = entry;
-          break;
-        }
+      for (final entry in matchPage.entries) {
+        if (entry.work.id == targetWorkId) { target = entry; break; }
       }
-      if (target == null) {
-        throw ArgumentError.value(targetWorkId, 'targetWorkId', 'Unknown catalog work.');
-      }
+      target ??= await database.loadCatalogEntryById(targetWorkId);
+      if (target == null) throw ArgumentError.value(targetWorkId, 'targetWorkId', 'Unknown catalog work.');
       final aliases = <String>{...target.work.alternateTitles};
       if (WorkIdentityMatcher.normalizeTitle(review.candidate.title) !=
-          WorkIdentityMatcher.normalizeTitle(target.work.title)) {
-        aliases.add(review.candidate.title);
-      }
+          WorkIdentityMatcher.normalizeTitle(target.work.title)) aliases.add(review.candidate.title);
       aliases.addAll(review.candidate.alternateTitles);
       final creators = <String>{...target.work.creatorNames, ...review.candidate.creatorNames};
       final linked = CatalogEntry(
@@ -351,9 +359,7 @@ class ReadingJourneyService {
           alternateTitles: aliases.toList(),
           creatorNames: creators.toList(),
           year: target.work.year ?? review.candidate.year,
-          format: target.work.format == WorkFormat.unknown
-              ? review.candidate.format
-              : target.work.format,
+          format: target.work.format == WorkFormat.unknown ? review.candidate.format : target.work.format,
           lockedDistinctIdentity: target.work.lockedDistinctIdentity,
         ),
         listings: [...target.listings, review.candidate],
@@ -409,14 +415,7 @@ class ReadingJourneyService {
       throw ArgumentError.value(translatedLanguages, 'translatedLanguages');
     }
 
-    final catalog = await database.loadCatalog();
-    CatalogEntry? entry;
-    for (final item in catalog) {
-      if (item.work.id == workId) {
-        entry = item;
-        break;
-      }
-    }
+    final entry = await database.loadCatalogEntryById(workId);
     if (entry == null) throw ArgumentError.value(workId, 'workId', 'Unknown catalog work.');
 
     final selectedListing = _selectListing(
@@ -598,14 +597,7 @@ class ReadingJourneyService {
     if (!RegExp(r'^[a-z]{2,3}(?:-[a-z]{2})?$').hasMatch(language)) {
       throw ArgumentError.value(languageCode, 'languageCode');
     }
-    final catalog = await database.loadCatalog();
-    CatalogEntry? entry;
-    for (final item in catalog) {
-      if (item.work.id == workId) {
-        entry = item;
-        break;
-      }
-    }
+    final entry = await database.loadCatalogEntryById(workId);
     if (entry == null) throw ArgumentError.value(workId, 'workId', 'Unknown catalog work.');
     final listings = entry.listings.where((item) => item.providerId == providerId);
     if (listings.isEmpty) {
@@ -676,8 +668,11 @@ class ReadingJourneyService {
   Future<List<LibraryBook>> loadLibrary({LibraryStatus? status}) async {
     _ensureActive();
     final rows = await database.loadLibrary(status: status);
-    final catalog = await database.loadCatalog();
-    final byWork = {for (final entry in catalog) entry.work.id: entry};
+    final workIds = rows.map((record) => record.workId).toSet();
+    final loadedEntries = await Future.wait(workIds.map(database.loadCatalogEntryById));
+    final byWork = <String, CatalogEntry>{
+      for (final entry in loadedEntries.whereType<CatalogEntry>()) entry.work.id: entry,
+    };
     final books = await Future.wait(rows.map((record) async {
       final entry = byWork[record.workId];
       final edition = await database.loadEdition(record.editionId);
@@ -916,6 +911,19 @@ class ReadingJourneyService {
 
   static String _stableId(String prefix, String value) =>
       prefix + '/' + sha256.convert(utf8.encode(value)).toString();
+
+  Future<T> _serializeCatalogWrite<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+    _catalogWriteQueue = _catalogWriteQueue.then((_) async {
+      try {
+        _ensureActive();
+        completer.complete(await action());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    });
+    return completer.future;
+  }
 
   void _ensureActive() {
     if (_disposed) throw StateError('Reading journey service is disposed.');
