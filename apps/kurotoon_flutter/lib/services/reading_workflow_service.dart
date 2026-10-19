@@ -374,6 +374,42 @@ class ReadingWorkflowService {
         message = response.message;
       }
 
+      // Treat provider chapter metadata as untrusted. A malformed or buggy
+      // source must not write chapters into a different work/edition or make a
+      // chapter from another language appear in this edition's reading list.
+      String? invalidPageReason;
+      for (final chapter in page) {
+        if (chapter.editionId != work.edition.id) {
+          invalidPageReason = 'The source returned a chapter for a different edition.';
+          break;
+        }
+        if (chapter.listings.isEmpty ||
+            chapter.listings.any((listing) => listing.providerId != work.providerId)) {
+          invalidPageReason = 'The source returned a chapter with invalid listing provenance.';
+          break;
+        }
+        if (chapter.listings.any((listing) =>
+            listing.languageCode != null &&
+            listing.languageCode!.trim().toLowerCase() != languages.single)) {
+          invalidPageReason = 'The source returned a chapter in a different translation language.';
+          break;
+        }
+      }
+      if (invalidPageReason != null) {
+        if (all.isEmpty) {
+          return ChapterSyncResult(
+            status: ProviderResultStatus.failed,
+            chapters: const [],
+            nextOffset: offset,
+            reachedEnd: false,
+            message: invalidPageReason,
+          );
+        }
+        status = ProviderResultStatus.partial;
+        message = invalidPageReason;
+        break;
+      }
+
       var added = 0;
       final editions = <String, EditionRecord>{};
       for (final chapter in page) {
