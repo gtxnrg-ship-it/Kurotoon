@@ -8,7 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeedProvider, ReaderPagesProvider {
-  _FakeReaderProvider({required this.providerId, this.title = 'Blue Star'})
+  _FakeReaderProvider({required this.providerId})
       : _chapters = List<ChapterUnit>.generate(3, (index) {
           final id = 'chapter-${index + 1}';
           return ChapterUnit(
@@ -30,7 +30,7 @@ class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeed
         });
 
   final String providerId;
-  final String title;
+  final String title = 'Blue Star';
   final List<ChapterUnit> _chapters;
   int pageRequests = 0;
   String? lastRequestedPageChapterId;
