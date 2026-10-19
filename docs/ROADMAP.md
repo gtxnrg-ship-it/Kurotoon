@@ -17,10 +17,10 @@ Status: **In progress** — initial web build and CI are verified; Android feasi
 
 ## Phase 1 — App shell and design system
 
-Status: **In progress** — first procedural cosmic backdrop has been added on a feature branch; CI and device validation are pending.
+Status: **In progress** — the initial procedural cosmic canvas is merged and CI-verified; physical-device performance validation remains pending.
 
 - [ ] Establish responsive dark-first design tokens, typography, spacing, surfaces, motion, focus states, and reduced-motion support.
-- [x] Add a first procedural cosmic canvas with layered colour fields, starfield, subtle large-scale filaments, pointer/touch ripples, visibility pausing, and reduced-motion handling (awaiting CI/device verification).
+- [x] Add a first procedural cosmic canvas with layered colour fields, starfield, subtle large-scale filaments, pointer/touch ripples, visibility pausing, and reduced-motion handling (CI-verified; physical-device validation pending).
 - [ ] Add adaptive quality settings and validate GPU/memory/battery behaviour on low-end Android hardware.
 - [ ] Implement persistent five-destination navigation: Home, Browser, Shop, Library, Me.
 - [ ] Add empty, loading, error, offline, and retry states.
@@ -45,10 +45,11 @@ Status: **In progress**
 
 ## Phase 3 — First real source and core reader
 
-Status: **Planned**
+Status: **In progress** — a MangaDex adapter and live Browser search are being implemented on a feature branch; CI is pending. Built-in chapter reading is not complete.
 
-- [ ] Choose one provider only after confirming its current terms, reliability, and implementation fit.
-- [ ] Prove search → series details → chapter list → page retrieval.
+- [x] Add a typed MangaDex search adapter with cancellation, timeout, explicit provider failures, and a conservative content-rating default (feature branch; pending CI).
+- [x] Render real MangaDex search results with source attribution and honest loading/empty/error states (feature branch; pending CI).
+- [ ] Prove the complete in-app flow: search → series details → chapter list → page retrieval.
 - [ ] Build image preloading with cancellation and bounded concurrency.
 - [ ] Save and restore reading position reliably.
 - [ ] Support next/previous chapter and recover from missing pages.
