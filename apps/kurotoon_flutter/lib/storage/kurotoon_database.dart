@@ -581,7 +581,7 @@ class KurotoonDatabase {
     } catch (error, stackTrace) {
       _catalogSearchIndexFuture = null;
       completer.completeError(error, stackTrace);
-      rethrow;
+      return completer.future;
     }
   }
 
