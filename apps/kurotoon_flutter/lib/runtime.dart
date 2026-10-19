@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -31,6 +32,7 @@ class KurotoonRuntime {
   final KurotoonDatabase? database;
   ExtensionRepositoryService? _extensionRepositoryService;
   Future<CacheStorageService>? _cacheStorageFuture;
+  bool _disposing = false;
   final Map<String, String> extensionLoadErrors = {};
 
   /// Lazily opens the filesystem-backed cache manager. All cache writes share
@@ -60,6 +62,12 @@ class KurotoonRuntime {
       if (saved != null) providers.setEnabled(provider.descriptor.id, saved);
     }
     await loadInstalledExtensions();
+    for (final provider in providers.all) {
+      final savedHealth = await store.getSetting<Map<String, Object?>>(
+        'provider.health.' + provider.descriptor.id,
+      );
+      if (savedHealth != null) providerHealth.restoreFromJson(provider.descriptor.id, savedHealth);
+    }
   }
 
   Future<void> loadInstalledExtensions() async {
@@ -160,6 +168,7 @@ class KurotoonRuntime {
   }
 
   Future<void> dispose() async {
+    _disposing = true;
     providers.dispose();
     _extensionRepositoryService?.dispose();
     final pendingCache = _cacheStorageFuture;
@@ -176,6 +185,17 @@ class KurotoonRuntime {
   final ProviderRegistry providers;
   final StorageBudget storageBudget;
   final ReaderTimeline readerTimeline;
+  late final ProviderHealthTracker providerHealth = ProviderHealthTracker(onChanged: _persistProviderHealth);
+
+  void _persistProviderHealth(ProviderHealthSnapshot snapshot) {
+    final store = database;
+    if (_disposing || store == null) return;
+    unawaited(
+      store.setSetting('provider.health.' + snapshot.providerId, snapshot.toJson()).catchError(
+        (Object _) {},
+      ),
+    );
+  }
 
   ProviderCoordinator createSearchCoordinator({
     int maxConcurrentProviders = 4,
@@ -185,5 +205,6 @@ class KurotoonRuntime {
         providers,
         maxConcurrentProviders: maxConcurrentProviders,
         providerTimeout: providerTimeout,
+        healthTracker: providerHealth,
       );
 }
