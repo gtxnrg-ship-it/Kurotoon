@@ -72,6 +72,11 @@ export interface ChapterListing {
   providerChapterId: string;
   url: string;
   title?: string;
+  /** Chapter number as supplied by the provider; kept as text to preserve labels such as 12.5 or oneshot. */
+  numberLabel?: string;
+  volumeLabel?: string;
+  sortOrder?: number;
+  kind?: ChapterKind;
   languageCode?: LanguageCode;
   pageCount?: number;
   publishedAt?: string;
