@@ -72,7 +72,6 @@ class VoicePackStorageService {
       availableStorageBytes: availableStorageBytes,
     );
     if (!decision.allowed) throw VoicePackInstallException(decision.reason);
-    await _validateResolvedAddresses(pack.downloadUrl.host);
 
     final root = await _root();
     final packDirectory = Directory(path.join(root.path, pack.id, pack.version, pack.sha256.toLowerCase()));
@@ -86,6 +85,7 @@ class VoicePackStorageService {
       return target.path;
     }
 
+    await _validateResolvedAddresses(pack.downloadUrl.host);
     final temporary = File(path.join(
       packDirectory.path,
       '.model-${DateTime.now().microsecondsSinceEpoch}.pending',
