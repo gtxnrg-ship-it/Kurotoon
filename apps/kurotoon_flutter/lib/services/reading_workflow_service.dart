@@ -355,9 +355,8 @@ class ReadingWorkflowService {
           ...possibleReviews,
         ],
       );
-      await database.savePendingIdentityReview(review);
       final isolated = _newCatalogEntry(candidate);
-      await database.upsertCatalogEntry(isolated);
+      await database.upsertCatalogEntryWithPendingIdentityReview(isolated, review);
       return CatalogAdmissionResult(
         entry: isolated,
         admission: CatalogAdmission.reviewRequired,
