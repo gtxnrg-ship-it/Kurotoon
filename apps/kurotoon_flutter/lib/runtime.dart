@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:kurotoon_core/kurotoon_core.dart';
 import 'services/extension_repository_service.dart';
+import 'storage/cache_storage_service.dart';
 import 'storage/kurotoon_database.dart';
 
 /// Composition root for application services. The visual shell deliberately
@@ -29,7 +30,21 @@ class KurotoonRuntime {
 
   final KurotoonDatabase? database;
   ExtensionRepositoryService? _extensionRepositoryService;
+  Future<CacheStorageService>? _cacheStorageFuture;
   final Map<String, String> extensionLoadErrors = {};
+
+  /// Lazily opens the filesystem-backed cache manager. All cache writes share
+  /// the same storage budget and persistent metadata database.
+  Future<CacheStorageService> get cacheStorage {
+    final store = database;
+    if (store == null) {
+      return Future.error(StateError('Persistent storage is required for cache management.'));
+    }
+    return _cacheStorageFuture ??= CacheStorageService.create(
+      database: store,
+      budget: storageBudget,
+    );
+  }
 
   ExtensionRepositoryService? get extensionRepositories {
     final store = database;
@@ -144,6 +159,14 @@ class KurotoonRuntime {
   Future<void> dispose() async {
     providers.dispose();
     _extensionRepositoryService?.dispose();
+    final pendingCache = _cacheStorageFuture;
+    if (pendingCache != null) {
+      try {
+        await (await pendingCache).dispose();
+      } on Object {
+        // Database shutdown still needs to proceed if cache initialization failed.
+      }
+    }
     await database?.close();
   }
 
