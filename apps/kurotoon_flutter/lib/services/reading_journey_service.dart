@@ -398,9 +398,13 @@ class ReadingJourneyService {
     if (offset < 0 || pageSize < 1 || pageSize > 500) {
       throw ArgumentError('Chapter pagination requires offset >= 0 and limit between 1 and 500.');
     }
-    if (translatedLanguages.isEmpty ||
-        translatedLanguages.length > 8 ||
-        translatedLanguages.any((language) =>
+    final languages = translatedLanguages
+        .map((language) => language.trim().toLowerCase())
+        .toSet()
+        .toList();
+    if (languages.isEmpty ||
+        languages.length > 8 ||
+        languages.any((language) =>
             !RegExp(r'^[a-z]{2,3}(?:-[a-z]{2})?$').hasMatch(language))) {
       throw ArgumentError.value(translatedLanguages, 'translatedLanguages');
     }
@@ -432,7 +436,7 @@ class ReadingJourneyService {
       request: () => provider.getChapters(
         selectedListing.externalId,
         cancellationToken: token,
-        translatedLanguages: List.unmodifiable(translatedLanguages),
+        translatedLanguages: List.unmodifiable(languages),
         limit: pageSize,
         offset: offset,
       ),
@@ -446,37 +450,44 @@ class ReadingJourneyService {
     }
 
     for (final rawChapter in page) {
-      final matchingListings = rawChapter.listings
-          .where((listing) => listing.providerId == provider.descriptor.id)
-          .toList();
+      final matchingListings = rawChapter.listings.where((listing) {
+        if (listing.providerId != provider.descriptor.id) return false;
+        final language = listing.languageCode?.trim().toLowerCase();
+        return language == null || languages.contains(language);
+      }).toList();
       if (matchingListings.isEmpty) {
-        warnings.add('A chapter without matching source provenance was skipped.');
+        warnings.add('A chapter without matching source provenance or requested language was skipped.');
         continue;
       }
-      final sourceListing = matchingListings.first;
-      if (!seen.add(sourceListing.key)) continue;
-      final language = (sourceListing.languageCode ?? translatedLanguages.first).toLowerCase();
-      final editionId = _editionId(
-        workId: workId,
-        providerId: provider.descriptor.id,
-        seriesExternalId: selectedListing.externalId,
-        language: language,
-      );
-      final localChapter = ChapterUnit(
-        id: _stableId('chapter', sourceListing.key),
-        editionId: editionId,
-        title: rawChapter.title,
-        chapterNumber: rawChapter.chapterNumber,
-        volumeNumber: rawChapter.volumeNumber,
-        kind: rawChapter.kind,
-        miniGroupId: rawChapter.miniGroupId == null
-            ? null
-            : _stableId('mini', provider.descriptor.id + ':' + rawChapter.miniGroupId!),
-        miniIndex: rawChapter.miniIndex,
-        miniCount: rawChapter.miniCount,
-        listings: [sourceListing],
-      );
-      normalized.add(localChapter);
+      // A source may return one chapter record with multiple translation
+      // listings. Keep each language as a distinct edition and retain only the
+      // listing that actually belongs to that edition.
+      for (final sourceListing in matchingListings) {
+        if (!seen.add(sourceListing.key)) continue;
+        final language = (sourceListing.languageCode ?? languages.first).trim().toLowerCase();
+        if (!languages.contains(language)) continue;
+        final editionId = _editionId(
+          workId: workId,
+          providerId: provider.descriptor.id,
+          seriesExternalId: selectedListing.externalId,
+          language: language,
+        );
+        final localChapter = ChapterUnit(
+          id: _stableId('chapter', sourceListing.key),
+          editionId: editionId,
+          title: rawChapter.title,
+          chapterNumber: rawChapter.chapterNumber,
+          volumeNumber: rawChapter.volumeNumber,
+          kind: rawChapter.kind,
+          miniGroupId: rawChapter.miniGroupId == null
+              ? null
+              : _stableId('mini', provider.descriptor.id + ':' + rawChapter.miniGroupId!),
+          miniIndex: rawChapter.miniIndex,
+          miniCount: rawChapter.miniCount,
+          listings: [sourceListing],
+        );
+        normalized.add(localChapter);
+      }
     }
 
     final editions = <String, EditionRecord>{};
