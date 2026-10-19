@@ -14,7 +14,7 @@
 - [ ] Run the native product flows against live sources on-device.
 - [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
-Last verified APK build: commit `026b282110914f6f4c2c92092d4a25da8ec6cb8f`; stable alias: `continuous-latest`. This native Flutter APK includes the managed cache-enforcement and persisted provider-health/backoff changes. The direct link always tracks the latest successful main-branch build; newer documentation/test-only commits do not change the app binary.
+Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stable alias: `continuous-latest`. This native Flutter APK includes managed cache enforcement and persisted provider-health/backoff. The release now contains an arm64-v8a default APK, separate armeabi-v7a and x86_64 builds, and `SHA256SUMS.txt`. The direct link always tracks the latest successful main-branch build.
 
 ## Progress dashboard
 
