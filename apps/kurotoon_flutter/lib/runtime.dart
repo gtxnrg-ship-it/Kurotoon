@@ -7,9 +7,14 @@ class KurotoonRuntime {
     ProviderRegistry? providers,
     StorageBudget? storageBudget,
     ReaderTimeline? readerTimeline,
-  })  : providers = providers ?? ProviderRegistry(),
+  })  : providers = providers ?? _createDefaultProviders(),
         storageBudget = storageBudget ?? StorageBudget(),
         readerTimeline = readerTimeline ?? const ReaderTimeline();
+
+  static ProviderRegistry _createDefaultProviders() => ProviderRegistry()
+    ..register(MangaDexMultimediaProvider());
+
+  void dispose() => providers.dispose();
 
   final ProviderRegistry providers;
   final StorageBudget storageBudget;
