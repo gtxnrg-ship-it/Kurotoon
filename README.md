@@ -1,8 +1,8 @@
-# KuroToon 🌌
+# Kurotoon
 
 > **[⬇️ Download the latest Android APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)** · [All releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases) · [Build history](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml)
 
-**KuroToon is being built as a native Flutter/Dart app—not a website wrapped in Capacitor.** The default download is an `arm64-v8a` APK to avoid bundling unused CPU architectures. Older 32-bit ARM devices can use `Kurotoon-armeabi-v7a.apk`; x86-64 builds and SHA-256 checksums are included on the [latest release](https://github.com/gtxnrg-ship-it/Kurotoon/releases/tag/continuous-latest). This is a development build; install and test it on your device before relying on it.
+**Kurotoon is being built as a native Flutter/Dart app—not a website wrapped in Capacitor.** The stable `continuous-latest` alias is updated only after a successful main-branch build. The default download is `arm64-v8a` to avoid bundling unused CPU architectures; compatible 32-bit ARM and x86-64 builds are also published with SHA-256 checksums. This is a development build; install and test it on your device before relying on it.
 
 A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolving cosmic universe. The goal is a lightweight, polished reading app with a unified multi-source catalog, a durable user-owned library, safe repositories/extensions, and optional synchronized voice, audio, music and haptics.
 
@@ -11,7 +11,7 @@ A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolv
 ## 🚦 Project dashboard
 
 **Last roadmap checkpoint:** 19 October 2026  
-**Overall product estimate:** **~42%**  
+**Overall product estimate:** **~40% (weighted estimate: 39.75%)**  
 **Backend foundation estimate:** **~63–65%**
 
 These are engineering estimates based on the roadmap and implementation evidence—not code-line counts, automated coverage, or a claim that the product is almost finished. Backend models and safety policies count as foundation work; a feature is not considered complete until its real app flow is integrated and tested.
@@ -32,6 +32,25 @@ These are engineering estimates based on the roadmap and implementation evidence
 **How to read this:** the foundation is ahead of the end-user experience. A green CI run proves that the tested code builds and its automated tests pass; it does not prove real-source reliability, phone performance, or complete feature wiring.
 
 For the detailed acceptance checklist, see the [Roadmap](docs/ROADMAP.md).
+
+### How the headline percentage is calculated
+
+The headline score is a weighted engineering estimate, not a code-line count. End-user workflows receive most of the weight. Schemas or policy classes earn foundation credit, but not full feature credit until they are integrated and tested in a real user flow.
+
+| Workstream | Weight | Estimate | Weighted points |
+|---|---:|---:|---:|
+| Native build and release delivery | 5% | 90% | 4.50 |
+| Domain models and policies | 10% | 70% | 7.00 |
+| Provider runtime and live sources | 10% | 58% | 5.80 |
+| Persistence and extension safety | 10% | 62% | 6.20 |
+| Cross-source catalog integration | 15% | 45% | 6.75 |
+| Reader and library end-to-end | 30% | 20% | 6.00 |
+| Galaxy polish and accessibility | 10% | 25% | 2.50 |
+| Voice/music/haptics/particle runtime | 10% | 10% | 1.00 |
+| **Total** | **100%** | — | **39.75%** |
+
+This rounds to **~40% overall**. Backend foundations are approximately **63–65%** because safety/data scaffolding has moved ahead, while several core end-user journeys—especially native Reader and Library—are still incomplete. Recalculate the dashboard when implementation or acceptance evidence changes, not just when documentation is edited.
+
 
 ## 🎯 Product direction
 
@@ -144,13 +163,14 @@ The checkbox means its acceptance gate is met—not merely that a class, screen 
 
 ### Android APK
 
-**[Download Kurotoon.apk](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)**
+**[Download the latest Android APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)** — arm64-v8a default build.
 
-- The stable continuous-latest URL is intended to track the latest successful main-branch development build.
-- [Browse all releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases).
-- [Inspect Android build runs](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml).
-- If the direct link is temporarily unavailable, open the build history and select a successful run; workflow artifacts have limited retention.
-- Development APKs are for testing, not a claim of production-store signing or release readiness. Android may ask you to confirm installation from your chosen source.
+- [32-bit ARM APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon-armeabi-v7a.apk) for compatible older devices.
+- [x86-64 APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon-x86_64.apk) for compatible Android emulators/devices.
+- [SHA-256 checksum manifest](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/SHA256SUMS.txt). Download it alongside the APK(s), keep them in the same folder, then run `sha256sum -c SHA256SUMS.txt`.
+- [Browse numbered releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases) or [inspect Android build runs](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml).
+- The release workflow publishes all architecture variants and checksums only after analysis, tests and APK compilation succeed. Temporary workflow artifacts have limited retention; numbered release assets are the user-facing download surface.
+- Development APKs are for testing, not a claim of production-store signing or physical-device certification. Android may ask you to confirm installation from your chosen source.
 
 ### Build locally
 
@@ -173,11 +193,31 @@ The shared Dart core lives in packages/kurotoon_core. Follow the CI workflows as
 5. Do not mark a feature verified without its stated acceptance evidence.
 6. Update this README and the roadmap when implementation status changes.
 
+## 🧰 Handoff contract for future agents
+
+Read the product vision, architecture, decision log, roadmap, backend foundation, data foundation and extension-repository contract before making architectural changes.
+
+- Keep **Flutter/Dart** as the native application. Do not replace Android with a Capacitor/WebView wrapper.
+- Preserve bottom navigation in this order: **Home, Browser, Shop, Library, Me**. Reader is a separate route; repository management lives under Me/settings.
+- Galaxy is a living, adaptive atmosphere—slow layered colour fields, stars and restrained particles. Contrast, readability, battery, accessibility and stable comic rendering take priority over visual effects.
+- Keep MangaDex disableable; never make provider-specific identifiers the global work identity.
+- Separate Work, Edition, ProviderListing, Chapter and ChapterListing. Title similarity alone must never trigger an automatic merge; retain source provenance and support review/correction.
+- Treat repository data as untrusted. Declarative JSON manifests only; no arbitrary downloaded code execution and no bulk installation when a repository is added.
+- Keep disposable cache separate from library, settings, progress and explicitly pinned/offline content. Every cache producer should use the bounded service before the cache-budget requirement is considered complete.
+- Provider failures, cooldowns, cancellation and partial responses must remain explicit. Do not retry aggressively or overwhelm community sources.
+- Shop mechanics remain undefined until the product owner specifies them.
+- Do not claim voice/music/haptics/particles, cloud sync, all-platform support, physical-device readiness or measured 60 FPS until integrated and tested.
+- A green CI run proves only the checked build/tests; test real source flows and install the APK on physical Android hardware.
+- Add unit tests to policy changes, migration/recovery tests to schema changes, and update the roadmap when acceptance evidence changes.
+
 ## 📖 Project documentation
 
 - [Roadmap and progress dashboard](docs/ROADMAP.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Product vision](docs/PRODUCT_VISION.md)
+- [Dart backend foundation](docs/DART_BACKEND_FOUNDATION.md)
+- [Local-first data foundation](docs/DATA_FOUNDATION.md)
+- [Extension repository contract](docs/EXTENSION_REPOSITORIES.md)
 - [Decision log](docs/DECISIONS.md)
 
 ---
