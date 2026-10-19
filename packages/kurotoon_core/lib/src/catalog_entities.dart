@@ -66,7 +66,7 @@ class ChapterUnit {
     required this.id,
     required this.editionId,
     required this.kind,
-    required this.listings,
+    required List<ChapterListing> listings,
     this.title,
     this.chapterNumber,
     this.volumeNumber,
@@ -126,7 +126,7 @@ class ChapterUnit {
 }
 
 class ChapterGroup {
-  ChapterGroup({required this.id, required this.units}) : units = List.unmodifiable(units);
+  ChapterGroup({required this.id, required List<ChapterUnit> units}) : units = List.unmodifiable(units);
 
   final String id;
   final List<ChapterUnit> units;
@@ -205,8 +205,8 @@ class CreatorProfile {
   CreatorProfile({
     required this.id,
     required this.name,
-    this.aliases = const [],
-    this.credits = const [],
+    List<String> aliases = const [],
+    List<CreatorCredit> credits = const [],
   })  : aliases = List.unmodifiable(aliases),
         credits = List.unmodifiable(credits) {
     if (id.trim().isEmpty || name.trim().isEmpty) {
