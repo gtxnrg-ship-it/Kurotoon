@@ -575,6 +575,178 @@ class KurotoonDatabase {
     });
   }
 
+
+  Future<void> savePendingIdentityReview(PendingIdentityReview review) async {
+    _ensureOpen();
+    await _database.insert(
+      'identity_review_queue',
+      {
+        'listing_key': review.key,
+        'candidate_json': jsonEncode(_candidateMap(review.candidate)),
+        'reason_json': jsonEncode(review.possibleMatches.map((decision) => {
+          'verdict': decision.verdict.name,
+          'score': decision.score,
+          'evidence': decision.evidence,
+        }).toList()),
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<PendingIdentityReview>> loadPendingIdentityReviews() async {
+    _ensureOpen();
+    final rows = await _database.query('identity_review_queue', orderBy: 'created_at ASC');
+    final reviews = <PendingIdentityReview>[];
+    for (final row in rows) {
+      final candidate = _candidateFromJson(row['candidate_json'] as String);
+      if (candidate == null) continue;
+      final decoded = _tryDecode(row['reason_json'] as String);
+      final decisions = <IdentityDecision>[];
+      if (decoded is List) {
+        for (final item in decoded.whereType<Map>()) {
+          final verdictName = item['verdict'];
+          final score = item['score'];
+          final evidence = item['evidence'];
+          if (verdictName is! String || score is! num || evidence is! List) continue;
+          final verdict = IdentityVerdict.values.where((value) => value.name == verdictName);
+          if (verdict.isEmpty) continue;
+          decisions.add(IdentityDecision(
+            verdict: verdict.first,
+            score: score.toDouble(),
+            evidence: evidence.whereType<String>().toList(growable: false),
+          ));
+        }
+      }
+      reviews.add(PendingIdentityReview(
+        key: row['listing_key'] as String,
+        candidate: candidate,
+        possibleMatches: decisions,
+      ));
+    }
+    return List.unmodifiable(reviews);
+  }
+
+  Future<void> deletePendingIdentityReview(String listingKey) async {
+    _ensureOpen();
+    await _database.delete('identity_review_queue', where: 'listing_key = ?', whereArgs: [listingKey]);
+  }
+
+  Future<CreatorProfile?> loadCreatorProfile(String creatorId) async {
+    _ensureOpen();
+    final profiles = await _database.query(
+      'creator_profiles',
+      where: 'id = ?',
+      whereArgs: [creatorId],
+      limit: 1,
+    );
+    if (profiles.isEmpty) return null;
+    final rows = await _database.query('creator_credits', where: 'creator_id = ?', whereArgs: [creatorId]);
+    final credits = <CreatorCredit>[];
+    for (final row in rows) {
+      credits.add(CreatorCredit(
+        workId: row['work_id'] as String,
+        editionId: row['edition_id'] as String?,
+        providerId: row['provider_id'] as String?,
+        role: _enumByName(CreatorRole.values, row['role'] as String, CreatorRole.other),
+      ));
+    }
+    return CreatorProfile(
+      id: profiles.single['id'] as String,
+      name: profiles.single['name'] as String,
+      aliases: _st
+  static Map<String, Object?> _candidateMap(WorkCandidate candidate) => {
+        'providerId': candidate.providerId,
+        'externalId': candidate.externalId,
+        'title': candidate.title,
+        'providerUrl': candidate.providerUrl.toString(),
+        'alternateTitles': candidate.alternateTitles,
+        'creatorNames': candidate.creatorNames,
+        'year': candidate.year,
+        'format': candidate.format.name,
+        'language': candidate.language,
+        'description': candidate.description,
+        'coverUrl': candidate.coverUrl?.toString(),
+        'tags': candidate.tags,
+      };
+
+  static Object? _tryDecode(String encoded) {
+    try {
+      return jsonDecode(encoded);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  static WorkCandidate? _candidateFromJson(String encoded) {
+    final decoded = _tryDecode(encoded);
+    if (decoded is! Map) return null;
+    final providerId = decoded['providerId'];
+    final externalId = decoded['externalId'];
+    final title = decoded['title'];
+    final providerUrl = Uri.tryParse(decoded['providerUrl'] is String ? decoded['providerUrl'] as String : '');
+    if (providerId is! String || externalId is! String || title is! String ||
+        providerUrl == null || !providerUrl.isAbsolute || providerUrl.host.isEmpty) {
+      return null;
+    }
+    final coverValue = decoded['coverUrl'];
+    final cover = coverValue is String ? Uri.tryParse(coverValue) : null;
+    final yearValue = decoded['year'];
+    return WorkCandidate(
+      providerId: providerId,
+      externalId: externalId,
+      title: title,
+      providerUrl: providerUrl,
+      alternateTitles: decoded['alternateTitles'] is List
+          ? (decoded['alternateTitles'] as List).whereType<String>().toList()
+          : const [],
+      creatorNames: decoded['creatorNames'] is List
+          ? (decoded['creatorNames'] as List).whereType<String>().toList()
+          : const [],
+      year: yearValue is int ? yearValue : null,
+      format: _enumByName(WorkFormat.values, decoded['format'] is String ? decoded['format'] as String : '', WorkFormat.unknown),
+      language: decoded['language'] as String?,
+      description: decoded['description'] as String?,
+      coverUrl: cover != null && cover.isAbsolute ? cover : null,
+      tags: decoded['tags'] is List ? (decoded['tags'] as List).whereType<String>().toList() : const [],
+    );
+  }
+
+ringList(profiles.single['aliases_json']),
+      credits: credits,
+    );
+  }
+
+  Future<void> removeLibraryRecord(String workId, String editionId) async {
+    _ensureOpen();
+    await _database.delete(
+      'library_entries',
+      where: 'work_id = ? AND edition_id = ?',
+      whereArgs: [workId, editionId],
+    );
+  }
+
+  Future<void> touchCacheEntry(String key, {DateTime? accessedAt}) async {
+    _ensureOpen();
+    await _database.update(
+      'cache_entries',
+      {'last_accessed_at': (accessedAt ?? DateTime.now()).millisecondsSinceEpoch},
+      where: 'cache_key = ?',
+      whereArgs: [key],
+    );
+  }
+
+  Future<Map<String, Object?>?> loadVoicePackInstall(String packId) async {
+    _ensureOpen();
+    final rows = await _database.query('voice_pack_installs', where: 'pack_id = ?', whereArgs: [packId], limit: 1);
+    return rows.isEmpty ? null : Map.unmodifiable(rows.single);
+  }
+
+  Future<void> removeVoicePackInstall(String packId) async {
+    _ensureOpen();
+    await _database.delete('voice_pack_installs', where: 'pack_id = ?', whereArgs: [packId]);
+  }
+
   Future<void> saveCacheEntry(CacheEntryFile entry) async {
     _ensureOpen();
     await _database.insert(
