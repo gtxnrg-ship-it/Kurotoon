@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'cancellation.dart';
+import 'catalog_entities.dart';
 import 'models.dart';
 import 'provider_runtime.dart';
 
@@ -396,7 +397,7 @@ class MangaDexMultimediaProvider extends MangaDexProvider
     String seriesId, {
     required CancellationToken cancellationToken,
   }) async {
-    if (!_isUuid(seriesId)) {
+    if (!MangaDexMultimediaProvider._isUuid(seriesId)) {
       return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Invalid MangaDex series id');
     }
     try {
@@ -461,18 +462,18 @@ class MangaDexMultimediaProvider extends MangaDexProvider
     int limit = 100,
     int offset = 0,
   }) async {
-    if (!_isUuid(seriesId) || limit < 1 || limit > 500 || offset < 0 ||
+    if (!MangaDexMultimediaProvider._isUuid(seriesId) || limit < 1 || limit > 500 || offset < 0 ||
         translatedLanguages.isEmpty ||
         translatedLanguages.any((lang) => !RegExp(r'^[a-z]{2,3}(?:-[a-z]{2})?$').hasMatch(lang))) {
       return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Invalid chapter-feed arguments');
     }
     try {
       final params = <String>[
-        _queryParam('limit', '$limit'),
-        _queryParam('offset', '$offset'),
-        _queryParam('order[chapter]', 'desc'),
-        for (final lang in translatedLanguages) _queryParam('translatedLanguage[]', lang),
-        for (final rating in contentRatings) _queryParam('contentRating[]', rating),
+        MangaDexMultimediaProvider._queryParam('limit', '$limit'),
+        MangaDexMultimediaProvider._queryParam('offset', '$offset'),
+        MangaDexMultimediaProvider._queryParam('order[chapter]', 'desc'),
+        for (final lang in translatedLanguages) MangaDexMultimediaProvider._queryParam('translatedLanguage[]', lang),
+        for (final rating in contentRatings) MangaDexMultimediaProvider._queryParam('contentRating[]', rating),
       ];
       final response = await transport.get(
         Uri.parse('https://api.mangadex.org/manga/${Uri.encodeComponent(seriesId)}/feed?${params.join('&')}'),
@@ -490,7 +491,7 @@ class MangaDexMultimediaProvider extends MangaDexProvider
         final row = MangaDexProvider._map(value);
         final id = row?['id'];
         final attrs = MangaDexProvider._map(row?['attributes']);
-        if (row == null || id is! String || !_isUuid(id) || attrs == null) {
+        if (row == null || id is! String || !MangaDexMultimediaProvider._isUuid(id) || attrs == null) {
           dropped = true;
           continue;
         }
@@ -539,7 +540,7 @@ class MangaDexMultimediaProvider extends MangaDexProvider
     required CancellationToken cancellationToken,
     bool dataSaver = false,
   }) async {
-    if (!_isUuid(chapterId)) {
+    if (!MangaDexMultimediaProvider._isUuid(chapterId)) {
       return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Invalid MangaDex chapter id');
     }
     try {
