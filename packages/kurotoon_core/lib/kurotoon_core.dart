@@ -14,3 +14,4 @@ export 'src/voice_packs.dart';
 export 'src/extension_manifest.dart';
 export 'src/extension_repository.dart';
 export 'src/declarative_provider.dart';
+export 'src/mihon_repository_index.dart';
