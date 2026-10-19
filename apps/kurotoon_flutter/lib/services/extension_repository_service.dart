@@ -47,14 +47,20 @@ class MihonRepositoryPreview {
   MihonRepositoryPreview({
     required this.index,
     required List<MihonExtensionRecord> extensions,
+    required this.totalExtensionCount,
+    required this.totalSourceCount,
     required this.indexDigest,
   }) : extensions = List.unmodifiable(extensions);
 
   final MihonRepositoryIndex index;
+  /// A bounded sample for the preview UI, not the full repository catalog.
   final List<MihonExtensionRecord> extensions;
+  final int totalExtensionCount;
+  final int totalSourceCount;
   final String indexDigest;
-  int get extensionCount => extensions.length;
-  int get sourceCount => extensions.fold<int>(0, (sum, extension) => sum + extension.sources.length);
+  int get extensionCount => totalExtensionCount;
+  int get sourceCount => totalSourceCount;
+  bool get hasMorePreviewEntries => extensions.length < totalExtensionCount;
 }
 
 /// Parses a fetched Mihon index and, when it uses an external extension list,
@@ -64,25 +70,43 @@ MihonRepositoryPreview parseMihonRepositoryPreviewBytes({
   required Uri indexUri,
   required List<int> indexBytes,
   List<int>? extensionListBytes,
+  int previewLimit = 50,
 }) {
+  if (previewLimit < 1 || previewLimit > 100) {
+    throw ArgumentError.value(previewLimit, 'previewLimit', 'Must be between 1 and 100.');
+  }
   final index = MihonRepositoryIndex.parse(indexBytes, indexUri: indexUri);
-  final List<MihonExtensionRecord> extensions;
+  final sample = <MihonExtensionRecord>[];
+  var totalExtensions = 0;
+  var totalSources = 0;
   String listDigest = 'embedded';
   if (index.extensionListUrl != null) {
     if (extensionListBytes == null) {
       throw const FormatException('Mihon repository requires its external extension-list payload.');
     }
-    extensions = MihonRepositoryIndex.parseExtensionList(extensionListBytes);
+    for (final extension in MihonRepositoryIndex.decodeExtensionList(extensionListBytes)) {
+      totalExtensions++;
+      totalSources += extension.sources.length;
+      if (sample.length < previewLimit) sample.add(extension);
+    }
     listDigest = sha256.convert(extensionListBytes).toString();
   } else {
     if (extensionListBytes != null) {
       throw const FormatException('An external extension list was supplied for an embedded-list index.');
     }
-    extensions = index.extensions;
+    totalExtensions = index.extensions.length;
+    totalSources = index.sourceCount;
+    sample.addAll(index.extensions.take(previewLimit));
   }
   final rootDigest = sha256.convert(indexBytes).toString();
   final digest = sha256.convert(utf8.encode('$rootDigest:$listDigest')).toString();
-  return MihonRepositoryPreview(index: index, extensions: extensions, indexDigest: digest);
+  return MihonRepositoryPreview(
+    index: index,
+    extensions: sample,
+    totalExtensionCount: totalExtensions,
+    totalSourceCount: totalSources,
+    indexDigest: digest,
+  );
 }
 
 class RepositoryPreview {
@@ -135,6 +159,7 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   Future<MihonRepositoryPreview> previewMihonRepository(
     Uri indexUri, {
     CancellationToken? cancellationToken,
+    int previewLimit = 50,
   }) async {
     final indexBytes = await _getBytes(
       indexUri,
@@ -156,6 +181,7 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       indexUri: indexUri,
       indexBytes: indexBytes,
       extensionListBytes: extensionListBytes,
+      previewLimit: previewLimit,
     );
   }
 
