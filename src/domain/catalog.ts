@@ -136,6 +136,15 @@ export function groupCatalogListings(
     }
   });
 
+  // Explicit user decisions must work even when titles and external IDs differ.
+  for (const [leftKey, rightKey] of options.confirmedPairs ?? []) {
+    const leftIndex = indexByKey.get(leftKey);
+    const rightIndex = indexByKey.get(rightKey);
+    if (leftIndex !== undefined && rightIndex !== undefined && !rejected.has(pairKey(leftKey, rightKey))) {
+      union(leftIndex, rightIndex, 1, false);
+    }
+  }
+
   const compared = new Set<string>();
   for (const block of blocks.values()) {
     // Avoid pathological huge title blocks; compare exact external identifiers
