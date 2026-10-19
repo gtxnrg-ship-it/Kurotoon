@@ -246,11 +246,17 @@ void main() {
       hangChapterRequests: true,
     );
     final providers = ProviderRegistry()..register(provider);
+    final tracker = ProviderHealthTracker(
+      failureThreshold: 1,
+      baseCooldown: const Duration(milliseconds: 100),
+      maxCooldown: const Duration(milliseconds: 100),
+    );
     final workflow = ReadingWorkflowService(
       database: database,
       providers: providers,
       deviceId: 'test-device',
       providerTimeout: const Duration(milliseconds: 20),
+      healthTracker: tracker,
     );
     final work = await workflow.prepareWork(candidate('reader-a'));
 
@@ -258,6 +264,11 @@ void main() {
     expect(result.status, ProviderResultStatus.timedOut);
     expect(result.chapters, isEmpty);
     expect(result.reachedEnd, isFalse);
+    expect(provider.pageRequests, 1);
+
+    final backedOff = await workflow.syncChapters(work, pageSize: 2, maxChapters: 10);
+    expect(backedOff.status, ProviderResultStatus.rateLimited);
+    expect(provider.pageRequests, 1, reason: 'An active cooldown must prevent another network request.');
 
     providers.dispose();
   });
