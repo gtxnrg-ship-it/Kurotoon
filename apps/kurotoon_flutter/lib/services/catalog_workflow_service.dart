@@ -63,7 +63,7 @@ class CatalogWorkflowService {
   final Duration providerTimeout;
   final String? _providedDeviceId;
   final DateTime Function() _clock;
-  final Set<CancellationToken> _activeTokens = <CancellationToken>{};
+  final Map<Completer<void>, CancellationToken> _activeOperations = {};
 
   Future<void> _writeQueue = Future<void>.value();
   Future<String>? _deviceIdFuture;
@@ -75,7 +75,7 @@ class CatalogWorkflowService {
   }) async {
     _ensureOpen();
     final token = cancellationToken ?? CancellationToken();
-    _activeTokens.add(token);
+    final operation = _beginOperation(token);
     try {
       final batch = await ProviderCoordinator(
         providers,
@@ -90,7 +90,7 @@ class CatalogWorkflowService {
       final catalogResults = await _serialize(() => _indexBatch(batch));
       return CatalogSearchOutcome(batch: batch, catalogResults: catalogResults);
     } finally {
-      _activeTokens.remove(token);
+      _endOperation(operation);
     }
   }
 
@@ -179,12 +179,18 @@ class CatalogWorkflowService {
       );
     }
 
+    _ensureOpen();
     final token = cancellationToken ?? CancellationToken();
-    _activeTokens.add(token);
+    final operation = _beginOperation(token);
     try {
-      final response = await source.getSeries(
-        context.listing.externalId,
-        cancellationToken: token,
+      final response = await _boundedProviderCall<WorkCandidate>(
+        providerId: providerId,
+        parentToken: token,
+        timeoutMessage: 'Series detail timed out.',
+        request: (child) => source.getSeries(
+          context.listing.externalId,
+          cancellationToken: child,
+        ),
       );
       if (!response.hasUsableData || response.data == null) return response;
       final refreshed = response.data!;
@@ -205,7 +211,7 @@ class CatalogWorkflowService {
       });
       return response;
     } finally {
-      _activeTokens.remove(token);
+      _endOperation(operation);
     }
   }
 
@@ -242,15 +248,21 @@ class CatalogWorkflowService {
       );
     }
 
+    _ensureOpen();
     final token = cancellationToken ?? CancellationToken();
-    _activeTokens.add(token);
+    final operation = _beginOperation(token);
     try {
-      final response = await source.getChapters(
-        context.listing.externalId,
-        cancellationToken: token,
-        translatedLanguages: translatedLanguages,
-        limit: limit,
-        offset: offset,
+      final response = await _boundedProviderCall<List<ChapterUnit>>(
+        providerId: providerId,
+        parentToken: token,
+        timeoutMessage: 'Chapter feed timed out.',
+        request: (child) => source.getChapters(
+          context.listing.externalId,
+          cancellationToken: child,
+          translatedLanguages: translatedLanguages,
+          limit: limit,
+          offset: offset,
+        ),
       );
       if (!response.hasUsableData || response.data == null) return response;
 
@@ -271,7 +283,7 @@ class CatalogWorkflowService {
         retryAfter: response.retryAfter,
       );
     } finally {
-      _activeTokens.remove(token);
+      _endOperation(operation);
     }
   }
 
@@ -398,13 +410,19 @@ class CatalogWorkflowService {
       final source = _provider(listing.providerId);
       if (source == null || source is! ReaderPagesProvider) continue;
       if (!providers.isEnabled(listing.providerId)) continue;
+      _ensureOpen();
       final token = cancellationToken ?? CancellationToken();
-      _activeTokens.add(token);
+      final operation = _beginOperation(token);
       try {
-        final response = await source.getPages(
-          listing.externalId,
-          cancellationToken: token,
-          dataSaver: dataSaver,
+        final response = await _boundedProviderCall<ReaderPageManifest>(
+          providerId: listing.providerId,
+          parentToken: token,
+          timeoutMessage: 'Reader-page manifest timed out.',
+          request: (child) => source.getPages(
+            listing.externalId,
+            cancellationToken: child,
+            dataSaver: dataSaver,
+          ),
         );
         if (!response.hasUsableData || response.data == null) return response;
         final manifest = response.data!;
@@ -418,7 +436,7 @@ class CatalogWorkflowService {
         }
         return response;
       } finally {
-        _activeTokens.remove(token);
+        _endOperation(operation);
       }
     }
     return ProviderResponse(
@@ -576,6 +594,78 @@ class CatalogWorkflowService {
     return null;
   }
 
+  /// Gives every provider operation a hard outer timeout and cancellation
+  /// race, including community adapters that accidentally ignore their token.
+  /// A timed-out adapter cannot hold up the UI; compliant HTTP adapters abort
+  /// their underlying request when the child token is cancelled.
+  Future<ProviderResponse<T>> _boundedProviderCall<T>({
+    required String providerId,
+    required CancellationToken parentToken,
+    required String timeoutMessage,
+    required Future<ProviderResponse<T>> Function(CancellationToken token) request,
+  }) async {
+    final cooldown = _healthTracker.remainingCooldown(providerId);
+    if (cooldown != null) {
+      return ProviderResponse<T>(
+        status: ProviderResultStatus.rateLimited,
+        message: 'Provider temporarily paused after repeated failures.',
+        retryAfter: cooldown,
+      );
+    }
+
+    final child = CancellationToken();
+    final cancellationResult = Completer<ProviderResponse<T>>();
+    var timedOut = false;
+    final detachChild = child.onCancel((reason) {
+      if (cancellationResult.isCompleted) return;
+      cancellationResult.complete(timedOut
+          ? ProviderResponse<T>(status: ProviderResultStatus.timedOut, message: timeoutMessage)
+          : ProviderResponse<T>(status: ProviderResultStatus.cancelled, message: reason));
+    });
+    final detachParent = parentToken.onCancel(child.cancel);
+    final timer = Timer(providerTimeout, () {
+      timedOut = true;
+      child.cancel('Provider request timed out.');
+    });
+
+    try {
+      child.throwIfCancelled();
+      final requestFuture = Future<ProviderResponse<T>>.sync(() => request(child));
+      final response = await Future.any<ProviderResponse<T>>([
+        requestFuture,
+        cancellationResult.future,
+      ]);
+      _healthTracker.record(providerId, response);
+      return response;
+    } on OperationCancelled catch (error) {
+      final response = ProviderResponse<T>(
+        status: timedOut
+            ? ProviderResultStatus.timedOut
+            : child.isCancelled
+                ? ProviderResultStatus.cancelled
+                : ProviderResultStatus.failed,
+        message: timedOut ? timeoutMessage : error.reason,
+      );
+      _healthTracker.record(providerId, response);
+      return response;
+    } on Object {
+      final response = ProviderResponse<T>(
+        status: timedOut
+            ? ProviderResultStatus.timedOut
+            : child.isCancelled
+                ? ProviderResultStatus.cancelled
+                : ProviderResultStatus.failed,
+        message: timedOut ? timeoutMessage : 'Provider request failed.',
+      );
+      _healthTracker.record(providerId, response);
+      return response;
+    } finally {
+      timer.cancel();
+      detachChild();
+      detachParent();
+    }
+  }
+
   Future<T> _serialize<T>(Future<T> Function() action) {
     _ensureOpen();
     final completer = Completer<T>();
@@ -590,6 +680,18 @@ class CatalogWorkflowService {
     return completer.future;
   }
 
+  Completer<void> _beginOperation(CancellationToken token) {
+    _ensureOpen();
+    final completion = Completer<void>();
+    _activeOperations[completion] = token;
+    return completion;
+  }
+
+  void _endOperation(Completer<void> completion) {
+    final removed = _activeOperations.remove(completion);
+    if (removed != null && !completion.isCompleted) completion.complete();
+  }
+
   void _ensureOpen() {
     if (_disposed) throw StateError('Catalog workflow service is disposed.');
   }
@@ -597,9 +699,11 @@ class CatalogWorkflowService {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    for (final token in _activeTokens.toList()) {
+    final active = _activeOperations.entries.toList(growable: false);
+    for (final token in active.map((entry) => entry.value).toSet()) {
       token.cancel('Catalog workflow service disposed');
     }
+    await Future.wait(active.map((entry) => entry.key.future));
     await _writeQueue;
   }
 }
