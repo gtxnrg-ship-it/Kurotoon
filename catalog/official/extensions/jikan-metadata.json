@@ -1,0 +1,51 @@
+{
+  "id": "org.kurotoon.jikan-metadata",
+  "name": "Jikan Manga Metadata",
+  "version": "1.0.0",
+  "minimumAppApi": 1,
+  "homepage": "https://jikan.moe",
+  "baseUrl": "https://api.jikan.moe/v4",
+  "license": "MIT",
+  "developer": "KuroToon Community",
+  "allowedHosts": [
+    "api.jikan.moe"
+  ],
+  "enabledByDefault": false,
+  "endpoints": [
+    {
+      "id": "search-manga",
+      "capability": "search",
+      "path": "/manga",
+      "query": {
+        "q": "{query}",
+        "limit": "{limit}"
+      },
+      "resultPath": [
+        "data"
+      ],
+      "fields": {
+        "id": [
+          "url"
+        ],
+        "title": [
+          "title"
+        ],
+        "url": [
+          "url"
+        ],
+        "coverUrl": [
+          "images",
+          "jpg",
+          "image_url"
+        ],
+        "year": [
+          "published",
+          "prop",
+          "from",
+          "year"
+        ]
+      },
+      "maxResponseBytes": 1048576
+    }
+  ]
+}
