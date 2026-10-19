@@ -1,8 +1,10 @@
 # Kurotoon 🌌
 
-> **[⬇️ Download Kurotoon APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases)** · [View development builds](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml)
+> **[⬇️ Native Android preview & build downloads](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/native-android.yml)** · [Legacy prototype APK releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases) · [Legacy prototype build runs](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml)
 
-**Important:** Current published APKs are experimental development builds produced by the existing Capacitor pipeline. They are **not yet the intended final native Android app**. Kurotoon is moving toward a native Kotlin + Jetpack Compose Android architecture; see [Native Android Migration](docs/NATIVE_ANDROID_MIGRATION.md). Do not interpret an installable APK as proof of native implementation or release readiness.
+**How to download:** open the latest successful **Native Android Preview** workflow run and download the artifact named **Kurotoon-Native-Preview**. The artifact is created only when native tests and APK assembly pass. Until that build turns green, the Releases link above contains the existing experimental Capacitor prototype—not the intended final native app.
+
+**Important:** KuroToon is moving toward a native Kotlin + Jetpack Compose Android architecture. See [Native Android Migration](docs/NATIVE_ANDROID_MIGRATION.md). Do not interpret an installable prototype APK as proof of native implementation or release readiness.
 
 **A live-first manga and webcomic reader set inside a living, personal cosmic universe.**
 
