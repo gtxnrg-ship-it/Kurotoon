@@ -23,8 +23,13 @@ function normalized(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
+function comparisonTitle(value: string): string {
+  return normalized(value).replace(/^(?:the|a|an)\s+/u, '');
+}
+
 function titleSet(candidate: WorkIdentityCandidate): Set<string> {
-  return new Set([candidate.title, ...(candidate.aliases ?? [])].map(normalized).filter(Boolean));
+  const titles = [candidate.title, ...(candidate.aliases ?? [])];
+  return new Set(titles.flatMap(value => [normalized(value), comparisonTitle(value)]).filter(Boolean));
 }
 
 function sharedValues(left: string[] = [], right: string[] = []): string[] {
@@ -63,7 +68,10 @@ export function assessWorkMatch(
 
   const aTitles = titleSet(a);
   const bTitles = titleSet(b);
-  const primaryTitleMatches = normalized(a.title) !== '' && normalized(a.title) === normalized(b.title);
+  const primaryTitleMatches = normalized(a.title) !== '' && (
+    normalized(a.title) === normalized(b.title) ||
+    comparisonTitle(a.title) === comparisonTitle(b.title)
+  );
   const aliasOrTitleOverlap = [...aTitles].some(title => bTitles.has(title));
   const creatorsOverlap = sharedValues(a.creatorIds, b.creatorIds).length > 0;
 

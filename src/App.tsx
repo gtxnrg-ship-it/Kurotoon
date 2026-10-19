@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, ChevronRight, Compass, Headphones, Library, Search, Settings2, ShieldCheck, Sparkles, Store, WandSparkles, Wifi, Download, CircleHelp, Smartphone, ExternalLink } from 'lucide-react';
+import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, Check, ChevronRight, Compass, Headphones, Library, Search, Settings2, ShieldCheck, Sparkles, Store, WandSparkles, Wifi, Download, CircleHelp, Smartphone, ExternalLink } from 'lucide-react';
 import { CosmicBackdrop } from './components/CosmicBackdrop';
 import { ReaderScreen, SeriesPage } from './components/ReaderExperience';
 import { RepositoryManager } from './components/RepositoryManager';
