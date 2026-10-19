@@ -53,11 +53,24 @@ function toFailure(providerId: string, error: unknown, timedOut: boolean): Provi
 function uniqueListings(providerId: string, result: ProviderSearchResult): ProviderListing[] {
   // A plugin must never be allowed to attribute another provider's URL to itself.
   // Drop misattributed records rather than silently rewriting their source identity.
-  return result.listings.filter(listing =>
-    listing.providerId === providerId &&
-    listing.providerWorkId.trim().length > 0 &&
-    listing.title.trim().length > 0,
-  );
+  const unique = new Map<string, ProviderListing>();
+  for (const listing of result.listings) {
+    if (
+      listing.providerId !== providerId ||
+      !listing.providerWorkId.trim() ||
+      !listing.title.trim()
+    ) continue;
+    const key = listing.providerId + ':' + listing.providerWorkId;
+    const existing = unique.get(key);
+    // Prefer the record with fresher verification metadata when a provider
+    // accidentally returns the same work more than once in one response.
+    const currentTime = listing.lastVerifiedAt ? Date.parse(listing.lastVerifiedAt) : 0;
+    const existingTime = existing?.lastVerifiedAt ? Date.parse(existing.lastVerifiedAt) : 0;
+    if (!existing || (Number.isFinite(currentTime) ? currentTime : 0) > (Number.isFinite(existingTime) ? existingTime : 0)) {
+      unique.set(key, listing);
+    }
+  }
+  return [...unique.values()];
 }
 
 /**
