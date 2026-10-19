@@ -41,7 +41,7 @@ List<int> _mihonExtension(String name, String package, int sourceId) {
   ];
 }
 
-List<int> _mihonRoot({required bool external, List<int> extensions = const []}) => [
+List<int> _mihonRoot({bool external = false, List<int> extensions = const []}) => [
       ..._mihonString(1, 'Example Repository'),
       ..._mihonString(3, 'test-signing-key'),
       if (external)
