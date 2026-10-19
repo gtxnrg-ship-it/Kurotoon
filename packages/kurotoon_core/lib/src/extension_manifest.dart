@@ -76,8 +76,15 @@ class JsonEndpointSpec {
         issues.add('Malformed query placeholder in endpoint $id.');
       }
     }
-    if (!fields.containsKey('id') || !fields.containsKey('title') || !fields.containsKey('url')) {
-      issues.add('A source endpoint must map id, title, and url fields.');
+    final requiredFields = switch (capability) {
+      ExtensionCapability.search || ExtensionCapability.seriesDetails || ExtensionCapability.creatorWorks =>
+        const {'id', 'title', 'url'},
+      ExtensionCapability.chapterFeed => const {'id', 'url'},
+      ExtensionCapability.readerPages => const {'baseUrl', 'hash', 'filenames'},
+    };
+    if (!fields.keys.toSet().containsAll(requiredFields)) {
+      issues.add('Endpoint ' + id + ' is missing required field mappings: ' +
+          requiredFields.difference(fields.keys.toSet()).join(', ') + '.');
     }
     return List.unmodifiable(issues);
   }
