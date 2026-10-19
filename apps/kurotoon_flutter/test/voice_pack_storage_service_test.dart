@@ -56,6 +56,29 @@ void main() {
     expect(await database.loadVoicePackInstall('org.example.voice'), isNull);
   });
 
+  test('reuses a verified local pack without network access', () async {
+    final pack = manifest();
+    final local = File(p.join(
+      temp.path,
+      'voice_packs',
+      pack.id,
+      pack.version,
+      pack.sha256,
+      'model.bin',
+    ));
+    await local.parent.create(recursive: true);
+    await local.writeAsBytes([97, 98, 99], flush: true);
+
+    final installedPath = await service.install(
+      pack,
+      downloadsEnabled: true,
+      availableStorageBytes: 100,
+    );
+
+    expect(installedPath, local.path);
+    expect(await database.loadVoicePackInstall(pack.id), isNotNull);
+  });
+
   test('rejects invalid IDs without touching the network', () async {
     final invalid = VoicePackManifest(
       id: '../outside',
