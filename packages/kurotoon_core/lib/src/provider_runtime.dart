@@ -62,7 +62,7 @@ class ProviderSearchResult {
 }
 
 class SearchBatch {
-  SearchBatch({required this.results, required this.cancelled})
+  SearchBatch({required List<ProviderSearchResult> results, required this.cancelled})
       : results = List.unmodifiable(results);
 
   final List<ProviderSearchResult> results;
