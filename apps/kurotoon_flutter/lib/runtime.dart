@@ -64,9 +64,11 @@ class KurotoonRuntime {
         if (decoded is! Map) throw const FormatException('Installed manifest is not a JSON object.');
         final manifest = parseDeclarativeExtensionManifest(Map<String, Object?>.from(decoded));
         if (manifest.id != id) throw const FormatException('Installed manifest id does not match its record.');
-        if (providers.all.any((provider) => provider.descriptor.id == id)) {
-          throw StateError('Provider id is already registered.');
+        final existing = providers.all.where((provider) => provider.descriptor.id == id);
+        if (existing.any((provider) => provider.descriptor.isBuiltIn)) {
+          throw StateError('An extension cannot replace a built-in provider.');
         }
+        if (existing.isNotEmpty) providers.removeCommunityProvider(id);
         providers.register(DeclarativeJsonProvider(manifest: manifest, fetcher: service));
         providers.setEnabled(id, row['enabled'] == 1);
       } on Object catch (error) {
