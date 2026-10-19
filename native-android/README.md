@@ -8,7 +8,7 @@ This is the separate Kotlin + Jetpack Compose application track. It does **not**
 - On a successful run, download the **Kurotoon-Native-Preview** artifact. Pull-request artifacts are retained for 14 days.
 - After native changes are merged to `main`, successful workflow runs also publish a separate prerelease on [GitHub Releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases).
 
-This preview is for inspection, not a production-ready reader release. It uses a distinct Android application ID suffix so that it can be installed alongside an older prototype.
+This preview is for inspection, not a production-ready reader release. The native APK link remains a build artifact only after the Native Android Preview workflow passes; no passing APK is available until that check is green. It uses a distinct Android application ID suffix so that it can be installed alongside an older prototype.
 
 ## What is currently implemented in this preview
 
