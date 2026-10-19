@@ -978,6 +978,34 @@ class KurotoonDatabase {
     );
   }
 
+  /// Atomically updates cache metadata after the filesystem layer has staged its
+  /// incoming file and selected evictions. User-owned library/progress rows are
+  /// deliberately outside this transaction.
+  Future<void> commitCacheWrite(
+    CacheEntryFile entry, {
+    Iterable<String> evictedKeys = const [],
+  }) async {
+    _ensureOpen();
+    await _database.transaction((tx) async {
+      for (final key in evictedKeys.toSet()) {
+        if (key == entry.entry.key) continue;
+        await tx.delete('cache_entries', where: 'cache_key = ?', whereArgs: [key]);
+      }
+      await tx.insert(
+        'cache_entries',
+        {
+          'cache_key': entry.entry.key,
+          'bucket': entry.entry.bucket.name,
+          'bytes': entry.entry.bytes,
+          'file_path': entry.filePath,
+          'last_accessed_at': entry.entry.lastAccessedAt.millisecondsSinceEpoch,
+          'pinned': entry.entry.pinned ? 1 : 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+  }
+
   Future<List<CacheEntryFile>> loadCacheEntries() async {
     _ensureOpen();
     final rows = await _database.query('cache_entries');
