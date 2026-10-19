@@ -97,13 +97,22 @@ class KurotoonRuntime {
     return previewExtensionRepository(indexUri.toString());
   }
 
+  Future<ExtensionRepositoryIndex> loadExtensionRepositoryIndex(String repositoryId) async {
+    final service = extensionRepositories;
+    if (service == null) throw StateError('Persistent storage is required to browse repositories.');
+    return service.loadRepositoryIndex(repositoryId);
+  }
+
   Future<String> installExtension({
-    required ExtensionPackageEntry entry,
+    required String extensionId,
     required String repositoryId,
   }) async {
     final service = extensionRepositories;
     if (service == null) throw StateError('Persistent storage is required to install extensions.');
-    final installPath = await service.installDeclarativeExtension(entry: entry, repositoryId: repositoryId);
+    final installPath = await service.installExtensionById(
+      extensionId: extensionId,
+      repositoryId: repositoryId,
+    );
     await loadInstalledExtensions();
     return installPath;
   }
