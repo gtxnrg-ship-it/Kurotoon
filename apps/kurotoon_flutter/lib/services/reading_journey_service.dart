@@ -20,11 +20,13 @@ class SeriesOpenResult {
     required this.details,
     required this.catalogResult,
     required this.detailsRefreshed,
+    this.warning,
   });
 
   final WorkCandidate details;
   final CatalogUpsertResult catalogResult;
   final bool detailsRefreshed;
+  final String? warning;
 }
 
 class ChapterRefreshResult {
@@ -135,25 +137,34 @@ class ReadingJourneyService {
     final provider = _activeProvider(listing.providerId);
     var details = listing;
     var detailsRefreshed = false;
+    String? warning;
 
-    if (provider is SeriesProvider) {
-      final response = await _invoke(
-        providerId: provider.descriptor.id,
-        operation: 'Series details',
-        token: token,
-        request: () => provider.getSeries(
-          listing.externalId,
-          cancellationToken: token,
-        ),
-      );
-      details = _requireUsable(response, 'Series details');
-      if (details.providerId != listing.providerId ||
-          details.externalId != listing.externalId) {
-        throw const ReadingJourneyException(
-          'The source returned a different series identity than the selected result.',
+    if (provider is SeriesProvider &&
+        provider.descriptor.supports(ProviderCapability.series)) {
+      try {
+        final response = await _invoke(
+          providerId: provider.descriptor.id,
+          operation: 'Series details',
+          token: token,
+          request: () => provider.getSeries(
+            listing.externalId,
+            cancellationToken: token,
+          ),
         );
+        if (!response.hasUsableData || response.data == null) {
+          warning = response.message ?? 'Series details are unavailable; the selected search result was retained.';
+        } else if (response.data!.providerId != listing.providerId ||
+            response.data!.externalId != listing.externalId) {
+          warning = 'The source returned a different listing identity; the selected search result was retained.';
+        } else {
+          details = response.data!;
+          detailsRefreshed = true;
+        }
+      } on OperationCancelled {
+        rethrow;
+      } on Object catch (error) {
+        warning = 'Series details refresh failed (${error.runtimeType}); the selected search result was retained.';
       }
-      detailsRefreshed = true;
     }
 
     final catalogResult = await _upsertListing(details);
@@ -161,6 +172,7 @@ class ReadingJourneyService {
       details: details,
       catalogResult: catalogResult,
       detailsRefreshed: detailsRefreshed,
+      warning: warning,
     );
   }
 
