@@ -4,6 +4,10 @@ import 'cancellation.dart';
 import 'catalog_entities.dart';
 import 'models.dart';
 
+abstract interface class DisposableProvider {
+  void dispose();
+}
+
 abstract interface class SourceProvider {
   ProviderDescriptor get descriptor;
 
@@ -62,6 +66,14 @@ class ProviderRegistry {
   void setEnabled(String id, bool enabled) {
     if (!_providers.containsKey(id)) throw ArgumentError.value(id, 'id', 'Unknown provider');
     _enabled[id] = enabled;
+  }
+
+  void dispose() {
+    for (final provider in _providers.values) {
+      if (provider is DisposableProvider) provider.dispose();
+    }
+    _providers.clear();
+    _enabled.clear();
   }
 
   void removeCommunityProvider(String id) {
