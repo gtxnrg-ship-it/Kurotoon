@@ -45,7 +45,6 @@ class DeclarativeJsonProvider implements SourceProvider, SeriesProvider, Chapter
           if (manifest.capabilities.contains(ExtensionCapability.seriesDetails)) ProviderCapability.series,
           if (manifest.capabilities.contains(ExtensionCapability.chapterFeed)) ProviderCapability.chapters,
           if (manifest.capabilities.contains(ExtensionCapability.readerPages)) ProviderCapability.pages,
-          if (manifest.capabilities.contains(ExtensionCapability.creatorWorks)) ProviderCapability.creators,
         },
         isBuiltIn: false,
         enabledByDefault: manifest.enabledByDefault,
@@ -295,14 +294,14 @@ class DeclarativeJsonProvider implements SourceProvider, SeriesProvider, Chapter
       if (baseUrl == null || !_isAllowedWebUri(baseUrl) || hash is! String || filenames.isEmpty) {
         return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Page manifest contains invalid URLs or filenames.');
       }
-      final manifest = ReaderPageManifest(
+      final pageManifest = ReaderPageManifest(
         chapterId: chapterId,
         baseUrl: baseUrl,
         hash: hash,
         normalFilenames: filenames,
         dataSaverFilenames: saverFilenames,
       );
-      return ProviderResponse(status: ProviderResultStatus.success, data: manifest);
+      return ProviderResponse(status: ProviderResultStatus.success, data: pageManifest);
     } on Object catch (error) {
       return _error<ReaderPageManifest>(error);
     }
