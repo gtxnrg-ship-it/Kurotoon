@@ -275,4 +275,77 @@ void main() {
 
     providers.dispose();
   });
+  test('merges duplicate review while preserving the source edition, library and progress', () async {
+    final providers = ProviderRegistry()
+      ..register(_FakeReaderProvider(providerId: 'reader-a'))
+      ..register(_FakeReaderProvider(providerId: 'reader-b'));
+    final workflow = ReadingWorkflowService(database: database, providers: providers, deviceId: 'test-device');
+
+    final original = await workflow.prepareWork(candidate('reader-a'));
+    final duplicate = await workflow.prepareWork(candidate('reader-b'));
+    expect(duplicate.admissionResult.admission, CatalogAdmission.reviewRequired);
+    final synced = await workflow.syncChapters(duplicate, pageSize: 2, maxChapters: 10);
+    expect(synced.chapters, hasLength(3));
+
+    await workflow.addToLibrary(duplicate, status: LibraryStatus.reading);
+    final saved = await workflow.saveProgress(
+      duplicate,
+      synced.chapters[1],
+      fraction: 0.63,
+      anchor: 'page:2',
+    );
+
+    final resolved = await workflow.resolveIdentityReview(
+      'reader-b:series-1',
+      targetWorkId: original.workId,
+    );
+
+    expect(resolved.admission, CatalogAdmission.linked);
+    expect(resolved.entry.work.id, original.workId);
+    final catalog = await database.loadCatalog();
+    expect(catalog, hasLength(1));
+    expect(catalog.single.providerIds, containsAll(['reader-a', 'reader-b']));
+    expect(await database.loadPendingIdentityReviews(), isEmpty);
+    expect((await database.loadEdition(duplicate.edition.id))!.workId, original.workId);
+
+    final library = await database.loadLibrary();
+    expect(library, hasLength(1));
+    expect(library.single.workId, original.workId);
+    expect(library.single.editionId, duplicate.edition.id);
+
+    final progress = await database.loadProgress(original.workId, duplicate.edition.id);
+    expect(progress, isNotNull);
+    expect(progress!.chapterId, saved.chapterId);
+    expect(progress.fraction, 0.63);
+    expect(progress.anchor, 'page:2');
+
+    providers.dispose();
+  });
+
+  test('confirming a separate identity removes its review and locks future auto-merges', () async {
+    final providers = ProviderRegistry()
+      ..register(_FakeReaderProvider(providerId: 'reader-a'))
+      ..register(_FakeReaderProvider(providerId: 'reader-b'));
+    final workflow = ReadingWorkflowService(database: database, providers: providers, deviceId: 'test-device');
+
+    await workflow.prepareWork(candidate('reader-a'));
+    final duplicate = await workflow.prepareWork(candidate('reader-b'));
+    expect(duplicate.admissionResult.admission, CatalogAdmission.reviewRequired);
+
+    final result = await workflow.resolveIdentityReview(
+      'reader-b:series-1',
+      createAsDistinctWork: true,
+    );
+    expect(result.admission, CatalogAdmission.distinctConfirmed);
+    expect(result.entry.work.lockedDistinctIdentity, isTrue);
+    expect(await database.loadPendingIdentityReviews(), isEmpty);
+    final persisted = (await database.loadCatalog()).singleWhere(
+      (entry) => entry.work.id == duplicate.workId,
+    );
+    expect(persisted.work.lockedDistinctIdentity, isTrue);
+    expect((await database.loadEdition(duplicate.edition.id))!.workId, duplicate.workId);
+
+    providers.dispose();
+  });
+
 }
