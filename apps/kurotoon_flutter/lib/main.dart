@@ -541,16 +541,16 @@ class _RepositoryManagerPageState extends State<_RepositoryManagerPage> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('Review \${preview.index.name}'),
+          title: Text('Review ${preview.index.name}'),
           content: SingleChildScrollView(child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(preview.index.description ?? 'No description provided.'),
               const SizedBox(height: 10),
-              Text('Repository ID: \${preview.index.id}'),
-              Text('Extensions: \${preview.index.extensions.length}'),
-              Text('Index digest: \${preview.indexDigest}'),
+              Text('Repository ID: ${preview.index.id}'),
+              Text('Extensions: ${preview.index.extensions.length}'),
+              Text('Index digest: ${preview.indexDigest}'),
               const SizedBox(height: 10),
               const Text('This trusts repository metadata only. KuroToon does not execute downloaded extension code.'),
             ],
@@ -683,7 +683,7 @@ class _RepositoryManagerPageState extends State<_RepositoryManagerPage> {
                       return const Center(child: CircularProgressIndicator());
                     }
                     if (snapshot.hasError) {
-                      return _InlineNotice(icon: Icons.error_outline_rounded, text: 'Could not load repositories: \${snapshot.error}');
+                      return _InlineNotice(icon: Icons.error_outline_rounded, text: 'Could not load repositories: ${snapshot.error}');
                     }
                     final repos = snapshot.data ?? const <Map<String, Object?>>[];
                     if (repos.isEmpty) {
@@ -719,7 +719,7 @@ class _RepositoryManagerPageState extends State<_RepositoryManagerPage> {
                             future: widget.runtime.loadExtensionRepositoryIndex(id),
                             builder: (context, indexSnapshot) {
                               if (indexSnapshot.connectionState != ConnectionState.done) return const LinearProgressIndicator(minHeight: 2);
-                              if (indexSnapshot.hasError) return _InlineNotice(icon: Icons.warning_amber_rounded, text: 'Refresh failed: \${indexSnapshot.error}');
+                              if (indexSnapshot.hasError) return _InlineNotice(icon: Icons.warning_amber_rounded, text: 'Refresh failed: ${indexSnapshot.error}');
                               final index = indexSnapshot.data!;
                               if (index.extensions.isEmpty) return const Text('No extensions listed.', style: TextStyle(color: Colors.white54, fontSize: 12));
                               return Column(children: index.extensions.map((entry) {
@@ -732,7 +732,7 @@ class _RepositoryManagerPageState extends State<_RepositoryManagerPage> {
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                     Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 4),
-                                    Text('\${entry.version} · \${entry.languageCodes.isEmpty ? 'Languages unspecified' : entry.languageCodes.join(', ')} · \${entry.contentRating}',
+                                    Text('${entry.version} · ${entry.languageCodes.isEmpty ? "Languages unspecified" : entry.languageCodes.join(", ")} · ${entry.contentRating}',
                                       style: const TextStyle(color: Colors.white54, fontSize: 11)),
                                     if (entry.description != null) Padding(
                                       padding: const EdgeInsets.only(top: 5),
