@@ -12,3 +12,4 @@ export 'src/mangadex_provider.dart';
 export 'src/experience_policy.dart';
 export 'src/voice_packs.dart';
 export 'src/extension_manifest.dart';
+export 'src/extension_repository.dart';
