@@ -156,6 +156,27 @@ void main() {
     expect(await File(entries.single.filePath).exists(), isTrue);
   });
 
+  test('refuses to remove a cache record whose in-root symlink targets an outside file', () async {
+    final outside = File(p.join(temp.path, 'outside.bin'));
+    await outside.writeAsBytes([1, 2, 3]);
+    final linkPath = p.join(cache.rootDirectory.path, 'symlink.bin');
+    await Link(linkPath).create(outside.path);
+    await database.saveCacheEntry(CacheEntryFile(
+      entry: CacheEntry(
+        key: 'symlink-path',
+        bucket: CacheBucket.other,
+        bytes: 3,
+        lastAccessedAt: DateTime.now(),
+      ),
+      filePath: linkPath,
+    ));
+
+    await expectLater(cache.remove('symlink-path'), throwsStateError);
+    expect(await outside.readAsBytes(), [1, 2, 3]);
+    expect(await Link(linkPath).exists(), isTrue);
+    expect((await database.loadCacheEntries()).single.entry.key, 'symlink-path');
+  });
+
   test('refuses to remove a cache record whose path escapes the managed directory', () async {
     await database.saveCacheEntry(CacheEntryFile(
       entry: CacheEntry(
