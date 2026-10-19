@@ -187,7 +187,11 @@ class KurotoonRuntime {
   void _persistProviderHealth(ProviderHealthSnapshot snapshot) {
     final store = database;
     if (_disposing || store == null) return;
-    unawaited(store.setSetting('provider.health.' + snapshot.providerId, snapshot.toJson()));
+    unawaited(
+      store.setSetting('provider.health.' + snapshot.providerId, snapshot.toJson()).catchError(
+        (Object _) {},
+      ),
+    );
   }
 
   ProviderCoordinator createSearchCoordinator({
