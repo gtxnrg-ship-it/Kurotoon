@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:kurotoon_core/kurotoon_core.dart';
 import 'services/extension_repository_service.dart';
+import 'services/reading_workflow_service.dart';
 import 'storage/cache_storage_service.dart';
 import 'storage/kurotoon_database.dart';
 import 'storage/voice_pack_storage_service.dart';
@@ -32,6 +33,7 @@ class KurotoonRuntime {
 
   final KurotoonDatabase? database;
   ExtensionRepositoryService? _extensionRepositoryService;
+  ReadingWorkflowService? _readingWorkflowService;
   Future<CacheStorageService>? _cacheStorageFuture;
   VoicePackStorageService? _voicePackStorageService;
   bool _disposing = false;
@@ -54,6 +56,19 @@ class KurotoonRuntime {
     final store = database;
     if (store == null) return null;
     return _extensionRepositoryService ??= ExtensionRepositoryService(database: store);
+  }
+
+  /// The shared workflow layer for catalog admission, chapters, reader manifests,
+  /// local library membership, and durable reading progress.
+  ReadingWorkflowService get readingWorkflow {
+    final store = database;
+    if (store == null) {
+      throw StateError('Persistent storage is required for reading workflows.');
+    }
+    return _readingWorkflowService ??= ReadingWorkflowService(
+      database: store,
+      providers: providers,
+    );
   }
 
   VoicePackStorageService? get voicePacks {
