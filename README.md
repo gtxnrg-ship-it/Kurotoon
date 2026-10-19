@@ -6,7 +6,7 @@ Kurotoon is intended to become a polished, lightweight, cross-source reader for 
 
 This README is the **canonical product handoff**: it records the product owner's direction, constraints, agreed design principles, implementation priorities, and what is actually built. Treat the vision as requirements for future work—not as evidence that planned features already exist.
 
-> **Current status: early foundation plus a reader implementation branch.** Main contains the React + TypeScript + Vite shell, five primary navigation destinations, typed catalog/provider contracts, conservative identity matching, a CI-verified procedural cosmic canvas, live MangaDex Browser search, and the metadata-only repository manager. The `feat/core-reader-navigation` branch adds a first in-app MangaDex series → chapter list → reader path, page/vertical modes, local reading-position persistence, previous/next chapter navigation, safe-area-aware controls, and explicit discussion/audio/haptics placeholders. This branch still requires automated CI and manual mobile/browser verification before its reader behavior should be called verified or merged. Durable library integration, a live comments backend, executable extension runtime, and immersive media playback remain unimplemented.
+> **Current status: early foundation plus a reader implementation branch.** Main contains the React + TypeScript + Vite shell, five primary navigation destinations, typed catalog/provider contracts, conservative identity matching, a CI-verified procedural cosmic canvas, live MangaDex Browser search, and the metadata-only repository manager. The `feat/core-reader-navigation` branch adds a first in-app MangaDex series → chapter list → reader path, page/vertical modes, local reading-position persistence, previous/next chapter navigation, safe-area-aware controls, and explicit discussion/audio/haptics placeholders. This branch still requires automated CI and manual mobile/browser verification before its reader behavior should be called verified or merged. Durable library integration, a live comments backend, executable extension runtime, and immersive media playback remain unimplemented. The `feat/kurotoon-install-and-apk` branch adds a Kurotoon-named install manifest, a bounded PWA app-shell cache, a Me → Download Kurotoon screen, Capacitor Android configuration, and a GitHub Actions workflow that builds `Kurotoon.apk` and publishes development builds after a successful main-branch run. The APK workflow has not yet produced a verified artifact; do not describe it as available until a successful run is visible.
 
 ## The product in one sentence
 
@@ -367,6 +367,12 @@ The repository manager is a real metadata-only interface: saved HTTPS JSON URLs,
 8. Keep source attribution and uncertainty visible; never fabricate content or claim unsupported compatibility.
 9. Update this README and the roadmap when implementation status changes.
 10. Preserve the product owner's approved assets, five-destination navigation, low-storage priority, and separation between Kurotoon, Kurochan, and Kuro Canvas.
+
+## Installing and downloading Kurotoon
+
+The web app includes a PWA manifest and a deliberately bounded app-shell cache. Once deployed over HTTPS, use the browser's **Install app** or **Add to Home Screen** command. This only caches the app shell and a limited number of same-origin code assets; it does not bulk-download comic chapters or artwork.
+
+The Android packaging workflow is `.github/workflows/android-apk.yml`. It builds an installable debug APK named **`Kurotoon.apk`**, uploads it as a temporary workflow artifact, and publishes a continuous development release after successful updates to `main`. Version tags beginning with `v` create non-prerelease releases. The first APK must be verified by a successful workflow run before it should be treated as available. Development APKs are not production-store signed.
 
 ## Running the foundation UI
 

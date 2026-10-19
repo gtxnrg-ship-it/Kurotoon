@@ -4,13 +4,13 @@ This is a living plan. Items stay **Planned** until code exists and the acceptan
 
 ## Phase 0 — Foundation and feasibility
 
-Status: **In progress** — initial web build and CI are verified; Android feasibility remains open.
+Status: **In progress** — initial web build and CI are verified; the PWA install path and Android APK pipeline are added on a feature branch, but the first downloadable APK is not yet verified.
 
 - [x] Establish public repository and initial documentation baseline.
 - [x] Select the initial web UI stack: React + TypeScript + Vite; keep Android packaging/runtime decision open pending feasibility evidence.
 - [x] Define type-check/production-build and unit-test commands.
 - [x] Add CI checks for pull requests and main-branch pushes.
-- [ ] Document local setup and environment variables; commit no secrets.
+- [x] Add the PWA manifest, bounded app-shell service worker, Capacitor app identity, download UI, and CI workflow for an installable `Kurotoon.apk` (first successful APK build still pending).\n- [ ] Verify the generated APK by installing it on a real Android device.\n- [ ] Document local setup and environment variables; commit no secrets.
 - [ ] Record a baseline performance budget for mid-range Android devices.
 
 **Exit gate:** a clean checkout can install dependencies, run checks, and build a minimal responsive shell using documented commands.

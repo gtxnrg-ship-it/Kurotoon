@@ -1,0 +1,99 @@
+name: Android APK
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Build Kurotoon APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android platform packages
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)"
+          if [ -z "$SDK_MANAGER" ]; then
+            echo "Could not find sdkmanager under $SDK_ROOT/cmdline-tools" >&2
+            exit 1
+          fi
+          yes | "$SDK_MANAGER" --licenses >/dev/null || true
+          "$SDK_MANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install web dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Typecheck and build web app
+        run: npm run build
+
+      - name: Run domain tests
+        run: npm test
+
+      - name: Generate Android project
+        run: npx cap add android
+
+      - name: Sync web assets to Android
+        run: npx cap sync android
+
+      - name: Assemble installable debug APK
+        run: cd android && ./gradlew --no-daemon assembleDebug
+
+      - name: Name the APK Kurotoon.apk
+        run: |
+          mkdir -p release
+          cp android/app/build/outputs/apk/debug/app-debug.apk release/Kurotoon.apk
+
+      - name: Upload APK workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kurotoon-APK
+          path: release/Kurotoon.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish continuous APK release
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: continuous-${{ github.run_number }}
+          name: Kurotoon
+          prerelease: true
+          make_latest: false
+          files: release/Kurotoon.apk
+          body: |
+            Automated Kurotoon Android development build.
+            File: Kurotoon.apk
+            Commit: ${{ github.sha }}
+
+      - name: Publish versioned APK release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Kurotoon
+          prerelease: false
+          files: release/Kurotoon.apk
+          body: |
+            Kurotoon Android release.
+            File: Kurotoon.apk
+            Commit: ${{ github.sha }}
