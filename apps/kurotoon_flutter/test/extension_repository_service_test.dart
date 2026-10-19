@@ -1,8 +1,29 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kurotoon_flutter/services/extension_repository_service.dart';
 import 'package:path/path.dart' as p;
+
+
+List<int> _mihonVarint(int value) {
+  final bytes = <int>[];
+  var remaining = value;
+  while (remaining >= 0x80) {
+    bytes.add((remaining & 0x7f) | 0x80);
+    remaining >>= 7;
+  }
+  bytes.add(remaining);
+  return bytes;
+}
+
+List<int> _mihonBytes(int number, List<int> value) => [
+      ..._mihonVarint((number << 3) | 2),
+      ..._mihonVarint(value.length),
+      ...value,
+    ];
+
+List<int> _mihonString(int number, String value) => _mihonBytes(number, utf8.encode(value));
 
 void main() {
   group('ExtensionInstallPathPolicy', () {
@@ -118,4 +139,50 @@ void main() {
       expect(blocked('2606:4700:4700::1111'), isFalse);
     });
   });
+
+  group('Mihon repository preview payloads', () {
+    final extension = <int>[
+      ..._mihonString(1, 'Example Source'),
+      ..._mihonString(2, 'eu.example.source'),
+      ..._mihonString(6, '1.0.0'),
+    ];
+    final extensionList = <int>[..._mihonBytes(1, extension)];
+
+    test('parses embedded lists and computes a stable digest', () {
+      final indexBytes = <int>[
+        ..._mihonString(1, 'Example Repository'),
+        ..._mihonString(3, 'test-key'),
+        ..._mihonBytes(101, extensionList),
+      ];
+      final preview = parseMihonRepositoryPreviewBytes(
+        indexUri: Uri.parse('https://repo.example.org/index.pb'),
+        indexBytes: indexBytes,
+      );
+      expect(preview.index.name, 'Example Repository');
+      expect(preview.extensionCount, 1);
+      expect(preview.extensions.single.packageName, 'eu.example.source');
+      expect(preview.indexDigest, hasLength(64));
+    });
+
+    test('requires and incorporates the external extension-list payload', () {
+      final indexBytes = <int>[
+        ..._mihonString(1, 'Example Repository'),
+        ..._mihonString(3, 'test-key'),
+        ..._mihonString(102, 'list.pb'),
+      ];
+      final indexUri = Uri.parse('https://repo.example.org/index.pb');
+      expect(
+        () => parseMihonRepositoryPreviewBytes(indexUri: indexUri, indexBytes: indexBytes),
+        throwsFormatException,
+      );
+      final preview = parseMihonRepositoryPreviewBytes(
+        indexUri: indexUri,
+        indexBytes: indexBytes,
+        extensionListBytes: extensionList,
+      );
+      expect(preview.index.extensionListUrl, Uri.parse('https://repo.example.org/list.pb'));
+      expect(preview.extensions, hasLength(1));
+    });
+  });
+
 }
