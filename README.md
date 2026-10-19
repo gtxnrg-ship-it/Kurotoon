@@ -6,7 +6,7 @@ Kurotoon is intended to become a polished, lightweight, cross-source reader for 
 
 This README is the **canonical product handoff**: it records the product owner's direction, constraints, agreed design principles, implementation priorities, and what is actually built. Treat the vision as requirements for future work—not as evidence that planned features already exist.
 
-> **Current status: early foundation plus a reader implementation branch.** Main contains the React + TypeScript + Vite shell, five primary navigation destinations, typed catalog/provider contracts, conservative identity matching, a CI-verified procedural cosmic canvas, live MangaDex Browser search, and the metadata-only repository manager. The `feat/core-reader-navigation` branch adds a first in-app MangaDex series → chapter list → reader path, page/vertical modes, local reading-position persistence, previous/next chapter navigation, safe-area-aware controls, and explicit discussion/audio/haptics placeholders. This branch still requires automated CI and manual mobile/browser verification before its reader behavior should be called verified or merged. Durable library integration, a live comments backend, executable extension runtime, and immersive media playback remain unimplemented. The `feat/kurotoon-install-and-apk` branch adds a Kurotoon-named install manifest, a bounded PWA app-shell cache, a Me → Download Kurotoon screen, Capacitor Android configuration, and a GitHub Actions workflow that builds `Kurotoon.apk` and publishes development builds after a successful main-branch run. The APK workflow has not yet produced a verified artifact; do not describe it as available until a successful run is visible.
+> **Current status: the initial reader and Android build pipeline are merged to `main`.** The repository contains the React + TypeScript + Vite app shell, the five primary destinations, typed catalog/provider contracts, conservative identity matching, a dynamic procedural cosmic canvas, live MangaDex search, the metadata-only repository manager, an in-app series/chapter/page reader, local per-chapter reading progress, and a Capacitor-based Android debug-APK workflow. CI and APK-generation workflows have passed on recent reader changes. The reader supports paged and vertical layouts, reading direction, chapter navigation, failed-page retry, and safe-area-aware controls; progress storage is defensive, and vertical scroll measurement/persistence has been reduced to avoid unnecessary render work. Real-world acceptance is still pending for the complete live search-to-reading flow on a physical low-end Android phone, sustained frame pacing, and system navigation. Durable Library operations, a live comments backend, executable extension runtime, and synchronized audio/voice/haptics remain unimplemented; their UI must continue to label them honestly.
 
 ## The product in one sentence
 
@@ -318,34 +318,36 @@ This order is a plan, not a promise that all stages are complete. Reorder only w
 ## Current implementation status
 
 ### Implemented / CI-verified
-- React + TypeScript + Vite app shell.
-- First procedural cosmic canvas: layered nebula-like colour fields, sparse large-scale filaments, twinkling stars, subtle pointer/touch ripples, reduced-motion support, visibility pausing, and capped ambient rendering. CI passed; real-device performance and final art-direction tuning remain unverified.
-- Responsive dark cosmic-themed navigation and scaffolds for Home, Browser, Shop, Library, and Me.
-- Typed catalog/domain models and provider adapter contract.
-- Conservative work identity matching with evidence/confidence and tests.
-- Domain and repository-index unit tests run in CI (the exact suite is reported by the current workflow).
-- CI build/test and high/critical dependency audit checks.
+- React + TypeScript + Vite application shell with the five primary destinations: Home, Browser, Shop, Library, and Me. The Library and several settings destinations still need functional integration.
+- Dynamic procedural cosmic canvas with layered colour fields, starfield, filaments, touch/pointer ripples, visibility pausing, reduced-motion support, and capped ambient rendering. The cosmic realm is an approved experience and should be preserved; physical-device performance remains to be measured.
+- Typed catalog/provider models, conservative work identity matching, source repository index parsing, and the metadata-only repository manager.
+- CI build, TypeScript checks, domain tests, and high/critical dependency audit.
+- PWA install metadata, bounded app-shell cache, Capacitor Android configuration, a download/install screen, and a GitHub Actions workflow for `Kurotoon.apk`. CI has successfully generated APK artifacts; the APK is a development/debug build, not a production-store signed package.
 
-### Implemented — live MangaDex search
-- A provider adapter maps MangaDex series metadata, cover art, aliases, creators, chapter labels, and page URLs into Kurotoon's typed contracts.
-- Browser search is debounced and cancels stale requests. Loading, empty, network/rate-limit errors, and real results have distinct states.
-- Search defaults to safe and suggestive content ratings. Results link transparently to MangaDex until the built-in chapter reader is implemented.
-- Provider tests cover mapping, cancellation, rate limiting, chapter metadata, page URL construction, and CDN-host validation. Live API behaviour and physical-device verification remain manual acceptance items.
+### Implemented — MangaDex reader path
+- Live MangaDex search and source-mapped series metadata.
+- In-app series detail page and chapter list, with chapter search and sorting.
+- In-app paged and vertical readers, RTL/LTR page navigation, touch/keyboard navigation, safe-area-aware controls, next/previous chapter controls, and series-home return paths.
+- Failed-page retry UI and incremental/lazy vertical page mounting; paged preloading is limited to the current page and immediate neighbours.
+- Per-chapter reading progress in browser storage with malformed/unavailable-storage handling and vertical restore anchored to the saved page.
+- Scroll position measurements are coalesced to animation frames; progress writes are debounced and flushed when the reader is exited or the chapter changes.
+- Automated build, tests, and APK packaging have passed on recent reader changes. This does **not** prove the complete live reader flow or sustained 60 FPS on a physical device.
 
 ### Remaining / not yet implemented
-- Full production cosmic art direction, gas-giant/galaxy formation layers, final touch-reactive space bending, adaptive quality controls, and launch sequence.
-- Finished design system and settings destinations outside repository management.
-- The complete in-app series-details → chapter-list → page-reader flow, reading-progress persistence, and durable library integration remain outstanding; current search results open on MangaDex.
-- Complete reader/page loading, progress persistence, and durable library.
-- Extension installation/runtime, automatic source activation, binary index.pb support, trust/signature verification, and proven Android extension compatibility.
-- Shared reader timeline, synchronized sound/haptics, voice/universal dubbing, and music discovery.
-- Account sync, offline downloads, backups, and Shop/reward mechanics.
+- Full manual acceptance of search → series details → chapters → page reading, retries, progress restoration, gesture navigation, and three-button Android navigation on a physical device.
+- Performance profiling on low-end Android hardware, including sustained frame pacing, memory, battery, background/foreground lifecycle, and graphics interaction. No 60-FPS guarantee is claimed until measured.
+- Durable Library functionality: add/remove series, statuses, sorting, collections, history/continue reading, and update tracking.
+- Full settings integration and advanced storage/privacy/diagnostics workflows.
+- Executable source extensions, source activation/runtime, binary `index.pb` support, trust/signature verification, and proven Android extension compatibility.
+- Live comments/reactions backend, spoiler-safe threaded discussion, shared reader audio timeline, synchronized effects, voice/universal dubbing, haptics, and music discovery.
+- Account sync, explicit offline downloads, backup/export, and specified Shop/reward mechanics.
 
 The repository manager is a real metadata-only interface: saved HTTPS JSON URLs, add/check/refresh/remove, local browser persistence, error states, and extension-list filtering. Other settings destinations are still scaffolds. This does not install, enable, or execute third-party extensions; browser CORS restrictions can prevent a repository from being checked.
 
 ### Android / APK status
-- **No APK is currently available.** The repository does not yet produce or publish an installable Android package.
-- Android packaging, signing, distribution, and device validation are future release work. Do not add an APK download link or describe Kurotoon as Android-release-ready until a real artifact has been built and verified.
+- The GitHub Actions workflow has successfully built the installable debug package named **`Kurotoon.apk`** and uploaded workflow artifacts on verified runs. The latest temporary artifact is available from its successful Actions run; the [Releases page](https://github.com/gtxnrg-ship-it/Kurotoon/releases) is the place to check for the latest published continuous development build.
+- The APK is a debug/development build, not production-store signed. A successful CI build proves packaging, **not** installation, stability, navigation behaviour, or performance on a physical phone.
+- Physical install and low-end Android acceptance remain open release checks.
 
 ## Status vocabulary
 
