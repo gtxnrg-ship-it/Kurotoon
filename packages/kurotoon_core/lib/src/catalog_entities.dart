@@ -140,7 +140,11 @@ class ChapterGroup {
       return unit.title ?? (unit.chapterNumber == null ? 'Special' : 'Chapter ${unit.chapterNumber}');
     }
     final first = units.first;
-    final base = first.chapterNumber == null ? 'Mini-chapters' : 'Chapter ${first.chapterNumber}';
+    final number = first.chapterNumber;
+    final numberText = number == null
+        ? null
+        : (number == number.roundToDouble() ? number.toInt().toString() : number.toString());
+    final base = numberText == null ? 'Mini-chapters' : 'Chapter $numberText';
     final count = first.miniCount ?? units.length;
     return '$base · $count mini-chapters';
   }
