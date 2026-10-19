@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -8,7 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeedProvider, ReaderPagesProvider {
-  _FakeReaderProvider({required this.providerId, this.editionIdOverride, this.languageOverride})
+  _FakeReaderProvider({required this.providerId, this.editionIdOverride, this.languageOverride, this.hangChapterRequests = false})
       : _chapters = List<ChapterUnit>.generate(3, (index) {
           final id = 'chapter-${index + 1}';
           return ChapterUnit(
@@ -32,6 +33,7 @@ class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeed
   final String providerId;
   final String? editionIdOverride;
   final String? languageOverride;
+  final bool hangChapterRequests;
   final String title = 'Blue Star';
   final List<ChapterUnit> _chapters;
   int pageRequests = 0;
@@ -89,6 +91,9 @@ class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeed
   }) async {
     cancellationToken.throwIfCancelled();
     pageRequests++;
+    if (hangChapterRequests) {
+      return Completer<ProviderResponse<List<ChapterUnit>>>().future;
+    }
     final page = _chapters.skip(offset).take(limit).toList();
     return ProviderResponse(status: ProviderResultStatus.success, data: page);
   }
@@ -231,6 +236,28 @@ void main() {
     expect(result.status, ProviderResultStatus.failed);
     expect(result.chapters, isEmpty);
     expect(await database.loadChapters(work.edition.id), isEmpty);
+
+    providers.dispose();
+  });
+
+  test('bounds a provider that never completes chapter requests', () async {
+    final provider = _FakeReaderProvider(
+      providerId: 'reader-a',
+      hangChapterRequests: true,
+    );
+    final providers = ProviderRegistry()..register(provider);
+    final workflow = ReadingWorkflowService(
+      database: database,
+      providers: providers,
+      deviceId: 'test-device',
+      providerTimeout: const Duration(milliseconds: 20),
+    );
+    final work = await workflow.prepareWork(candidate('reader-a'));
+
+    final result = await workflow.syncChapters(work, pageSize: 2, maxChapters: 10);
+    expect(result.status, ProviderResultStatus.timedOut);
+    expect(result.chapters, isEmpty);
+    expect(result.reachedEnd, isFalse);
 
     providers.dispose();
   });
