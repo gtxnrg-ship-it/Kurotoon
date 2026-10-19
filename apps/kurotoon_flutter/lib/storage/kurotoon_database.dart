@@ -61,6 +61,7 @@ class KurotoonDatabase {
   final Database _database;
   bool _closed = false;
   Future<void>? _catalogSearchIndexFuture;
+  Future<void>? _creatorIndexFuture;
 
   Database get rawDatabase {
     _ensureOpen();
@@ -619,6 +620,72 @@ class KurotoonDatabase {
     await batch.commit(noResult: true);
   }
 
+  Future<void> _ensureCreatorIndexReady() async {
+    final active = _creatorIndexFuture;
+    if (active != null) return active;
+    final completer = Completer<void>();
+    _creatorIndexFuture = completer.future;
+    try {
+      if (await getSetting<String>('internal.creatorIndexVersion') == '1') {
+        completer.complete();
+        return;
+      }
+      await _database.delete('creator_credits', where: 'role = ?', whereArgs: [CreatorRole.other.name]);
+      String? lastId;
+      while (true) {
+        final workRows = await _database.query(
+          'works',
+          columns: ['id', 'canonical_title', 'alternate_titles_json', 'creator_names_json', 'year', 'format', 'locked_distinct_identity', 'verified'],
+          where: lastId == null ? null : 'id > ?',
+          whereArgs: lastId == null ? null : [lastId],
+          orderBy: 'id ASC',
+          limit: 250,
+        );
+        if (workRows.isEmpty) break;
+        final ids = workRows.map((row) => row['id'] as String).toList(growable: false);
+        final listingRows = await _database.query(
+          'provider_listings',
+          where: 'work_id IN (${List.filled(ids.length, '?').join(',')})',
+          whereArgs: ids,
+          orderBy: 'work_id ASC, provider_id ASC, external_id ASC',
+        );
+        final listingsByWork = <String, List<WorkCandidate>>{};
+        for (final row in listingRows) {
+          final candidate = _candidateFromRow(row);
+          if (candidate != null) {
+            (listingsByWork[row['work_id'] as String] ??= <WorkCandidate>[]).add(candidate);
+          }
+        }
+        await _database.transaction((tx) async {
+          for (final row in workRows) {
+            final work = WorkRecord(
+              id: row['id'] as String,
+              title: row['canonical_title'] as String,
+              alternateTitles: _stringList(row['alternate_titles_json']),
+              creatorNames: _stringList(row['creator_names_json']),
+              year: row['year'] as int?,
+              format: _enumByName(WorkFormat.values, row['format'] as String, WorkFormat.unknown),
+              lockedDistinctIdentity: (row['locked_distinct_identity'] as int? ?? 0) == 1,
+            );
+            await _replaceCreatorCredits(tx, CatalogEntry(
+              work: work,
+              listings: listingsByWork[work.id] ?? const <WorkCandidate>[],
+              verified: (row['verified'] as int? ?? 0) == 1,
+            ));
+          }
+        });
+        lastId = workRows.last['id'] as String;
+      }
+      await setSetting('internal.creatorIndexVersion', '1');
+      completer.complete();
+    } catch (error, stackTrace) {
+      _creatorIndexFuture = null;
+      completer.completeError(error, stackTrace);
+      await completer.future;
+      return;
+    }
+  }
+
   /// Rebuilds source-scoped creator credits from the metadata attached to each
   /// provider listing. Creator names are not globally merged across providers,
   /// because identical names are not proof of identical people.
@@ -692,6 +759,7 @@ class KurotoonDatabase {
     if ((afterName == null) != (afterId == null)) {
       throw ArgumentError('afterName and afterId must be supplied together.');
     }
+    await _ensureCreatorIndexReady();
     final trimmed = query.trim();
     if (trimmed.isEmpty || trimmed.contains('%') || trimmed.contains('_')) {
       return const <CreatorProfile>[];
@@ -725,6 +793,7 @@ class KurotoonDatabase {
   }) async {
     _ensureOpen();
     if (creatorId.trim().isEmpty) throw ArgumentError.value(creatorId, 'creatorId');
+    await _ensureCreatorIndexReady();
     if (limit < 1 || limit > 100) {
       throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 100.');
     }
@@ -1359,6 +1428,7 @@ class KurotoonDatabase {
 
   Future<CreatorProfile?> loadCreatorProfile(String creatorId) async {
     _ensureOpen();
+    await _ensureCreatorIndexReady();
     final profiles = await _database.query(
       'creator_profiles',
       where: 'id = ?',
