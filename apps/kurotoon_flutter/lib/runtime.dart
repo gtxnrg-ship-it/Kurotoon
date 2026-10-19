@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:kurotoon_core/kurotoon_core.dart';
+import 'services/catalog_workflow_service.dart';
 import 'services/extension_repository_service.dart';
 import 'services/reading_journey_service.dart';
 import 'storage/cache_storage_service.dart';
@@ -56,6 +57,7 @@ class KurotoonRuntime {
 
   final KurotoonDatabase? database;
   ExtensionRepositoryService? _extensionRepositoryService;
+  CatalogWorkflowService? _catalogWorkflowService;
   ReadingJourneyService? _readingJourneyService;
   Future<CacheStorageService>? _cacheStorageFuture;
   VoicePackStorageService? _voicePackStorageService;
@@ -104,6 +106,19 @@ class KurotoonRuntime {
     final store = database;
     if (store == null) return null;
     return _extensionRepositoryService ??= ExtensionRepositoryService(database: store);
+  }
+
+  /// The single application-level path for persistent catalog workflows.
+  /// It shares provider health with search/settings instead of creating an
+  /// isolated circuit breaker for each screen.
+  CatalogWorkflowService? get catalogWorkflow {
+    final store = database;
+    if (store == null) return null;
+    return _catalogWorkflowService ??= CatalogWorkflowService(
+      providers: providers,
+      database: store,
+      healthTracker: providerHealth,
+    );
   }
 
   VoicePackStorageService? get voicePacks {
@@ -226,6 +241,8 @@ class KurotoonRuntime {
   }
 
   Future<void> dispose() async {
+    final workflow = _catalogWorkflowService;
+    if (workflow != null) await workflow.dispose();
     _disposing = true;
     _readingJourneyService?.dispose();
     providers.dispose();
