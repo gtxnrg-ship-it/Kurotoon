@@ -146,17 +146,37 @@ class MihonRepositoryIndex {
     );
   }
 
-  /// Parses an externally hosted ExtensionList protobuf payload.
+  /// Streams records from an externally hosted ExtensionList protobuf payload.
+  /// The byte payload is bounded, but decoded records are yielded one at a time
+  /// so callers can persist large catalogs in batches without retaining them all.
+  static Iterable<MihonExtensionRecord> decodeExtensionList(
+    List<int> bytes, {
+    int maxBytes = 16 * 1024 * 1024,
+    int maxExtensions = 100000,
+  }) sync* {
+    if (bytes.length > maxBytes) {
+      throw FormatException('Mihon extension list exceeds the configured byte limit.');
+    }
+    var count = 0;
+    for (final field in _ProtoReader(bytes).readFields()) {
+      if (field.number != 1) continue;
+      if (field.wireType != 2) throw const FormatException('Mihon extension entry has an invalid wire type.');
+      if (count >= maxExtensions) throw FormatException('Mihon extension list exceeds $maxExtensions entries.');
+      count++;
+      yield _parseExtension(field.bytes!);
+    }
+  }
+
+  /// Convenience parser for callers that intentionally need the full list.
   static List<MihonExtensionRecord> parseExtensionList(
     List<int> bytes, {
     int maxBytes = 16 * 1024 * 1024,
     int maxExtensions = 100000,
-  }) {
-    if (bytes.length > maxBytes) {
-      throw FormatException('Mihon extension list exceeds the configured byte limit.');
-    }
-    return List.unmodifiable(_parseExtensionList(bytes, maxExtensions: maxExtensions));
-  }
+  }) => List.unmodifiable(decodeExtensionList(
+        bytes,
+        maxBytes: maxBytes,
+        maxExtensions: maxExtensions,
+      ));
 }
 
 List<MihonExtensionRecord> _parseExtensionList(List<int> bytes, {required int maxExtensions}) {
@@ -350,8 +370,9 @@ class _ProtoReader {
   final List<int> _bytes;
   int _offset = 0;
 
-  List<_ProtoField> readAll() {
-    final fields = <_ProtoField>[];
+  List<_ProtoField> readAll() => readFields().toList(growable: false);
+
+  Iterable<_ProtoField> readFields() sync* {
     while (_offset < _bytes.length) {
       final tag = _readVarint();
       final number = tag >> 3;
@@ -359,7 +380,7 @@ class _ProtoReader {
       if (number == 0) throw const FormatException('Invalid protobuf field number zero.');
       switch (wireType) {
         case 0:
-          fields.add(_ProtoField(number: number, wireType: wireType, varint: _readVarint()));
+          yield _ProtoField(number: number, wireType: wireType, varint: _readVarint());
           break;
         case 1:
           _skip(8);
@@ -369,7 +390,7 @@ class _ProtoReader {
           if (length > _bytes.length - _offset) throw const FormatException('Truncated protobuf length-delimited field.');
           final value = _bytes.sublist(_offset, _offset + length);
           _offset += length;
-          fields.add(_ProtoField(number: number, wireType: wireType, bytes: value));
+          yield _ProtoField(number: number, wireType: wireType, bytes: value);
           break;
         case 5:
           _skip(4);
@@ -378,7 +399,6 @@ class _ProtoReader {
           throw FormatException('Unsupported protobuf wire type $wireType.');
       }
     }
-    return fields;
   }
 
   int _readVarint() {
