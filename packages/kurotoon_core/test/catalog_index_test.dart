@@ -132,4 +132,31 @@ void main() {
     expect(() => CatalogIndex.fromEntries(entries: entries), throwsStateError);
   });
 
+  test('refreshes provider metadata while preserving canonical catalog identity', () {
+    final index = CatalogIndex();
+    final created = index.upsert(
+      candidate(provider: 'a', id: '1', creators: ['Artist'], year: 2020),
+    );
+    final refreshedCandidate = WorkCandidate(
+      providerId: 'a',
+      externalId: '1',
+      title: 'Blue Star: New Edition',
+      alternateTitles: const ['The Blue Star'],
+      creatorNames: const ['Artist', 'Writer'],
+      year: 2021,
+      format: WorkFormat.manga,
+      providerUrl: Uri.parse('https://a.example.org/1'),
+      description: 'Updated synopsis',
+    );
+
+    final refreshed = index.refreshKnownListing(refreshedCandidate);
+
+    expect(refreshed.work.id, created.entry!.work.id);
+    expect(refreshed.work.title, 'Blue Star');
+    expect(refreshed.work.alternateTitles, contains('Blue Star: New Edition'));
+    expect(refreshed.work.creatorNames, contains('Writer'));
+    expect(refreshed.listings.single.description, 'Updated synopsis');
+    expect(index.workIdForListing('a:1'), created.entry!.work.id);
+  });
+
 }
