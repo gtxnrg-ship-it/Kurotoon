@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Kurotoon",
+  "short_name": "Kurotoon",
+  "description": "Kurotoon — your universe of comics, one reader.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#090b14",
+  "theme_color": "#090b14",
+  "icons": [
+    {
+      "src": "/kurotoon-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
