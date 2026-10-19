@@ -384,3 +384,12 @@
   .reader-top-actions{gap:3px}
   .reader-top-actions .reader-icon-button{width:38px;height:38px}
 }
+
+/* Older WebView fallback: declarations using svh below supersede these when supported. */
+.reader-paged-image-wrap{min-height:calc(100vh - 96px)}
+.reader-page-image{max-height:calc(100vh - 104px)}
+.reader-loading,.reader-error-state{min-height:calc(100vh - 110px)}
+@media(max-width:760px){
+  .reader-paged-image-wrap{min-height:calc(100vh - 86px)}
+  .reader-page-image{max-height:calc(100vh - 88px)!important}
+}
