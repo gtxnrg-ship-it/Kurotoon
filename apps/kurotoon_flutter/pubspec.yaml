@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  crypto: ^3.0.7
   kurotoon_core:
     path: ../../packages/kurotoon_core
   path: ^1.9.1
