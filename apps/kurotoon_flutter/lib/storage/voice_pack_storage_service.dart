@@ -63,6 +63,9 @@ class VoicePackStorageService {
     if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{2,127}$').hasMatch(pack.id)) {
       throw const VoicePackInstallException('Voice-pack ID is invalid.');
     }
+    if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,63}$').hasMatch(pack.version)) {
+      throw const VoicePackInstallException('Voice-pack version is invalid.');
+    }
     final decision = policy.validate(
       pack,
       downloadsEnabled: downloadsEnabled,
@@ -270,7 +273,7 @@ class VoicePackStorageService {
     if (path.basename(candidate) != 'model.bin' || !path.isWithin(packRoot, candidate)) return false;
     final segments = path.split(path.relative(candidate, from: packRoot));
     return segments.length == 3 &&
-        segments[0].isNotEmpty &&
+        RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,63}$').hasMatch(segments[0]) &&
         RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(segments[1]) &&
         segments[2] == 'model.bin';
   }
