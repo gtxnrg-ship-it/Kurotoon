@@ -5,13 +5,14 @@ ReaderPageManifest manifest({
   Uri? baseUrl,
   String hash = 'a1b2c3d4e5f6',
   List<String> filenames = const ['001.webp'],
+  List<String> saverFilenames = const ['001-small.webp'],
 }) =>
     ReaderPageManifest(
       chapterId: 'chapter-1',
       baseUrl: baseUrl ?? Uri.https('cdn.example.org'),
       hash: hash,
       normalFilenames: filenames,
-      dataSaverFilenames: const ['001-small.webp'],
+      dataSaverFilenames: saverFilenames,
     );
 
 void main() {
@@ -72,9 +73,15 @@ void main() {
     }
   });
 
-  test('data saver falls back to full-size page set when no saver files exist', () {
+  test('uses the data-saver set when one is available', () {
     final value = manifest();
     expect(value.urls(dataSaver: true), hasLength(1));
     expect(value.urls(dataSaver: true).single.path, '/data-saver/a1b2c3d4e5f6/001-small.webp');
+  });
+
+  test('falls back to full-size pages when the source has no data-saver set', () {
+    final value = manifest(saverFilenames: const []);
+    expect(value.urls(dataSaver: true), hasLength(1));
+    expect(value.urls(dataSaver: true).single.path, '/data/a1b2c3d4e5f6/001.webp');
   });
 }
