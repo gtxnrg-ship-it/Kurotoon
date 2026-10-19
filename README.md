@@ -11,8 +11,8 @@ A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolv
 ## 🚦 Project dashboard
 
 **Last roadmap checkpoint:** 19 October 2026  
-**Overall product estimate:** **~42%**  
-**Backend foundation estimate:** **~63–65%**
+**Overall product estimate:** **~43%**  
+**Backend foundation estimate:** **~66–68%**
 
 These are engineering estimates based on the roadmap and implementation evidence—not code-line counts, automated coverage, or a claim that the product is almost finished. Backend models and safety policies count as foundation work; a feature is not considered complete until its real app flow is integrated and tested.
 
@@ -20,13 +20,13 @@ These are engineering estimates based on the roadmap and implementation evidence
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter/Dart app, analysis/tests, release APK workflow | Physical-device install, smoke tests, release/signing policy |
 | Dart domain and policy core | 70% | Typed catalog/provider models, identity matching, cancellation, progress and effect/voice policies | More adversarial tests and full end-to-end consumers |
-| Persistence and cache safety | 62% | SQLite schema/migrations, enforced cache budgets, serialized writes, pinned-content protection, rollback tests and persisted provider-health snapshots | Verify complete CRUD integration, crash recovery and physical-device storage behaviour |
+| Persistence and cache safety | 65% | SQLite schema/migrations, enforced cache budgets, pinned-content protection, rollback tests, persisted provider-health snapshots and verified voice-pack install records | Verify complete CRUD integration, crash recovery and physical-device storage behaviour |
 | Providers | 58% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns and upstream `Retry-After` handling | Device verification, provider-specific policies, diagnostics UI and more adapters |
 | Repository/extension foundation | 65% | Repository/manifest validation, preview-before-add, hash/size checks, persistent records | Full repository UI, install/update/remove recovery and compatibility proof |
 | Cross-source catalog | 45% | Work/edition/listing concepts, conservative matching and grouping policies | Persisted merge pipeline, undo/corrections, artist pages and real fixtures |
 | Native reader and library | 20% | Domain/persistence foundation and earlier prototype evidence | Flutter-native chapter reader, page loading, progress resume, full library UI |
 | Galaxy and adaptive performance | 25% | Initial animated native shell and effect-budget policy | Lifecycle/reduced-motion hardening and real device profiling |
-| Voice, music, haptics and particle runtime | 10% | Timeline/policy foundations and voice-pack safety constraints | Actual platform adapters, UI, playback, pack lifecycle and device tests |
+| Voice, music, haptics and particle runtime | 18% | Reader-timeline/policy foundation plus verified voice-pack storage, offline reuse and safe uninstall | Voice-pack UI/playback, music discovery, native haptics, particle controls and device tests |
 | Other platform releases | 10% | Shared Dart core intended to be portable | iOS/iPadOS/Windows/Linux host integration and validation |
 
 **How to read this:** the foundation is ahead of the end-user experience. A green CI run proves that the tested code builds and its automated tests pass; it does not prove real-source reliability, phone performance, or complete feature wiring.
@@ -119,13 +119,13 @@ These features should share a **Reader Timeline / Event Model**, rather than beh
 - Independent controls for music, ambience, sound effects, dialogue, narration, character voice and haptic intensity.
 - Global pause/mute, safe volume defaults, no unexpected autoplay and cancellation on chapter changes.
 - Haptics are brief, optional, capability-aware and tied to meaningful user-approved events—not every scroll or particle.
-- Voice packs need license metadata, size limits, checksums, cancellable downloads, safe extraction and removal.
+- Voice-pack storage now enforces explicit opt-in, license/size/free-space gates, streamed SHA-256 verification, redirect and non-public-host rejection, content-addressed installation, offline reuse and safe removal. User-visible download progress/cancellation and playback are still pending.
 - OCR, bubble order, speaker, emotion and timing are uncertain inferences; show confidence and allow correction.
 - Most static comics do not contain trustworthy panel-level timing. Never claim perfect automatic synchronization without suitable cue data.
 - Music discovery must respect source rules and access controls. Never bypass DRM, authentication or paywalls.
 - All immersive features must be opt-in, independently disableable and irrelevant to the reliability of ordinary reading.
 
-The current foundation/policy work does **not** mean the complete voice runtime, music engine, haptic synchronization or all particle mechanics are wired up. Those remain explicit implementation gates.
+Verified voice-pack file storage is implemented, but that does **not** mean the complete voice runtime, music engine, haptic synchronization or all particle mechanics are wired up. Reader UI/playback, music discovery, haptic adapters and effect controls remain explicit implementation gates.
 
 ## 🗺️ Implementation roadmap
 
