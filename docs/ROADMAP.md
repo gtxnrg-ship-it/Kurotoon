@@ -45,7 +45,7 @@ Status: **In progress**
 
 ## Phase 3 — First real source and core reader
 
-Status: **In progress** — the MangaDex adapter and live Browser search are implemented. The complete in-app reader and progress persistence are still outstanding.
+Status: **In progress — initial reader implementation on `feat/core-reader-navigation`; CI and real-device verification pending.** The branch wires MangaDex search → series details → chapter list → page reader, saved page/scroll position, basic paged/vertical modes, and chapter navigation. Comments, audio/voice, haptics, durable library integration, and multi-provider reader support remain separate follow-on work.
 
 - [x] Add a typed MangaDex search adapter with cancellation, timeout, explicit provider failures, and a conservative content-rating default.
 - [x] Render real MangaDex search results with source attribution and honest loading/empty/error states.
@@ -56,7 +56,7 @@ Status: **In progress** — the MangaDex adapter and live Browser search are imp
 - [ ] Add library add/remove/status/sort and progress persistence.
 - [ ] Make source health and attribution visible.
 
-**Exit gate:** a reader can find a series, read a chapter, leave, return, and resume at the expected location; tests cover source failure and progress recovery.
+**Exit gate:** after this branch passes CI and manual tests, verify the full search → series → reader path on old three-button Android navigation and modern gesture navigation, including retry, page/scroll restoration, chapter boundaries, and safe-area layout. A live comments service is explicitly not part of this exit gate.
 
 ## Phase 4 — Repository and extension research gate
 
