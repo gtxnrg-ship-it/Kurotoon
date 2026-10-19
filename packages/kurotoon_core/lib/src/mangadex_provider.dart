@@ -363,3 +363,256 @@ class MangaDexProvider implements SourceProvider {
     return null;
   }
 }
+
+
+/// Extended MangaDex adapter that implements series, chapter-feed, and reader
+/// manifest APIs in addition to the inherited bounded search operation.
+class MangaDexMultimediaProvider extends MangaDexProvider
+    implements SeriesProvider, ChapterFeedProvider, ReaderPagesProvider {
+  MangaDexMultimediaProvider({
+    super.transport,
+    super.contentRatings,
+    super.resultLimit,
+  });
+
+  @override
+  final ProviderDescriptor descriptor = ProviderDescriptor(
+    id: 'mangadex',
+    name: 'MangaDex',
+    homepage: Uri(scheme: 'https', host: 'mangadex.org'),
+    capabilities: {
+      ProviderCapability.search,
+      ProviderCapability.series,
+      ProviderCapability.chapters,
+      ProviderCapability.pages,
+      ProviderCapability.creators,
+    },
+    isBuiltIn: true,
+    enabledByDefault: true,
+  );
+
+  @override
+  Future<ProviderResponse<WorkCandidate>> getSeries(
+    String seriesId, {
+    required CancellationToken cancellationToken,
+  }) async {
+    if (!_isUuid(seriesId)) {
+      return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Invalid MangaDex series id');
+    }
+    try {
+      final response = await transport.get(
+        Uri.parse('https://api.mangadex.org/manga/${Uri.encodeComponent(seriesId)}?includes%5B%5D=cover_art'),
+        cancellationToken: cancellationToken,
+      );
+      final failure = _httpFailure<WorkCandidate>(response);
+      if (failure != null) return failure;
+      final row = _map(response.body['data']);
+      final attrs = _map(row?['attributes']);
+      final id = row?['id'];
+      final title = MangaDexProvider._localizedValue(attrs?['title'], preferred: 'en');
+      if (row == null || attrs == null || id is! String || title == null) {
+        return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Malformed MangaDex series response');
+      }
+      final aliases = <String>[];
+      for (final item in MangaDexProvider._objects(attrs['altTitles'])) {
+        aliases.addAll(MangaDexProvider._titleValues(item));
+      }
+      final included = <String, Map<String, dynamic>>{
+        for (final item in MangaDexProvider._objects(response.body['included']))
+          if (item['id'] is String) item['id'] as String: item,
+      };
+      final cover = _coverFilename(row, included);
+      final language = attrs['originalLanguage'] as String?;
+      final format = switch (language) {
+        'ko' => WorkFormat.manhwa,
+        'zh' || 'zh-hk' => WorkFormat.manhua,
+        'ja' => WorkFormat.manga,
+        _ => WorkFormat.unknown,
+      };
+      return ProviderResponse(
+        status: ProviderResultStatus.success,
+        data: WorkCandidate(
+          providerId: descriptor.id,
+          externalId: id,
+          title: title,
+          alternateTitles: aliases,
+          year: int.tryParse('${attrs['year'] ?? ''}'),
+          format: format,
+          language: language,
+          description: MangaDexProvider._localizedValue(attrs['description'], preferred: 'en'),
+          coverUrl: cover == null ? null : Uri.https('uploads.mangadex.org', '/covers/$id/$cover.256.jpg'),
+          providerUrl: Uri.https('mangadex.org', '/title/$id'),
+        ),
+      );
+    } on OperationCancelled catch (error) {
+      return ProviderResponse(status: ProviderResultStatus.cancelled, message: error.reason);
+    } on TimeoutException {
+      return const ProviderResponse(status: ProviderResultStatus.timedOut, message: 'Series detail timed out');
+    } on Object catch (error) {
+      return ProviderResponse(status: ProviderResultStatus.failed, message: 'Series detail failed (${error.runtimeType})');
+    }
+  }
+
+  @override
+  Future<ProviderResponse<List<ChapterUnit>>> getChapters(
+    String seriesId, {
+    required CancellationToken cancellationToken,
+    List<String> translatedLanguages = const ['en'],
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    if (!_isUuid(seriesId) || limit < 1 || limit > 500 || offset < 0 ||
+        translatedLanguages.isEmpty ||
+        translatedLanguages.any((lang) => !RegExp(r'^[a-z]{2,3}(?:-[a-z]{2})?$').hasMatch(lang))) {
+      return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Invalid chapter-feed arguments');
+    }
+    try {
+      final params = <String>[
+        _queryParam('limit', '$limit'),
+        _queryParam('offset', '$offset'),
+        _queryParam('order[chapter]', 'desc'),
+        for (final lang in translatedLanguages) _queryParam('translatedLanguage[]', lang),
+        for (final rating in contentRatings) _queryParam('contentRating[]', rating),
+      ];
+      final response = await transport.get(
+        Uri.parse('https://api.mangadex.org/manga/${Uri.encodeComponent(seriesId)}/feed?${params.join('&')}'),
+        cancellationToken: cancellationToken,
+      );
+      final failure = _httpFailure<List<ChapterUnit>>(response);
+      if (failure != null) return failure;
+      final rows = response.body['data'];
+      if (rows is! List) {
+        return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Malformed chapter feed');
+      }
+      var dropped = false;
+      final chapters = <ChapterUnit>[];
+      for (final value in rows) {
+        final row = MangaDexProvider._map(value);
+        final id = row?['id'];
+        final attrs = MangaDexProvider._map(row?['attributes']);
+        if (row == null || id is! String || !_isUuid(id) || attrs == null) {
+          dropped = true;
+          continue;
+        }
+        final lang = attrs['translatedLanguage'] is String ? attrs['translatedLanguage'] as String : 'und';
+        final number = double.tryParse('${attrs['chapter'] ?? ''}');
+        final title = attrs['title'] is String ? (attrs['title'] as String).trim() : '';
+        final date = DateTime.tryParse('${attrs['readableAt'] ?? attrs['publishAt'] ?? ''}');
+        chapters.add(ChapterUnit(
+          id: id,
+          editionId: 'mangadex:$seriesId:$lang',
+          title: title.isEmpty ? null : title,
+          chapterNumber: number,
+          volumeNumber: int.tryParse('${attrs['volume'] ?? ''}'),
+          kind: number == null ? ChapterKind.special : ChapterKind.regular,
+          listings: [
+            ChapterListing(
+              providerId: descriptor.id,
+              externalId: id,
+              url: Uri.https('mangadex.org', '/chapter/$id'),
+              languageCode: lang,
+              releaseGroup: _scanlationGroup(row['relationships']),
+              publishedAt: date,
+            ),
+          ],
+        ));
+      }
+      final total = int.tryParse('${response.body['total'] ?? ''}');
+      final more = total != null && offset + rows.length < total;
+      return ProviderResponse(
+        status: dropped ? ProviderResultStatus.partial : ProviderResultStatus.success,
+        data: List.unmodifiable(chapters),
+        message: dropped ? 'Malformed chapter rows were skipped' : (more ? 'More chapters are available' : null),
+      );
+    } on OperationCancelled catch (error) {
+      return ProviderResponse(status: ProviderResultStatus.cancelled, message: error.reason);
+    } on TimeoutException {
+      return const ProviderResponse(status: ProviderResultStatus.timedOut, message: 'Chapter feed timed out');
+    } on Object catch (error) {
+      return ProviderResponse(status: ProviderResultStatus.failed, message: 'Chapter feed failed (${error.runtimeType})');
+    }
+  }
+
+  @override
+  Future<ProviderResponse<ReaderPageManifest>> getPages(
+    String chapterId, {
+    required CancellationToken cancellationToken,
+    bool dataSaver = false,
+  }) async {
+    if (!_isUuid(chapterId)) {
+      return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Invalid MangaDex chapter id');
+    }
+    try {
+      final response = await transport.get(
+        Uri.parse('https://api.mangadex.org/at-home/server/${Uri.encodeComponent(chapterId)}'),
+        cancellationToken: cancellationToken,
+      );
+      final failure = _httpFailure<ReaderPageManifest>(response);
+      if (failure != null) return failure;
+      final chapter = MangaDexProvider._map(response.body['chapter']);
+      final baseText = response.body['baseUrl'];
+      final hash = chapter?['hash'];
+      final normal = chapter?['data'];
+      final saver = chapter?['dataSaver'];
+      if (baseText is! String || hash is! String || normal is! List || normal.isEmpty ||
+          normal.any((item) => item is! String) || saver is! List || saver.any((item) => item is! String)) {
+        return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Malformed MangaDex page manifest');
+      }
+      final base = Uri.tryParse(baseText);
+      final host = base?.host.toLowerCase() ?? '';
+      if (base == null || base.scheme != 'https' ||
+          !(host == 'mangadex.org' || host.endsWith('.mangadex.org') || host.endsWith('.mangadex.network'))) {
+        return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Untrusted reader-page host');
+      }
+      final manifest = ReaderPageManifest(
+        chapterId: chapterId,
+        baseUrl: base,
+        hash: hash,
+        normalFilenames: normal.cast<String>(),
+        dataSaverFilenames: saver.cast<String>(),
+      );
+      if (manifest.urls(dataSaver: dataSaver).any((url) => url.scheme != 'https' || url.host.toLowerCase() != host)) {
+        return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Invalid reader-page URLs');
+      }
+      return ProviderResponse(status: ProviderResultStatus.success, data: manifest);
+    } on OperationCancelled catch (error) {
+      return ProviderResponse(status: ProviderResultStatus.cancelled, message: error.reason);
+    } on TimeoutException {
+      return const ProviderResponse(status: ProviderResultStatus.timedOut, message: 'Page manifest timed out');
+    } on Object catch (error) {
+      return ProviderResponse(status: ProviderResultStatus.failed, message: 'Page manifest failed (${error.runtimeType})');
+    }
+  }
+
+  ProviderResponse<T>? _httpFailure<T>(JsonHttpResponse response) {
+    if (response.statusCode == 429) {
+      final seconds = int.tryParse(response.header('retry-after') ?? '');
+      return ProviderResponse(
+        status: ProviderResultStatus.rateLimited,
+        message: 'MangaDex rate limit reached',
+        retryAfter: seconds == null || seconds < 0 ? null : Duration(seconds: seconds),
+      );
+    }
+    if (response.statusCode == 403 || response.statusCode == 451) {
+      return const ProviderResponse(status: ProviderResultStatus.blocked, message: 'MangaDex did not permit this request');
+    }
+    if (response.statusCode != 200) {
+      return ProviderResponse(status: ProviderResultStatus.failed, message: 'MangaDex returned HTTP ${response.statusCode}');
+    }
+    return null;
+  }
+
+  String? _scanlationGroup(Object? relationships) {
+    for (final relation in MangaDexProvider._objects(relationships)) {
+      if (relation['type'] == 'scanlation_group' && relation['id'] is String) return relation['id'] as String;
+    }
+    return null;
+  }
+
+  static bool _isUuid(String value) =>
+      RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+          .hasMatch(value);
+
+  static String _queryParam(String key, String value) =>
+      '${Uri.encodeQueryComponent(key)}=${Uri.encodeQueryComponent(value)}';
+}
