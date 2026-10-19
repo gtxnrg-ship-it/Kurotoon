@@ -69,6 +69,14 @@ jobs:
           (cd release && sha256sum Kurotoon.apk Kurotoon-armeabi-v7a.apk Kurotoon-x86_64.apk > SHA256SUMS.txt)
           echo "ABI-specific APK sizes:"
           du -h release/Kurotoon.apk release/Kurotoon-armeabi-v7a.apk release/Kurotoon-x86_64.apk
+          # Keep a generous guardrail for the primary phone download.
+          arm64_bytes="$(stat -c%s release/Kurotoon.apk)"
+          arm64_budget_bytes="$((40 * 1024 * 1024))"
+          if [ "$arm64_bytes" -gt "$arm64_budget_bytes" ]; then
+            echo "::error::arm64 APK exceeds the 40 MiB download budget ($arm64_bytes bytes). Inspect APK contents before raising the budget."
+            exit 1
+          fi
+          echo "arm64 APK is within the 40 MiB download budget ($arm64_bytes bytes)."
 
       - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v4
