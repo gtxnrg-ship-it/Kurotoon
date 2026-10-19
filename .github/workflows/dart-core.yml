@@ -1,0 +1,46 @@
+name: Dart Core
+
+on:
+  pull_request:
+    paths:
+      - 'packages/kurotoon_core/**'
+      - 'apps/kurotoon_flutter/**'
+      - '.github/workflows/dart-core.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/kurotoon_core/**'
+      - 'apps/kurotoon_flutter/**'
+      - '.github/workflows/dart-core.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/kurotoon_core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: dart analyze
+      - run: dart test
+
+  flutter-runtime:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/kurotoon_flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
