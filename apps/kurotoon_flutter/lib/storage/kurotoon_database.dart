@@ -336,6 +336,24 @@ class KurotoonDatabase {
     }
   }
 
+  /// Persists a review-only candidate and its independent catalog entry
+  /// atomically, so a crash cannot leave an unresolvable queue row or a
+  /// silently visible duplicate with no review record.
+  Future<void> upsertCatalogEntryWithPendingIdentityReview(
+    CatalogEntry entry,
+    PendingIdentityReview review,
+  ) async {
+    _ensureOpen();
+    if (review.key != review.candidate.listingKey ||
+        !entry.listings.any((listing) => listing.listingKey == review.key)) {
+      throw ArgumentError('Review identity must be included in its independent catalog entry.');
+    }
+    await _database.transaction((tx) async {
+      await _upsertCatalogEntry(tx, entry);
+      await _savePendingIdentityReview(tx, review);
+    });
+  }
+
   Future<List<CatalogEntry>> loadCatalog() async {
     _ensureOpen();
     final workRows = await _database.query('works', orderBy: 'canonical_title COLLATE NOCASE');
@@ -828,7 +846,17 @@ class KurotoonDatabase {
 
   Future<void> savePendingIdentityReview(PendingIdentityReview review) async {
     _ensureOpen();
-    await _database.insert(
+    await _database.transaction((tx) => _savePendingIdentityReview(tx, review));
+  }
+
+  Future<void> _savePendingIdentityReview(
+    DatabaseExecutor tx,
+    PendingIdentityReview review,
+  ) async {
+    if (review.key != review.candidate.listingKey) {
+      throw ArgumentError('Pending identity review key must match its provider listing.');
+    }
+    await tx.insert(
       'identity_review_queue',
       {
         'listing_key': review.key,
