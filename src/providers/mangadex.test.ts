@@ -78,3 +78,64 @@ describe('MangaDexProvider.search', () => {
     });
   });
 });
+
+
+describe('MangaDexProvider chapter retrieval', () => {
+  it('keeps chapter labels, volume, language, and ordering metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      result: 'ok',
+      data: [{
+        id: 'chapter-9',
+        attributes: {
+          chapter: '9.5',
+          volume: '2',
+          title: 'After the storm',
+          translatedLanguage: 'en',
+          publishAt: '2026-01-02T00:00:00+00:00',
+          pages: 18,
+        },
+      }],
+      total: 1,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+
+    const chapters = await new MangaDexProvider().listChapters('series-123');
+
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0]).toMatchObject({
+      providerId: 'mangadex',
+      providerChapterId: 'chapter-9',
+      numberLabel: '9.5',
+      volumeLabel: '2',
+      sortOrder: 9.5,
+      languageCode: 'en',
+      pageCount: 18,
+      title: 'After the storm',
+    });
+  });
+
+  it('builds page URLs only from the expected HTTPS MangaDex CDN', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      result: 'ok',
+      baseUrl: 'https://uploads.mangadex.org/',
+      chapter: { hash: 'abc123', data: ['001.jpg', '002 page.jpg'] },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+
+    await expect(new MangaDexProvider().getChapterPages('chapter-9')).resolves.toEqual([
+      'https://uploads.mangadex.org/data/abc123/001.jpg',
+      'https://uploads.mangadex.org/data/abc123/002%20page.jpg',
+    ]);
+  });
+
+  it('rejects an unexpected page CDN host', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      result: 'ok',
+      baseUrl: 'https://example.invalid',
+      chapter: { hash: 'abc123', data: ['001.jpg'] },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+
+    await expect(new MangaDexProvider().getChapterPages('chapter-9')).rejects.toMatchObject({
+      providerId: 'mangadex',
+      code: 'invalid-response',
+    });
+  });
+});
