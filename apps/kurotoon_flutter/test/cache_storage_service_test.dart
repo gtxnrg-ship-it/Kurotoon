@@ -97,7 +97,7 @@ void main() {
       bytes: List<int>.filled(90, 2),
     );
 
-    expect(await File(first.filePath).exists(), isFalse);
+    expect(first.filePath, replacement.filePath);
     expect(await File(replacement.filePath).readAsBytes(), List<int>.filled(90, 2));
     final entries = await database.loadCacheEntries();
     expect(entries, hasLength(1));
