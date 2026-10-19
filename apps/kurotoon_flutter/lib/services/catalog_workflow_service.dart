@@ -87,7 +87,8 @@ class CatalogWorkflowService {
       if (token.isCancelled) {
         return CatalogSearchOutcome(batch: batch, catalogResults: const []);
       }
-      return _serialize(() => _indexBatch(batch));
+      final catalogResults = await _serialize(() => _indexBatch(batch));
+      return CatalogSearchOutcome(batch: batch, catalogResults: catalogResults);
     } finally {
       _activeTokens.remove(token);
     }
