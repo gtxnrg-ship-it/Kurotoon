@@ -1,7 +1,3 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
-
 import 'identity_matcher.dart';
 import 'models.dart';
 
@@ -290,8 +286,7 @@ class CatalogIndex {
   }
 
   CatalogEntry _createWork(WorkCandidate candidate) {
-    final digest = sha256.convert(utf8.encode(candidate.listingKey)).toString();
-    final id = 'work/$digest';
+    final id = 'work/${candidate.listingKey}';
     final work = WorkRecord(
       id: id,
       title: candidate.title,
