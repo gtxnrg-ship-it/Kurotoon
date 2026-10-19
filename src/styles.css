@@ -375,3 +375,12 @@
   .reader-spinner{animation:none}
   .reader-icon-button,.series-chapter-row,.reader-toggle i,.reader-page-status{transition:none}
 }
+
+.reader-top-actions{display:flex;align-items:center;gap:5px;flex:0 0 auto}
+.reader-top-actions .reader-icon-button{width:42px;height:42px}
+.reader-top-actions .reader-icon-button:disabled{opacity:.32;cursor:not-allowed}
+.reader-sheet-backdrop{z-index:10}
+@media(max-width:760px){
+  .reader-top-actions{gap:3px}
+  .reader-top-actions .reader-icon-button{width:38px;height:38px}
+}
