@@ -8,12 +8,12 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeedProvider, ReaderPagesProvider {
-  _FakeReaderProvider({required this.providerId})
+  _FakeReaderProvider({required this.providerId, this.editionIdOverride, this.languageOverride})
       : _chapters = List<ChapterUnit>.generate(3, (index) {
           final id = 'chapter-${index + 1}';
           return ChapterUnit(
             id: id,
-            editionId: '${providerId}:series-1:en',
+            editionId: editionIdOverride ?? '${providerId}:series-1:en',
             title: 'Chapter ${index + 1}',
             chapterNumber: index + 1,
             kind: ChapterKind.regular,
@@ -22,7 +22,7 @@ class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeed
                 providerId: providerId,
                 externalId: id,
                 url: Uri.https('${providerId}.example.org', '/chapter/$id'),
-                languageCode: 'en',
+                languageCode: languageOverride ?? 'en',
                 publishedAt: DateTime.utc(2026, 1, index + 1),
               ),
             ],
@@ -30,6 +30,8 @@ class _FakeReaderProvider implements SourceProvider, SeriesProvider, ChapterFeed
         });
 
   final String providerId;
+  final String? editionIdOverride;
+  final String? languageOverride;
   final String title = 'Blue Star';
   final List<ChapterUnit> _chapters;
   int pageRequests = 0;
@@ -195,6 +197,40 @@ void main() {
     expect(second.admissionResult.admission, CatalogAdmission.reviewRequired);
     expect(await database.loadCatalog(), hasLength(2));
     expect(await database.loadPendingIdentityReviews(), hasLength(1));
+
+    providers.dispose();
+  });
+
+  test('rejects chapter feeds that cross the prepared edition boundary', () async {
+    final provider = _FakeReaderProvider(
+      providerId: 'reader-a',
+      editionIdOverride: 'another-work:en',
+    );
+    final providers = ProviderRegistry()..register(provider);
+    final workflow = ReadingWorkflowService(database: database, providers: providers, deviceId: 'test-device');
+    final work = await workflow.prepareWork(candidate('reader-a'));
+
+    final result = await workflow.syncChapters(work, pageSize: 2, maxChapters: 10);
+    expect(result.status, ProviderResultStatus.failed);
+    expect(result.chapters, isEmpty);
+    expect(await database.loadChapters(work.edition.id), isEmpty);
+
+    providers.dispose();
+  });
+
+  test('rejects chapter feeds with a different translation language', () async {
+    final provider = _FakeReaderProvider(
+      providerId: 'reader-a',
+      languageOverride: 'ja',
+    );
+    final providers = ProviderRegistry()..register(provider);
+    final workflow = ReadingWorkflowService(database: database, providers: providers, deviceId: 'test-device');
+    final work = await workflow.prepareWork(candidate('reader-a'));
+
+    final result = await workflow.syncChapters(work, pageSize: 2, maxChapters: 10);
+    expect(result.status, ProviderResultStatus.failed);
+    expect(result.chapters, isEmpty);
+    expect(await database.loadChapters(work.edition.id), isEmpty);
 
     providers.dispose();
   });
