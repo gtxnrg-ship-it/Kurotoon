@@ -1,6 +1,6 @@
-# KuroToon 🌌
-
 > **[⬇️ Download the latest Android APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)** · [All releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases) · [Build history](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml)
+
+# KuroToon 🌌
 
 **KuroToon is being built as a native Flutter/Dart app—not a website wrapped in Capacitor.** The default download is an `arm64-v8a` APK to avoid bundling unused CPU architectures. Older 32-bit ARM devices can use `Kurotoon-armeabi-v7a.apk`; x86-64 builds and SHA-256 checksums are included on the [latest release](https://github.com/gtxnrg-ship-it/Kurotoon/releases/tag/continuous-latest). This is a development build; install and test it on your device before relying on it.
 

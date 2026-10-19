@@ -14,7 +14,7 @@
 - [ ] Run the native product flows against live sources on-device.
 - [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
-Last verified APK build: commit `23aaff78f50a1f804a04dd3cd3c41e920bb521a2`; stable alias: `continuous-latest`. Provider-health/backoff changes are now merged at `026b282110914f6f4c2c92092d4a25da8ec6cb8f`; their main-branch APK rebuild is pending, so the direct link will update when that build succeeds.
+Last verified APK build: commit `026b282110914f6f4c2c92092d4a25da8ec6cb8f`; stable alias: `continuous-latest`. This native Flutter APK includes the managed cache-enforcement and persisted provider-health/backoff changes. The direct link always tracks the latest successful main-branch build; newer documentation/test-only commits do not change the app binary.
 
 ## Progress dashboard
 
