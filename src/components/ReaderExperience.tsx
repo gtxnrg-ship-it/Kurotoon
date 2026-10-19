@@ -203,6 +203,7 @@ export function ReaderScreen({
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const onExitRef = useRef(onSeriesHome);
+  const requestAbortRef = useRef<AbortController | null>(null);
   const historyStatePushedRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const lastSwipeAtRef = useRef(0);
@@ -223,7 +224,9 @@ export function ReaderScreen({
   }, []);
 
   const loadPages = useCallback(() => {
+    requestAbortRef.current?.abort();
     const controller = new AbortController();
+    requestAbortRef.current = controller;
     setLoading(true);
     setLoadError('');
     setPages([]);
@@ -251,7 +254,14 @@ export function ReaderScreen({
     return () => controller.abort();
   }, [chapter.providerChapterId, progressStorageKey]);
 
-  useEffect(() => loadPages(), [loadPages]);
+  useEffect(() => {
+    const cancelInitial = loadPages();
+    return () => {
+      cancelInitial?.();
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
+    };
+  }, [loadPages]);
 
   useEffect(() => {
     if (!progressReady || !pages.length) return;
