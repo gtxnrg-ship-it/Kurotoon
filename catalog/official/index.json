@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "org.kurotoon.official",
+  "name": "KuroToon Official Starter Repository",
+  "generatedAt": "2026-10-19T00:00:00Z",
+  "description": "Curated, code-free JSON extensions maintained for KuroToon. The starter entry provides metadata search only; it does not supply chapter pages.",
+  "website": "https://github.com/gtxnrg-ship-it/Kurotoon",
+  "extensions": [
+    {
+      "id": "org.kurotoon.jikan-metadata",
+      "name": "Jikan Manga Metadata",
+      "version": "1.0.0",
+      "manifestUrl": "extensions/jikan-metadata.json",
+      "sha256": "8ad79db7f3bc4ac651c2b831a5f40ff4041d46f8d818e03cf013e8ffb8ffcfa0",
+      "sizeBytes": 958,
+      "minimumAppApi": 1,
+      "capabilities": [
+        "search"
+      ],
+      "description": "Search manga metadata through Jikan's public REST API. Metadata-only; reading chapters remains the responsibility of a reader-capable source.",
+      "languageCodes": [],
+      "contentRating": "unknown"
+    }
+  ]
+}
