@@ -361,6 +361,27 @@ class KurotoonDatabase {
     }));
   }
 
+  Future<EditionRecord?> loadEdition(String editionId) async {
+    _ensureOpen();
+    final rows = await _database.query(
+      'editions',
+      where: 'id = ?',
+      whereArgs: [editionId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    return EditionRecord(
+      id: row['id'] as String,
+      workId: row['work_id'] as String,
+      title: row['title'] as String?,
+      languageCode: row['language_code'] as String?,
+      releaseYear: row['release_year'] as int?,
+      format: _enumByName(WorkFormat.values, row['format'] as String, WorkFormat.unknown),
+      isOfficial: (row['is_official'] as int? ?? 0) == 1,
+    );
+  }
+
   Future<void> upsertEdition(EditionRecord edition) async {
     _ensureOpen();
     await _database.transaction((tx) async {
