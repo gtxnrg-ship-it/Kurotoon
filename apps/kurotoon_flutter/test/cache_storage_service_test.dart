@@ -105,6 +105,33 @@ void main() {
     expect(entries.single.entry.pinned, isTrue);
   });
 
+  test('restores staged files when SQLite rejects the cache metadata commit', () async {
+    final existing = await cache.writeBytes(
+      key: 'existing-response',
+      bucket: CacheBucket.providerResponse,
+      bytes: List<int>.filled(70, 4),
+    );
+    await database.rawDatabase.execute(\
+      "CREATE TRIGGER reject_incoming_cache BEFORE INSERT ON cache_entries "
+      "WHEN NEW.cache_key = 'incoming' BEGIN "
+      "SELECT RAISE(ABORT, 'simulated metadata failure'); END;",
+    );
+
+    await expectLater(
+      cache.writeBytes(
+        key: 'incoming',
+        bucket: CacheBucket.cover,
+        bytes: List<int>.filled(60, 5),
+      ),
+      throwsA(anything),
+    );
+
+    expect(await File(existing.filePath).readAsBytes(), List<int>.filled(70, 4));
+    final entries = await database.loadCacheEntries();
+    expect(entries, hasLength(1));
+    expect(entries.single.entry.key, 'existing-response');
+  });
+
   test('serializes concurrent writes so the budget cannot be oversubscribed', () async {
     final results = await Future.wait([
       cache.writeBytes(
