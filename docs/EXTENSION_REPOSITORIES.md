@@ -1,5 +1,10 @@
 # KuroToon Extension Repositories
 
+> **Runtime status:** the Flutter/Dart repository and declarative-manifest services are implemented as backend foundations; the complete native repository browser/install-management UI is not yet finished. Do not tell users that Mihon/Tachiyomi APK extensions are compatible. The supported initial format is declarative JSON handled by KuroToon's constrained endpoint adapter.
+
+A repository is untrusted metadata. Adding a repository must preview its identity and require user confirmation. Installing one extension must be a separate explicit action. Never execute arbitrary downloaded code or bulk-download all catalogue entries because a repository was added.
+
+
 ## User experience
 
 A repository is a catalogue URL, not a bulk download. The user adds one HTTPS index URL; KuroToon fetches the small index, shows its extensions, and downloads an individual declarative manifest only after the user selects Install.
