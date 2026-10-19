@@ -105,9 +105,11 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
 
     final installedRows = await database.loadInstalledExtensions();
     String? previousPath;
+    var previousEnabled = false;
     for (final row in installedRows) {
       if (row['extension_id'] == entry.id && row['install_path'] is String) {
         previousPath = row['install_path'] as String;
+        previousEnabled = row['enabled'] == 1;
         break;
       }
     }
@@ -141,7 +143,7 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
         entry: entry,
         repositoryId: repositoryId,
         installPath: target.path,
-        enabled: false,
+        enabled: previousEnabled,
       );
     } catch (_) {
       if (createdTarget && await target.exists()) await target.delete();
