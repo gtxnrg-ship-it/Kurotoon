@@ -407,8 +407,8 @@ class MangaDexMultimediaProvider extends MangaDexProvider
       );
       final failure = _httpFailure<WorkCandidate>(response);
       if (failure != null) return failure;
-      final row = _map(response.body['data']);
-      final attrs = _map(row?['attributes']);
+      final row = MangaDexProvider._map(response.body['data']);
+      final attrs = MangaDexProvider._map(row?['attributes']);
       final id = row?['id'];
       final title = MangaDexProvider._localizedValue(attrs?['title'], preferred: 'en');
       if (row == null || attrs == null || id is! String || title == null) {
