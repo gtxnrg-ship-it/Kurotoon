@@ -160,7 +160,7 @@ function externalIndexKeys(input: NormalizedInput): string[] {
 }
 
 function identityIndexKeys(input: NormalizedInput): string[] {
-  const title = normalizeTitle(input.listing.title);
+  const title = normalizeTitle(input.listing.title).replace(/^(?:the|a|an)\s+/u, '');
   if (!title || input.creatorIdentityKeys.length === 0) return externalIndexKeys(input);
   return [...externalIndexKeys(input), ...input.creatorIdentityKeys.map(key => 'title-creator:' + title + ':' + key)];
 }
