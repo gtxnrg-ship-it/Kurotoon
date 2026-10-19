@@ -164,6 +164,32 @@ void main() {
       expect(preview.indexDigest, hasLength(64));
     });
 
+    test('keeps large external-list previews bounded while counting all entries', () {
+      final secondExtension = <int>[
+        ..._mihonString(1, 'Second Source'),
+        ..._mihonString(2, 'eu.example.second'),
+        ..._mihonString(6, '2.0.0'),
+      ];
+      final listBytes = <int>[
+        ..._mihonBytes(1, extension),
+        ..._mihonBytes(1, secondExtension),
+      ];
+      final indexBytes = <int>[
+        ..._mihonString(1, 'Example Repository'),
+        ..._mihonString(3, 'test-key'),
+        ..._mihonString(102, 'list.pb'),
+      ];
+      final preview = parseMihonRepositoryPreviewBytes(
+        indexUri: Uri.parse('https://repo.example.org/index.pb'),
+        indexBytes: indexBytes,
+        extensionListBytes: listBytes,
+        previewLimit: 1,
+      );
+      expect(preview.extensionCount, 2);
+      expect(preview.extensions, hasLength(1));
+      expect(preview.hasMorePreviewEntries, isTrue);
+    });
+
     test('requires and incorporates the external extension-list payload', () {
       final indexBytes = <int>[
         ..._mihonString(1, 'Example Repository'),
