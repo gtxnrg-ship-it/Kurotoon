@@ -56,7 +56,7 @@ class KurotoonDatabase {
     return _database;
   }
 
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   static Future<KurotoonDatabase> open({
     String? databasePath,
@@ -246,6 +246,8 @@ class KurotoonDatabase {
           ON UPDATE CASCADE ON DELETE RESTRICT
       )''',
       'CREATE INDEX installed_extensions_repo_idx ON installed_extensions(repository_id)',
+      'CREATE INDEX works_title_page_idx ON works(canonical_title COLLATE NOCASE, id)',
+      'CREATE INDEX provider_listings_title_idx ON provider_listings(title COLLATE NOCASE, work_id)',
     ];
     for (final statement in statements) {
       await db.execute(statement);
@@ -255,6 +257,12 @@ class KurotoonDatabase {
   static Future<void> _upgradeSchema(DatabaseExecutor db, int oldVersion, int newVersion) async {
     if (oldVersion < 1 && newVersion >= 1) await _createSchema(db, newVersion);
     if (oldVersion < 2 && newVersion >= 2) await _createExtensionSchema(db);
+    if (oldVersion < 3 && newVersion >= 3) await _createCatalogIndexes(db);
+  }
+
+  static Future<void> _createCatalogIndexes(DatabaseExecutor db) async {
+    await db.execute('CREATE INDEX IF NOT EXISTS works_title_page_idx ON works(canonical_title COLLATE NOCASE, id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS provider_listings_title_idx ON provider_listings(title COLLATE NOCASE, work_id)');
   }
 
   static Future<void> _createExtensionSchema(DatabaseExecutor db) async {
@@ -331,6 +339,85 @@ class KurotoonDatabase {
         );
       }
     });
+  }
+
+  /// Loads a bounded page of the local catalog without materializing every
+  /// work and provider listing in memory. Use the final row's title and ID as
+  /// the next page cursor; this remains stable when titles are identical.
+  /// Search results are bounded to 100 rows and match titles, aliases, creator
+  /// metadata, or provider listing titles.
+  Future<List<CatalogEntry>> loadCatalogPage({
+    int limit = 50,
+    String? query,
+    String? afterTitle,
+    String? afterId,
+  }) async {
+    _ensureOpen();
+    if (limit < 1 || limit > 100) {
+      throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 100.');
+    }
+    if ((afterTitle == null) != (afterId == null)) {
+      throw ArgumentError('afterTitle and afterId must be supplied together.');
+    }
+
+    final clauses = <String>[];
+    final args = <Object?>[];
+    final trimmedQuery = query?.trim();
+    if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
+      // '!' is the SQL LIKE escape character, so user-supplied wildcards are
+      // treated literally instead of turning a short query into a table scan.
+      final escaped = trimmedQuery
+          .replaceAll('!', '!!')
+          .replaceAll('%', '!%')
+          .replaceAll('_', '!_');
+      final pattern = '%$escaped%';
+      clauses.add("(canonical_title LIKE ? ESCAPE '!' OR alternate_titles_json LIKE ? ESCAPE '!' OR creator_names_json LIKE ? ESCAPE '!' OR id IN (SELECT work_id FROM provider_listings WHERE title LIKE ? ESCAPE '!'))");
+      args.addAll([pattern, pattern, pattern, pattern]);
+    }
+    if (afterTitle != null && afterId != null) {
+      clauses.add('(canonical_title COLLATE NOCASE > ? OR (canonical_title COLLATE NOCASE = ? AND id > ?))');
+      args.addAll([afterTitle, afterTitle, afterId]);
+    }
+
+    final rows = await _database.query(
+      'works',
+      where: clauses.isEmpty ? null : clauses.join(' AND '),
+      whereArgs: args,
+      orderBy: 'canonical_title COLLATE NOCASE ASC, id ASC',
+      limit: limit,
+    );
+    if (rows.isEmpty) return const <CatalogEntry>[];
+
+    final ids = rows.map((row) => row['id'] as String).toList(growable: false);
+    final listingRows = await _database.query(
+      'provider_listings',
+      where: 'work_id IN (${List.filled(ids.length, '?').join(',')})',
+      whereArgs: ids,
+      orderBy: 'work_id ASC, title COLLATE NOCASE ASC',
+    );
+    final listingsByWork = <String, List<WorkCandidate>>{};
+    for (final row in listingRows) {
+      final candidate = _candidateFromRow(row);
+      if (candidate != null) {
+        (listingsByWork[row['work_id'] as String] ??= <WorkCandidate>[]).add(candidate);
+      }
+    }
+    return List.unmodifiable(rows.map((row) {
+      final work = WorkRecord(
+        id: row['id'] as String,
+        title: row['canonical_title'] as String,
+        alternateTitles: _stringList(row['alternate_titles_json']),
+        creatorNames: _stringList(row['creator_names_json']),
+        year: row['year'] as int?,
+        format: _enumByName(WorkFormat.values, row['format'] as String, WorkFormat.unknown),
+        lockedDistinctIdentity: (row['locked_distinct_identity'] as int? ?? 0) == 1,
+      );
+      return CatalogEntry(
+        work: work,
+        listings: listingsByWork[work.id] ?? const <WorkCandidate>[],
+        verified: (row['verified'] as int? ?? 0) == 1,
+      );
+    }));
   }
 
   Future<List<CatalogEntry>> loadCatalog() async {
