@@ -327,6 +327,30 @@ void main() {
       firstPage.map((entry) => entry.work.id).toSet(),
     ), isEmpty);
 
+    final matchPage = await database.loadCatalogCandidatesForMatching(
+      WorkCandidate(
+        providerId: 'another.source',
+        externalId: 'series-090',
+        title: 'Series 090',
+        creatorNames: const ['Creator 090'],
+        providerUrl: Uri.parse('https://another.example.org/series/090'),
+      ),
+    );
+    expect(matchPage.hasMore, isFalse);
+    expect(matchPage.entries.map((entry) => entry.work.title), contains('Series 090'));
+
+    final broadMatchPage = await database.loadCatalogCandidatesForMatching(
+      WorkCandidate(
+        providerId: 'another.source',
+        externalId: 'new-series',
+        title: 'Series',
+        providerUrl: Uri.parse('https://another.example.org/series'),
+      ),
+      maxCandidates: 10,
+    );
+    expect(broadMatchPage.entries, hasLength(10));
+    expect(broadMatchPage.hasMore, isTrue);
+
     final search = await database.loadCatalogPage(query: 'Series 09', limit: 20);
     expect(search, hasLength(10));
     expect(search.first.work.title, 'Series 090');
