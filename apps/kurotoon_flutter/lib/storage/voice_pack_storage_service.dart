@@ -88,6 +88,7 @@ class VoicePackStorageService {
       '.model-${DateTime.now().microsecondsSinceEpoch}.pending',
     ));
     var installedNewFile = false;
+    var metadataCommitted = false;
     try {
       await _downloadAndVerify(pack, temporary);
       // The target is content-addressed. If it existed, it failed verification;
@@ -98,6 +99,7 @@ class VoicePackStorageService {
 
       final prior = await database.loadVoicePackInstall(pack.id);
       await _recordInstall(pack, target.path);
+      metadataCommitted = true;
 
       final priorPath = prior?['install_path'];
       if (priorPath is String &&
@@ -107,12 +109,16 @@ class VoicePackStorageService {
             packId: pack.id,
             installPath: priorPath,
           )) {
-        final oldFile = File(priorPath);
-        if (await oldFile.exists()) await oldFile.delete();
+        try {
+          final oldFile = File(priorPath);
+          if (await oldFile.exists()) await oldFile.delete();
+        } on FileSystemException {
+          // A leftover old model is an orphan; the committed new install stays valid.
+        }
       }
       return target.path;
     } catch (_) {
-      if (installedNewFile && await target.exists()) {
+      if (installedNewFile && !metadataCommitted && await target.exists()) {
         try {
           await target.delete();
         } on FileSystemException {
