@@ -326,16 +326,16 @@ This order is a plan, not a promise that all stages are complete. Reorder only w
 - Seven domain unit tests.
 - CI build/test and high/critical dependency audit checks.
 
-### In progress — live MangaDex search (feature branch)
-- A provider adapter maps live MangaDex series metadata, cover art, aliases, creators, chapter labels, and page URLs into Kurotoon's typed contracts.
-- Browser search is debounced, cancellable, and has distinct loading, empty, rate-limit/network error, and real-results states.
-- Explicit and safe-default content-rating filters are used for search. Results link transparently to MangaDex until Kurotoon's built-in reader is implemented.
-- Provider tests cover mapping, cancellation, rate limiting, chapter metadata, and safe CDN URL validation. This branch is pending CI and merge.
+### Implemented — live MangaDex search
+- A provider adapter maps MangaDex series metadata, cover art, aliases, creators, chapter labels, and page URLs into Kurotoon's typed contracts.
+- Browser search is debounced and cancels stale requests. Loading, empty, network/rate-limit errors, and real results have distinct states.
+- Search defaults to safe and suggestive content ratings. Results link transparently to MangaDex until the built-in chapter reader is implemented.
+- Provider tests cover mapping, cancellation, rate limiting, chapter metadata, page URL construction, and CDN-host validation. Live API behaviour and physical-device verification remain manual acceptance items.
 
 ### Not implemented yet
 - Full production cosmic art direction, gas-giant/galaxy formation layers, final touch-reactive space bending, adaptive quality controls, and launch sequence.
 - Finished design system and fully wired settings.
-- The live MangaDex search work in this branch is not yet merged; further provider verification and the integrated chapter reader remain outstanding.
+- The complete in-app series-details → chapter-list → page-reader flow, reading-progress persistence, and durable library integration remain outstanding; current search results open on MangaDex.
 - Complete reader/page loading, progress persistence, and durable library.
 - Repository browsing, extension installation/runtime, and proven Android extension compatibility.
 - Shared reader timeline, synchronized sound/haptics, voice/universal dubbing, and music discovery.
