@@ -90,6 +90,7 @@ class KurotoonRuntime {
     return _readingWorkflowService ??= ReadingWorkflowService(
       database: store,
       providers: providers,
+      healthTracker: providerHealth,
     );
   }
 
