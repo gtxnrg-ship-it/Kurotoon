@@ -841,7 +841,11 @@ class KurotoonDatabase {
     return CreatorProfile(
       id: profiles.single['id'] as String,
       name: profiles.single['name'] as String,
-      aliases: _st
+      aliases: _stringList(profiles.single['aliases_json']),
+      credits: credits,
+    );
+  }
+
   static Map<String, Object?> _candidateMap(WorkCandidate candidate) => {
         'providerId': candidate.providerId,
         'externalId': candidate.externalId,
@@ -871,7 +875,9 @@ class KurotoonDatabase {
     final providerId = decoded['providerId'];
     final externalId = decoded['externalId'];
     final title = decoded['title'];
-    final providerUrl = Uri.tryParse(decoded['providerUrl'] is String ? decoded['providerUrl'] as String : '');
+    final providerUrl = Uri.tryParse(
+      decoded['providerUrl'] is String ? decoded['providerUrl'] as String : '',
+    );
     if (providerId is! String || externalId is! String || title is! String ||
         providerUrl == null || !providerUrl.isAbsolute || providerUrl.host.isEmpty) {
       return null;
@@ -891,16 +897,15 @@ class KurotoonDatabase {
           ? (decoded['creatorNames'] as List).whereType<String>().toList()
           : const [],
       year: yearValue is int ? yearValue : null,
-      format: _enumByName(WorkFormat.values, decoded['format'] is String ? decoded['format'] as String : '', WorkFormat.unknown),
+      format: _enumByName(
+        WorkFormat.values,
+        decoded['format'] is String ? decoded['format'] as String : '',
+        WorkFormat.unknown,
+      ),
       language: decoded['language'] as String?,
       description: decoded['description'] as String?,
       coverUrl: cover != null && cover.isAbsolute ? cover : null,
       tags: decoded['tags'] is List ? (decoded['tags'] as List).whereType<String>().toList() : const [],
-    );
-  }
-
-ringList(profiles.single['aliases_json']),
-      credits: credits,
     );
   }
 
