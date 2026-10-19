@@ -348,14 +348,22 @@ export function ReaderScreen({
   const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
     const start = touchStartRef.current;
     touchStartRef.current = null;
-    if (!start || mode !== 'paged' || panel || commentsOpen) return;
+    if (!start || panel || commentsOpen) return;
     const touch = event.changedTouches[0];
     const dx = touch.clientX - start.x;
     const dy = touch.clientY - start.y;
     const width = window.innerWidth;
     // Leave the outermost edge zones to Android/iOS system-back gestures.
-    if (start.x < 24 || start.x > width - 24) return;
-    if (Math.abs(dx) < 62 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    // Do not claim a gesture that began in the browser/OS back-navigation zone.
+    if (start.x < 28 || start.x > width - 28) return;
+    if (mode === 'paged' && Math.abs(dy) >= 72 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+      // A deliberate vertical swipe reveals/dismisses reader chrome in paged mode.
+      // Horizontal page turns remain separate; vertical reading keeps native scrolling.
+      lastSwipeAtRef.current = performance.now();
+      setChromeVisible(dy > 0);
+      return;
+    }
+    if (mode !== 'paged' || Math.abs(dx) < 62 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
     lastSwipeAtRef.current = performance.now();
     const forward = direction === 'rtl' ? dx > 0 : dx < 0;
     turnPage(forward ? 1 : -1);
