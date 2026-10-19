@@ -1,10 +1,10 @@
-package app.kurotoon.native.experience
+package app.kurotoon.android.experience
 
 import android.content.Context
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import app.kurotoon.native.data.KurotoonPreferences
+import app.kurotoon.android.data.KurotoonPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
