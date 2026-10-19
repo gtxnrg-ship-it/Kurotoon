@@ -12,7 +12,7 @@ class _FakeProvider
   _FakeProvider(this._id);
 
   final String _id;
-  bool failDetails;
+  bool failDetails = false;
   String chapterLanguage = 'en';
   int pageRequests = 0;
 
