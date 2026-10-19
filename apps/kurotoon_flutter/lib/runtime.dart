@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:kurotoon_core/kurotoon_core.dart';
 import 'services/extension_repository_service.dart';
+import 'services/reading_journey_service.dart';
 import 'storage/cache_storage_service.dart';
 import 'storage/kurotoon_database.dart';
 import 'storage/voice_pack_storage_service.dart';
@@ -34,6 +36,32 @@ class KurotoonRuntime {
   ExtensionRepositoryService? _extensionRepositoryService;
   Future<CacheStorageService>? _cacheStorageFuture;
   VoicePackStorageService? _voicePackStorageService;
+  ReadingJourneyService? _readingJourneyService;
+
+  /// The app's shared, testable search/details/chapters/reader/progress service.
+  ReadingJourneyService? get readingJourney {
+    final store = database;
+    if (store == null) return null;
+    return _readingJourneyService ??= ReadingJourneyService(
+      providers: providers,
+      database: store,
+      coordinatorFactory: createSearchCoordinator,
+      healthTracker: providerHealth,
+      deviceIdProvider: _loadOrCreateDeviceId,
+    );
+  }
+
+  Future<String> _loadOrCreateDeviceId() async {
+    final store = database;
+    if (store == null) throw StateError('Persistent storage is required for device identity.');
+    final existing = await store.getSetting<String>('device.local_id');
+    if (existing != null && existing.trim().isNotEmpty) return existing;
+    final random = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    final created = 'device-' + bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    await store.setSetting('device.local_id', created);
+    return created;
+  }
   bool _disposing = false;
   final Map<String, String> extensionLoadErrors = {};
 
@@ -177,6 +205,7 @@ class KurotoonRuntime {
 
   Future<void> dispose() async {
     _disposing = true;
+    _readingJourneyService?.dispose();
     providers.dispose();
     _extensionRepositoryService?.dispose();
     _voicePackStorageService?.dispose();
