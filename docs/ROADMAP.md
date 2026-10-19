@@ -45,10 +45,10 @@ Status: **In progress**
 
 ## Phase 3 — First real source and core reader
 
-Status: **In progress** — a MangaDex adapter and live Browser search are being implemented on a feature branch; CI is pending. Built-in chapter reading is not complete.
+Status: **In progress** — the MangaDex adapter and live Browser search are implemented. The complete in-app reader and progress persistence are still outstanding.
 
-- [x] Add a typed MangaDex search adapter with cancellation, timeout, explicit provider failures, and a conservative content-rating default (feature branch; pending CI).
-- [x] Render real MangaDex search results with source attribution and honest loading/empty/error states (feature branch; pending CI).
+- [x] Add a typed MangaDex search adapter with cancellation, timeout, explicit provider failures, and a conservative content-rating default.
+- [x] Render real MangaDex search results with source attribution and honest loading/empty/error states.
 - [ ] Prove the complete in-app flow: search → series details → chapter list → page retrieval.
 - [ ] Build image preloading with cancellation and bounded concurrency.
 - [ ] Save and restore reading position reliably.
