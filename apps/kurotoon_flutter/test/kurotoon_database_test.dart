@@ -228,4 +228,25 @@ void main() {
   });
 
 
+  test('protects the bundled official repository from removal', () async {
+    final repository = ExtensionRepository(
+      id: 'org.kurotoon.official',
+      name: 'KuroToon Official Starter Repository',
+      indexUri: Uri.parse(
+        'https://raw.githubusercontent.com/gtxnrg-ship-it/Kurotoon/main/catalog/official/index.json',
+      ),
+      trust: RepositoryTrust.builtIn,
+    );
+    await database.saveExtensionRepository(repository);
+
+    await expectLater(
+      database.removeExtensionRepository(repository.id),
+      throwsStateError,
+    );
+    expect(
+      (await database.loadExtensionRepositories()).single['trust'],
+      RepositoryTrust.builtIn.name,
+    );
+  });
+
 }
