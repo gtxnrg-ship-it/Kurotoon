@@ -10,11 +10,12 @@
 - [x] Dart core CI passed on the same main commit.
 - [x] APK is uploaded as `Kurotoon.apk` to a continuous development release.
 - [ ] Install and verify the current APK on a real Android device.
-- [ ] Verify the new stable direct-download alias on a successful post-merge main build and confirm its checksum asset.
+- [x] Verify the stable `continuous-latest` direct-download alias points to a successful main build.
+- [ ] Verify the new SHA-256 checksum manifest is published beside all ABI-specific APK assets.
 - [ ] Run the native product flows against live sources on-device.
 - [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
-Current verified build: commit `adde6fc27f96ef38e3a0e0abe38cf2b320924812`, release tag `continuous-137`. See the README for the current download link, which should only be marked current after the stable alias build succeeds.
+Current verified main build: commit `383c7e7b477543643405d2cdea7f3324c33211df`, numbered release `continuous-140`; the `continuous-latest` alias was observed to contain the matching APK. Verify the checksum manifest after the updated ABI-specific release workflow is merged and runs on main.
 
 ## Progress dashboard
 
