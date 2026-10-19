@@ -2,6 +2,10 @@ name: Android APK
 
 on:
   pull_request:
+    paths:
+      - 'apps/kurotoon_flutter/**'
+      - 'packages/kurotoon_core/**'
+      - '.github/workflows/android-apk.yml'
   workflow_dispatch:
   push:
     branches: [main]
@@ -12,61 +16,52 @@ permissions:
 
 jobs:
   android:
-    name: Build Kurotoon APK
+    name: Build native Flutter Kurotoon APK
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
-          node-version: 22
+          channel: stable
+          cache: true
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Install Android platform packages
+      - name: Generate Android platform project
         run: |
-          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)"
-          if [ -z "$SDK_MANAGER" ]; then
-            echo "Could not find sdkmanager under $SDK_ROOT/cmdline-tools" >&2
-            exit 1
-          fi
-          yes | "$SDK_MANAGER" --licenses >/dev/null || true
-          "$SDK_MANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+          flutter create \
+            --platforms=android \
+            --project-name kurotoon_flutter \
+            --org com.kurotoon \
+            /tmp/kurotoon_flutter_scaffold
+          cp -R /tmp/kurotoon_flutter_scaffold/android apps/kurotoon_flutter/android
 
-      - name: Install web dependencies
-        run: npm install --legacy-peer-deps
+      - name: Resolve Flutter dependencies
+        working-directory: apps/kurotoon_flutter
+        run: flutter pub get
 
-      - name: Typecheck and build web app
-        run: npm run build
+      - name: Analyze Flutter application
+        working-directory: apps/kurotoon_flutter
+        run: flutter analyze
 
-      - name: Run domain tests
-        run: npm test
+      - name: Test Flutter application and storage
+        working-directory: apps/kurotoon_flutter
+        run: flutter test
 
-      - name: Generate Android project
-        run: npx cap add android
-
-      - name: Sync web assets to Android
-        run: npx cap sync android
-
-      - name: Assemble installable debug APK
-        run: cd android && ./gradlew --no-daemon assembleDebug
+      - name: Build release APK
+        working-directory: apps/kurotoon_flutter
+        run: flutter build apk --release
 
       - name: Name the APK Kurotoon.apk
         run: |
           mkdir -p release
-          cp android/app/build/outputs/apk/debug/app-debug.apk release/Kurotoon.apk
+          cp apps/kurotoon_flutter/build/app/outputs/flutter-apk/app-release.apk release/Kurotoon.apk
 
       - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kurotoon-APK
+          name: Kurotoon-Flutter-APK
           path: release/Kurotoon.apk
           if-no-files-found: error
           retention-days: 14
@@ -75,25 +70,25 @@ jobs:
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: continuous-${{ github.run_number }}
-          name: Kurotoon
+          tag_name: continuous-\${{ github.run_number }}
+          name: Kurotoon Flutter development build
           prerelease: true
           make_latest: false
           files: release/Kurotoon.apk
           body: |
-            Automated Kurotoon Android development build.
+            Native Flutter/Dart Kurotoon Android development build.
             File: Kurotoon.apk
-            Commit: ${{ github.sha }}
+            Commit: \${{ github.sha }}
 
       - name: Publish versioned APK release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: \${{ github.ref_name }}
           name: Kurotoon
           prerelease: false
           files: release/Kurotoon.apk
           body: |
-            Kurotoon Android release.
+            Native Flutter/Dart Kurotoon Android release.
             File: Kurotoon.apk
-            Commit: ${{ github.sha }}
+            Commit: \${{ github.sha }}
