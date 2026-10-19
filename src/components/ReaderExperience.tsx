@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type TouchEvent } from 'react';
 import {
   ArrowLeft, ArrowLeftRight, BookOpen, Check, ChevronLeft, ChevronRight,
   Home, List, LoaderCircle, MessageCircle, RotateCcw, Settings2, Volume2,
@@ -54,6 +54,22 @@ export function SeriesPage({
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [ascending, setAscending] = useState(true);
+  const onBackRef = useRef(onBack);
+  useEffect(() => { onBackRef.current = onBack; }, [onBack]);
+  useEffect(() => {
+    const currentState = window.history.state;
+    if (!(currentState && typeof currentState === 'object' && currentState.__kurotoonSeries)) {
+      const stateObject = currentState && typeof currentState === 'object' ? currentState : {};
+      window.history.pushState({ ...stateObject, __kurotoonSeries: true }, '', window.location.href);
+    }
+    const handlePopState = () => onBackRef.current();
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+  const closeSeries = () => {
+    if (window.history.state && window.history.state.__kurotoonSeries) window.history.back();
+    else onBack();
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -93,7 +109,7 @@ export function SeriesPage({
 
   return <div className="reader-route-overlay series-route" role="main">
     <header className="series-route-bar">
-      <button className="reader-icon-button" onClick={onBack} aria-label="Back to search results"><ArrowLeft size={19}/></button>
+      <button className="reader-icon-button" onClick={closeSeries} aria-label="Back to search results"><ArrowLeft size={19}/></button>
       <span className="series-route-label">SERIES HOME</span>
       <a className="reader-source-link" href={details.url} target="_blank" rel="noreferrer noopener">Source ↗</a>
     </header>
@@ -187,6 +203,7 @@ export function ReaderScreen({
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const onExitRef = useRef(onSeriesHome);
+  const historyStatePushedRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const lastSwipeAtRef = useRef(0);
   const progressStorageKey = progressKey(listing, chapter);
@@ -195,8 +212,11 @@ export function ReaderScreen({
 
   useEffect(() => {
     const currentState = window.history.state;
-    const stateObject = currentState && typeof currentState === 'object' ? currentState : {};
-    window.history.pushState({ ...stateObject, __kurotoonReader: true }, '', window.location.href);
+    if (!historyStatePushedRef.current) {
+      const stateObject = currentState && typeof currentState === 'object' ? currentState : {};
+      window.history.pushState({ ...stateObject, __kurotoonReader: true }, '', window.location.href);
+      historyStatePushedRef.current = true;
+    }
     const handlePopState = () => onExitRef.current();
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -247,6 +267,10 @@ export function ReaderScreen({
     if (mode !== 'vertical' || !autoLoad || !sentinelRef.current || !scrollRef.current || visiblePageCount >= pages.length) return;
     const root = scrollRef.current;
     const sentinel = sentinelRef.current;
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisiblePageCount(count => Math.min(pages.length, count + 4));
+      return;
+    }
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) setVisiblePageCount(count => Math.min(pages.length, count + 4));
     }, { root, rootMargin: '1000px 0px' });
@@ -292,7 +316,7 @@ export function ReaderScreen({
     else if (nextChapter) changeChapter(nextChapter);
   }, [pageIndex, pages.length, nextChapter, turnPage, changeChapter]);
 
-  const handleStageClick = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleStageClick = (event: MouseEvent<HTMLDivElement>) => {
     if (performance.now() - lastSwipeAtRef.current < 450) return;
     if (panel || commentsOpen) return;
     const target = event.target as HTMLElement;
@@ -312,7 +336,7 @@ export function ReaderScreen({
     }
   };
 
-  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     const touch = event.changedTouches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY };
   };
@@ -332,7 +356,7 @@ export function ReaderScreen({
     turnPage(forward ? 1 : -1);
   };
 
-  const handleReaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleReaderKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       if (commentsOpen) setCommentsOpen(false);
       else if (panel) setPanel(null);
@@ -406,7 +430,7 @@ export function ReaderScreen({
         <div className={'reader-page-status ' + (chromeVisible ? 'reader-page-status-visible' : '')}>
           <span>{pageIndex + 1} / {pages.length}</span><span>{direction === 'rtl' ? 'Right to left' : 'Left to right'}</span>
         </div>
-        {pageIndex === pages.length - 1 && <ChapterEndActions listing={listing} chapter={chapter} previousChapter={previousChapter} nextChapter={nextChapter} onPrevious={() => changeChapter(previousChapter)} onNext={() => changeChapter(nextChapter)} onSeriesHome={closeReader} onComments={() => { setPanel(null); setCommentsOpen(true); }} />}
+        {pageIndex === pages.length - 1 && <ChapterEndActions listing={listing} chapter={chapter} previousChapter={previousChapter} nextChapter={nextChapter} onPrevious={() => changeChapter(previousChapter)} onNext={() => changeChapter(nextChapter)} onSeriesHome={closeReader} onComments={() => { setPanel(null); setCommentsOpen(true); }} currentPage={pageIndex + 1} />}
       </>}
       {!loading && !loadError && pages.length > 0 && mode === 'vertical' && <>
         <div className="reader-vertical-pages">
@@ -419,7 +443,7 @@ export function ReaderScreen({
         {visiblePageCount < pages.length && <div ref={sentinelRef} className="reader-load-sentinel">
           {autoLoad ? <><LoaderCircle className="reader-spinner" size={17}/> Loading the next pages…</> : <button className="reader-primary-button" onClick={() => setVisiblePageCount(count => Math.min(pages.length, count + 4))}>Load more pages <ChevronRight size={15}/></button>}
         </div>}
-        {visiblePageCount >= pages.length && <ChapterEndActions listing={listing} chapter={chapter} previousChapter={previousChapter} nextChapter={nextChapter} onPrevious={() => changeChapter(previousChapter)} onNext={() => changeChapter(nextChapter)} onSeriesHome={closeReader} onComments={() => { setPanel(null); setCommentsOpen(true); }} />}
+        {visiblePageCount >= pages.length && <ChapterEndActions listing={listing} chapter={chapter} previousChapter={previousChapter} nextChapter={nextChapter} onPrevious={() => changeChapter(previousChapter)} onNext={() => changeChapter(nextChapter)} onSeriesHome={closeReader} onComments={() => { setPanel(null); setCommentsOpen(true); }} currentPage={pageIndex + 1} />}
       </>}
     </div>
 
@@ -486,7 +510,7 @@ export function ReaderScreen({
 }
 
 function ChapterEndActions({
-  listing, chapter, previousChapter, nextChapter, onPrevious, onNext, onSeriesHome, onComments,
+  listing, chapter, previousChapter, nextChapter, onPrevious, onNext, onSeriesHome, onComments, currentPage,
 }: {
   listing: ProviderListing;
   chapter: ChapterListing;
@@ -496,6 +520,7 @@ function ChapterEndActions({
   onNext: () => void;
   onSeriesHome: () => void;
   onComments: () => void;
+  currentPage: number;
 }) {
   return <section className="reader-chapter-end" aria-label="Chapter end navigation">
     <div className="reader-eyebrow">END OF CHAPTER</div>
@@ -505,7 +530,7 @@ function ChapterEndActions({
       <button disabled={!previousChapter} onClick={onPrevious}><ChevronLeft size={17}/><span>Previous</span></button>
       <button disabled={!nextChapter} className="reader-end-next" onClick={onNext}><span>Next chapter</span><ChevronRight size={17}/></button>
     </div>
-    <button className="reader-end-comments" onClick={onComments}><MessageCircle size={15}/> Comments for this moment <span>·</span> page {chapter.pageCount || '—'}</button>
+    <button className="reader-end-comments" onClick={onComments}><MessageCircle size={15}/> Comments for this moment <span>·</span> page {currentPage}</button>
   </section>;
 }
 
