@@ -111,6 +111,7 @@ class CacheStorageService {
     final temporary = File(target.path + '.pending-' + nonce.toString());
     final backups = <String, String>{};
     var targetInstalled = false;
+    var metadataCommitted = false;
 
     try {
       await temporary.writeAsBytes(bytes, flush: true);
@@ -145,6 +146,7 @@ class CacheStorageService {
         filePath: target.path,
       );
       await database.commitCacheWrite(entry, evictedKeys: evictedKeys);
+      metadataCommitted = true;
 
       // A backup left behind by a filesystem permission error is an orphan,
       // not a reason to roll back an already committed cache index.
@@ -152,12 +154,13 @@ class CacheStorageService {
         try {
           final backup = File(backupPath);
           if (await backup.exists()) await backup.delete();
-        } on FileSystemException {
+        } on Object {
           // A future maintenance pass may clean this disposable orphan.
         }
       }
       return entry;
     } catch (_) {
+      if (metadataCommitted) rethrow;
       if (targetInstalled && await target.exists()) {
         try {
           await target.delete();
