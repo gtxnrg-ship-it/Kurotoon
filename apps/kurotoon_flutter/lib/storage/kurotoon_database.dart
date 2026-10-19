@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:kurotoon_core/kurotoon_core.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 enum LibraryStatus { reading, completed, planned, paused, dropped, rereading }
