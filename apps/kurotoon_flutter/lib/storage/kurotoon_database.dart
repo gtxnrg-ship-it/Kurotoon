@@ -639,6 +639,16 @@ class KurotoonDatabase {
 
   Future<void> removeExtensionRepository(String repositoryId) async {
     _ensureOpen();
+    final repository = await _database.query(
+      'extension_repositories',
+      columns: ['trust'],
+      where: 'id = ?',
+      whereArgs: [repositoryId],
+      limit: 1,
+    );
+    if (repository.isNotEmpty && repository.single['trust'] == RepositoryTrust.builtIn.name) {
+      throw StateError('Built-in repositories cannot be removed.');
+    }
     final installed = await _database.query(
       'installed_extensions',
       columns: ['extension_id'],
