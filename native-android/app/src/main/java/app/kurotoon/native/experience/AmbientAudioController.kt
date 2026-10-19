@@ -1,8 +1,8 @@
-package app.kurotoon.native.experience
+package app.kurotoon.android.experience
 
 import android.content.Context
 import android.net.Uri
-import app.kurotoon.native.data.KurotoonPreferences
+import app.kurotoon.android.data.KurotoonPreferences
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
