@@ -171,12 +171,6 @@ export class MangaDexProvider implements ComicProvider {
     // A conservative default avoids unexpectedly surfacing explicit titles.
     params.append('contentRating[]', 'safe');
     params.append('contentRating[]', 'suggestive');
-    if (query.formats?.length) {
-      const included = new Set(query.formats);
-      if (!included.has('manga') && !included.has('manhwa') && !included.has('manhua') && !included.has('webtoon') && !included.has('comic') && !included.has('doujin') && !included.has('other')) {
-        return { listings: [] };
-      }
-    }
     const response = await this.request<ApiResponse<MangaRecord>>(`/manga?${params.toString()}`, query.signal);
     if (!Array.isArray(response.data)) {
       throw new ProviderRequestError({ providerId: this.id, code: 'invalid-response', message: 'MangaDex search data was missing.', retryable: false });
@@ -240,9 +234,16 @@ export class MangaDexProvider implements ComicProvider {
 
   async getChapterPages(providerChapterId: string, signal?: AbortSignal): Promise<string[]> {
     const response = await this.request<AtHomeResponse>(`/at-home/server/${encodeURIComponent(providerChapterId)}`, signal);
-    const base = response.baseUrl;
+    const base = response.baseUrl?.replace(/\\/+$/, '');
     const chapter = response.chapter;
-    if (!base || !chapter?.hash || !Array.isArray(chapter.data)) {
+    let safeBase = false;
+    try {
+      const parsed = new URL(base || '');
+      safeBase = parsed.protocol === 'https:' && parsed.hostname === 'uploads.mangadex.org';
+    } catch {
+      safeBase = false;
+    }
+    if (!safeBase || !base || !chapter?.hash || !Array.isArray(chapter.data)) {
       throw new ProviderRequestError({ providerId: this.id, code: 'invalid-response', message: 'MangaDex did not provide readable page URLs for this chapter.', retryable: false });
     }
     return chapter.data.map(filename => `${base}/data/${encodeURIComponent(chapter.hash!)}/${encodeURIComponent(filename)}`);
