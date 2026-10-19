@@ -37,9 +37,16 @@ Record important choices and their evidence here. Decisions can be superseded, b
 **Reason:** Similar titles and chapter numbers do not prove that translations or adaptations are interchangeable.  
 **Review when:** Real provider data exposes missing domain concepts.
 
-## D-006 — Platform stack not finalized yet
+## D-006 — Select the shared web UI foundation; keep Android runtime open
 
-**Status:** Open  
-**Decision:** Do not lock a UI/runtime framework until a minimal build spike and the Android extension/audio feasibility checks provide evidence.  
-**Reason:** Choosing a stack before validating the riskiest platform requirements could cause expensive rewrites.  
-**Next action:** Compare a shared web UI with native Android integration against a more native Android path, using the same acceptance checklist.
+**Status:** Accepted for the initial UI; Android decision remains open  
+**Decision:** Use React + TypeScript + Vite for the initial shared web UI. Do not yet lock PWA packaging or Android runtime architecture until extension compatibility, reader performance, and audio lifecycle feasibility are tested.  
+**Reason:** The first app shell is now built and CI-verified, while Android extension compatibility remains the highest-risk platform assumption.  
+**Next action:** Compare a shared web UI with native Android integration against a more native Android path using a real extension/audio proof of concept.
+
+## D-007 — Require build, tests, and high/critical dependency audit in CI
+
+**Status:** Accepted  
+**Decision:** Pull requests must run the TypeScript production build, domain unit tests, and an npm audit that fails on high or critical vulnerabilities. Use patched Vite and Vitest releases.  
+**Reason:** The first dependency audit exposed critical/high findings in the initial toolchain; upgrading the toolchain produced a clean audit and prevented the unsafe versions from becoming the baseline.  
+**Review when:** CI grows to include additional platforms, dependency lockfile verification, and more comprehensive security checks.

@@ -4,12 +4,12 @@ This is a living plan. Items stay **Planned** until code exists and the acceptan
 
 ## Phase 0 — Foundation and feasibility
 
-Status: **In progress**
+Status: **In progress** — initial web build and CI are verified; Android feasibility remains open.
 
 - [x] Establish public repository and initial documentation baseline.
-- [ ] Select stack based on a short build/deploy and Android feasibility spike.
-- [ ] Define lint, type-check, unit-test, and build commands.
-- [ ] Add CI checks for pull requests.
+- [x] Select the initial web UI stack: React + TypeScript + Vite; keep Android packaging/runtime decision open pending feasibility evidence.
+- [x] Define type-check/production-build and unit-test commands.
+- [x] Add CI checks for pull requests and main-branch pushes.
 - [ ] Document local setup and environment variables; commit no secrets.
 - [ ] Record a baseline performance budget for mid-range Android devices.
 
@@ -30,13 +30,13 @@ Status: **Planned**
 
 ## Phase 2 — Domain model and provider boundary
 
-Status: **Planned**
+Status: **In progress**
 
-- [ ] Define typed models for Work, Edition, ProviderListing, Chapter, ChapterListing, Creator, ReadingProgress, LibraryEntry, Repository, Extension, and ProviderHealth.
-- [ ] Define source adapter contract for search, details, chapter list, and page retrieval.
-- [ ] Define capability discovery, cancellation, timeouts, request budgets, and structured errors.
-- [ ] Add identity matching with confidence, provenance, and reversible user decisions.
-- [ ] Add unit tests for duplicates, alternate translations, mini-chapters, specials, and missing sources.
+- [x] Define typed models for Work, Edition, ProviderListing, Chapter, ChapterListing, Creator references, ReadingProgress, LibraryEntry, and ProviderHealth.
+- [x] Define source adapter contract for search, details, chapter list, and page retrieval.
+- [x] Define provider capability flags, cancellation signals, and structured provider errors; request budgets/timeouts still need enforcement.
+- [x] Add conservative work identity matching with confidence, reasons, and an explicit auto-merge threshold; persistence/provenance UI remains.
+- [ ] Expand domain tests to cover editions, mini-chapters, specials, progress remapping, and provider failures (initial identity tests exist).
 
 **Exit gate:** domain logic can be tested without UI or a live provider, and source failures are distinguishable from empty results.
 
