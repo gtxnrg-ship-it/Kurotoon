@@ -393,19 +393,42 @@ class ProviderCoordinator {
         elapsed: Duration.zero,
       );
     }
+
     final child = CancellationToken();
-    final detach = parent.onCancel((reason) => child.cancel(reason));
+    final detachParent = parent.onCancel((reason) => child.cancel(reason));
+    var timedOut = false;
+    final cancellationResult = Completer<ProviderResponse<List<WorkCandidate>>>();
+    final detachChild = child.onCancel((reason) {
+      if (cancellationResult.isCompleted) return;
+      cancellationResult.complete(
+        timedOut
+            ? const ProviderResponse<List<WorkCandidate>>(
+                status: ProviderResultStatus.timedOut,
+                message: 'Provider exceeded its request time budget',
+              )
+            : ProviderResponse<List<WorkCandidate>>(
+                status: ProviderResultStatus.cancelled,
+                message: reason,
+              ),
+      );
+    });
+    final timer = Timer(providerTimeout, () {
+      timedOut = true;
+      child.cancel('Provider request timed out');
+    });
+
     try {
       child.throwIfCancelled();
-      final response = await provider
-          .search(query, cancellationToken: child)
-          .timeout(providerTimeout, onTimeout: () {
-        child.cancel('Provider request timed out');
-        return const ProviderResponse<List<WorkCandidate>>(
-          status: ProviderResultStatus.timedOut,
-          message: 'Provider exceeded its request time budget',
-        );
-      });
+      // Race cancellation with the provider operation. Future.timeout alone
+      // stops awaiting a future but does not return promptly when an adapter
+      // ignores its cancellation token.
+      final providerFuture = Future<ProviderResponse<List<WorkCandidate>>>.sync(
+        () => provider.search(query, cancellationToken: child),
+      );
+      final response = await Future.any<ProviderResponse<List<WorkCandidate>>>([
+        providerFuture,
+        cancellationResult.future,
+      ]);
       healthTracker.record(provider.descriptor.id, response);
       return ProviderSearchResult(
         providerId: provider.descriptor.id,
@@ -435,7 +458,9 @@ class ProviderCoordinator {
         elapsed: DateTime.now().difference(started),
       );
     } finally {
-      detach();
+      timer.cancel();
+      detachChild();
+      detachParent();
     }
   }
 
