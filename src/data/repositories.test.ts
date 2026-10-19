@@ -73,7 +73,7 @@ describe('local-first application repositories', () => {
       scrollRatio: -1,
     });
     expect(await data.progress.listForWork('mangadex', 'work-1')).toHaveLength(2);
-    expect((await data.progress.listForWork('mangadex', 'work-1'))[1].pageIndex).toBe(0);
+    expect((await data.progress.listForWork('mangadex', 'work-1')).find(item => item.providerChapterId === 'chapter-2')?.pageIndex).toBe(0);
   });
 
   it('stores preferences by independent keys and returns provided defaults', async () => {
