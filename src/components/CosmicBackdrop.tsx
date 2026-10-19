@@ -152,11 +152,11 @@ export function CosmicBackdrop() {
 
     const animate = (time: number) => {
       if (disposed || !visible) return;
-      frame = window.requestAnimationFrame(animate);
       if (reducedMotion.matches) {
-        if (lastFrame === 0) paint(0);
+        paint(0);
         return;
       }
+      frame = window.requestAnimationFrame(animate);
       // Cap the ambient layer at ~30fps to protect battery and leave the main thread for reading.
       if (time - lastFrame < 33) return;
       lastFrame = time;
@@ -196,7 +196,12 @@ export function CosmicBackdrop() {
     window.addEventListener('pointerup', onPointerEnd, { passive: true });
     window.addEventListener('pointercancel', onPointerEnd, { passive: true });
     document.addEventListener('visibilitychange', wake);
-    const motionChange = () => { lastFrame = 0; paint(0); };
+    const motionChange = () => {
+      window.cancelAnimationFrame(frame);
+      lastFrame = 0;
+      if (reducedMotion.matches) paint(0);
+      else if (visible && !disposed) frame = window.requestAnimationFrame(animate);
+    };
     reducedMotion.addEventListener?.('change', motionChange);
     resize();
     frame = window.requestAnimationFrame(animate);
