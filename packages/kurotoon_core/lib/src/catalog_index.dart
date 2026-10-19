@@ -21,7 +21,7 @@ class PendingIdentityReview {
   PendingIdentityReview({
     required this.key,
     required this.candidate,
-    required this.possibleMatches,
+    required List<IdentityDecision> possibleMatches,
   }) : possibleMatches = List.unmodifiable(possibleMatches);
 
   final String key;
