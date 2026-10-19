@@ -251,7 +251,7 @@ class ProviderHealthTracker {
   }
 
   Duration _cooldownFor(int failures) {
-    final exponent = (failures - failureThreshold).clamp(0, 30);
+    final exponent = (failures - failureThreshold).clamp(0, 30).toInt();
     final delay = baseCooldown * (1 << exponent);
     return delay > maxCooldown ? maxCooldown : delay;
   }
