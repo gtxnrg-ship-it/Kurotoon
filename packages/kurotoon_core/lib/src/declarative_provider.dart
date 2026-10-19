@@ -52,7 +52,9 @@ class DeclarativeJsonProvider implements SourceProvider {
     String query, {
     required CancellationToken cancellationToken,
   }) async {
-    cancellationToken.throwIfCancelled();
+    if (cancellationToken.isCancelled) {
+      return ProviderResponse(status: ProviderResultStatus.cancelled, message: cancellationToken.reason);
+    }
     final endpoint = _findEndpoint(ExtensionCapability.search);
     if (endpoint == null) {
       return const ProviderResponse(
