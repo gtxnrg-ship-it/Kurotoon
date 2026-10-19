@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, ChevronRight, Compass, Headphones, Library, Search, Settings2, ShieldCheck, Sparkles, Store, WandSparkles, Wifi, Download, CircleHelp } from 'lucide-react';
+import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, ChevronRight, Compass, Headphones, Library, Search, Settings2, ShieldCheck, Sparkles, Store, WandSparkles, Wifi, Download, CircleHelp, Smartphone, ExternalLink } from 'lucide-react';
 import { CosmicBackdrop } from './components/CosmicBackdrop';
 import { ReaderScreen, SeriesPage } from './components/ReaderExperience';
 import { RepositoryManager } from './components/RepositoryManager';
 import type { ChapterListing, ProviderListing } from './domain/models';
 import { isProviderRequestError } from './domain/provider';
 import { mangaDexProvider } from './providers/mangadex';
+
+type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
 
 type Destination = 'Home' | 'Browser' | 'Shop' | 'Library' | 'Me';
 const nav: { name: Destination; icon: typeof Compass }[] = [
@@ -20,7 +22,8 @@ function EmptyState({ icon: Icon, title, text, action, onAction }: { icon: typeo
 }
 function App() {
   const [active, setActive] = useState<Destination>('Home');
-  const [meSection, setMeSection] = useState<'settings' | 'repositories'>('settings');
+  const [meSection, setMeSection] = useState<'settings' | 'repositories' | 'download'>('settings');
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [query, setQuery] = useState('');
   const [searchKey, setSearchKey] = useState(0);
   const [results, setResults] = useState<ProviderListing[]>([]);
@@ -35,6 +38,27 @@ function App() {
     setReaderChapters([]);
     setActive('Browser');
   };
+  useEffect(() => {
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+    const onAppInstalled = () => setInstallPrompt(null);
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    window.addEventListener('appinstalled', onAppInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', onAppInstalled);
+    };
+  }, []);
+
+  const installKurotoon = async () => {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === 'accepted') setInstallPrompt(null);
+  };
+
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -71,6 +95,7 @@ function App() {
     { icon: Download, title: 'Storage & offline', detail: 'Cache limits, cleanup, and download preferences' },
     { icon: Wifi, title: 'Repositories & sources', detail: 'Manage JSON indexes and preview source metadata; runtime is still planned' },
     { icon: ShieldCheck, title: 'Privacy & data', detail: 'Local data, backup, and external processing controls' },
+    { icon: Smartphone, title: 'Download Kurotoon', detail: 'Install the app or download the Android APK' },
     { icon: CircleHelp, title: 'About & diagnostics', detail: 'Build status, known limits, and troubleshooting' },
   ];
   return <div className={'app-shell' + (selectedListing ? ' app-reading-open' : '')}>
@@ -91,7 +116,32 @@ function App() {
       {active==='Shop'&&<><Heading eyebrow="A LITTLE EXTRA MAGIC" title="The Shop." description="A dedicated space in the Kurotoon universe, waiting for its rules."/><div className="shop-panel"><div className="shop-sigil"><WandSparkles size={30}/></div><div className="eyebrow">INTENTIONALLY UNDEFINED</div><h2>This space is yours to design.</h2><p>The reward system needs your full explanation before its currencies, actions, progression, or rewards can be designed. Nothing is being guessed or quietly locked in.</p><div className="shop-foot"><Sparkles size={16}/> Reserved for your original reward system</div></div></>}
       {active==='Library'&&<><Heading eyebrow="YOUR PERSONAL COLLECTION" title="Your library." description="Every series you save, every chapter you finish, every place you return to."/><div className="stats"><div><small>COLLECTED</small><strong>—</strong><span>Saved series</span></div><div><small>IN PROGRESS</small><strong>—</strong><span>Stories you're reading</span></div><div><small>UPDATES</small><strong>—</strong><span>New chapters found</span></div></div><EmptyState icon={Library} title="Your collection starts here" text="Once catalog and provider integration is implemented, saved series, progress, categories, and update tracking will live here." action="Explore the browser" onAction={()=>setActive('Browser')}/></>}
       {active==='Me'&&meSection==='repositories'&&<RepositoryManager onBack={()=>setMeSection('settings')}/>}
-      {active==='Me'&&meSection==='settings'&&<><Heading eyebrow="YOUR KUROTOON" title="Make it yours." description="The control room for your reading experience, sources, and data."/><div className="profile-card"><div className="profile-avatar">K<span>✦</span></div><div className="profile-copy"><h2>Your space, your rules.</h2><p>Local-first by intention. Your preferences should stay yours.</p></div><small className="profile-state"><i/> FOUNDATION BUILD</small></div><div className="settings-list">{Settings.map(({icon:Icon,title,detail})=><button className="setting-row" key={title} onClick={()=>{if(title==='Repositories & sources')setMeSection('repositories')}}><span className="setting-icon"><Icon size={19}/></span><span className="setting-copy"><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={18}/></button>)}</div><div className="settings-note"><ShieldCheck size={16}/> Repository management is available as a metadata-only preview. Other settings controls will arrive as their features are implemented.</div></>}
+      {active==='Me'&&meSection==='download'&&<>
+        <button className="download-back" onClick={()=>setMeSection('settings')}>← Back to settings</button>
+        <Heading eyebrow="INSTALL OR DOWNLOAD" title="Kurotoon" description="Choose how you want to keep Kurotoon close. No promotional screenshots or artwork are needed."/>
+        <section className="download-options" aria-label="Kurotoon installation options">
+          <div className="download-option">
+            <span className="download-option-icon"><Smartphone size={21}/></span>
+            <div className="download-option-copy">
+              <h2>Install Kurotoon</h2>
+              <p>Install the web app on a supported browser. It uses a small, bounded app-shell cache; chapters and comic artwork still come from their source.</p>
+              {installPrompt
+                ? <button className="primary download-action" onClick={installKurotoon}>Install Kurotoon <Download size={16}/></button>
+                : <p className="download-help">On Android, open Kurotoon in Chrome and choose <strong>Install app</strong> or <strong>Add to Home screen</strong> from the browser menu. On iPhone/iPad, open in Safari, tap Share, then Add to Home Screen.</p>}
+            </div>
+          </div>
+          <div className="download-option">
+            <span className="download-option-icon"><Download size={21}/></span>
+            <div className="download-option-copy">
+              <h2>Kurotoon for Android</h2>
+              <p>Download an installable Android APK. Continuous builds are published from the main branch; development APKs may change as the app improves.</p>
+              <a className="primary download-action" href="https://github.com/gtxnrg-ship-it/Kurotoon/releases" target="_blank" rel="noreferrer">Get Kurotoon APK <ExternalLink size={15}/></a>
+              <p className="download-help">The newest APK appears here after the Android build and release workflow completes successfully.</p>
+            </div>
+          </div>
+        </section>
+      </> }
+      {active==='Me'&&meSection==='settings'&&<><Heading eyebrow="YOUR KUROTOON" title="Make it yours." description="The control room for your reading experience, sources, and data."/><div className="profile-card"><div className="profile-avatar">K<span>✦</span></div><div className="profile-copy"><h2>Your space, your rules.</h2><p>Local-first by intention. Your preferences should stay yours.</p></div><small className="profile-state"><i/> FOUNDATION BUILD</small></div><div className="settings-list">{Settings.map(({icon:Icon,title,detail})=><button className="setting-row" key={title} onClick={()=>{if(title==='Repositories & sources')setMeSection('repositories');else if(title==='Download Kurotoon')setMeSection('download')}}><span className="setting-icon"><Icon size={19}/></span><span className="setting-copy"><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={18}/></button>)}</div><div className="settings-note"><ShieldCheck size={16}/> Repository management is available as a metadata-only preview. Other settings controls will arrive as their features are implemented.</div></>}
       {selectedListing && !selectedChapter && <SeriesPage listing={selectedListing} onBack={() => setSelectedListing(null)} onReadChapter={(chapter, chapters) => { setReaderChapters(chapters); setSelectedChapter(chapter); }}/>} 
       {selectedListing && selectedChapter && <ReaderScreen listing={selectedListing} chapters={readerChapters} chapter={selectedChapter} onChapterChange={setSelectedChapter} onSeriesHome={() => setSelectedChapter(null)}/>}
       <footer className="footer"><span>KUROTOON <b>✦</b> FOUNDATION BUILD</span><span>Made for the love of stories.</span></footer>
