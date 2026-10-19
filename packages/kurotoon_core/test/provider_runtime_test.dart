@@ -190,4 +190,38 @@ void main() {
     expect(health.snapshotFor('source').state, ProviderHealthState.healthy);
   });
 
+  test('provider health snapshots restore validated cooldown state without raw errors', () {
+    var now = DateTime.utc(2026, 1, 1);
+    final original = ProviderHealthTracker(
+      clock: () => now,
+      failureThreshold: 2,
+      baseCooldown: const Duration(seconds: 10),
+      maxCooldown: const Duration(minutes: 1),
+    );
+    original.record(
+      'source',
+      const ProviderResponse(status: ProviderResultStatus.failed, message: 'private URL should not persist'),
+    );
+    original.record(
+      'source',
+      const ProviderResponse(status: ProviderResultStatus.timedOut, message: 'request details should not persist'),
+    );
+    final json = original.snapshotFor('source').toJson();
+    expect(json.containsKey('lastMessage'), isFalse);
+
+    final restored = ProviderHealthTracker(
+      clock: () => now,
+      failureThreshold: 2,
+      baseCooldown: const Duration(seconds: 10),
+      maxCooldown: const Duration(minutes: 1),
+    );
+    expect(restored.restoreFromJson('source', json), isTrue);
+    expect(restored.snapshotFor('source').state, ProviderHealthState.coolingDown);
+    expect(restored.remainingCooldown('source'), const Duration(seconds: 10));
+
+    expect(restored.restoreFromJson('bad', {'consecutiveFailures': -1}), isFalse);
+    now = now.add(const Duration(seconds: 11));
+    expect(restored.snapshotFor('source').state, ProviderHealthState.degraded);
+  });
+
 }
