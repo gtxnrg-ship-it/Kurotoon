@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowLeft, ArrowUpRight, CheckCircle2, CircleAlert, CloudDownload,
   ExternalLink, FileJson, Globe2, RefreshCw, Search, ShieldAlert, Trash2,
@@ -64,6 +64,7 @@ function timeLabel(value?: string): string {
 
 export function RepositoryManager({ onBack }: { onBack: () => void }) {
   const [repositories, setRepositories] = useState<RepositoryRecord[]>(loadRepositories);
+  const repositoriesRef = useRef(repositories);
   const [indexByRepository, setIndexByRepository] = useState<Record<string, IndexedExtension[]>>({});
   const [selectedId, setSelectedId] = useState('');
   const [urlInput, setUrlInput] = useState('');
@@ -87,6 +88,7 @@ export function RepositoryManager({ onBack }: { onBack: () => void }) {
   }, [filter, indexByRepository, selectedId]);
 
   function saveRepositoryList(next: RepositoryRecord[]) {
+    repositoriesRef.current = next;
     setRepositories(next);
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -97,7 +99,7 @@ export function RepositoryManager({ onBack }: { onBack: () => void }) {
   }
 
   function updateRepository(id: string, patch: Partial<RepositoryRecord>) {
-    const next = repositories.map((repository) => repository.id === id ? { ...repository, ...patch } : repository);
+    const next = repositoriesRef.current.map((repository) => repository.id === id ? { ...repository, ...patch } : repository);
     saveRepositoryList(next);
   }
 
@@ -160,7 +162,7 @@ export function RepositoryManager({ onBack }: { onBack: () => void }) {
     }
   }
 
-  async function addRepository(event: React.FormEvent<HTMLFormElement>) {
+  async function addRepository(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage('');
     setNotice('');
