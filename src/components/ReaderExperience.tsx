@@ -460,7 +460,7 @@ export function ReaderScreen({
           {pages.slice(0, visiblePageCount).map((url, index) => <div className="reader-vertical-page" key={url + ':' + (retries[index] || 0)} style={{ marginBottom: gap + 'px' }}>
             {pageFailed(index)
               ? <div className="reader-page-failed"><strong>Page {index + 1} couldn't load.</strong><button className="reader-primary-button" onClick={() => retryPage(index)}><RotateCcw size={14}/> Retry page</button></div>
-              : <img data-page-index={index} src={url} alt={'Page ' + (index + 1)} loading={index < 3 ? 'eager' : 'lazy'} decoding="async" draggable={false} onError={() => markFailed(index)} />}
+              : <img data-page-index={index} src={url} alt={'Page ' + (index + 1)} loading={index < 3 || index === pageIndex ? 'eager' : 'lazy'} decoding="async" draggable={false} onError={() => markFailed(index)} />}
           </div>)}
         </div>
         {visiblePageCount < pages.length && <div ref={sentinelRef} className="reader-load-sentinel">
