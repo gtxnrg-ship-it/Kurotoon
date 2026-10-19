@@ -393,3 +393,43 @@
   .reader-paged-image-wrap{min-height:calc(100vh - 86px)}
   .reader-page-image{max-height:calc(100vh - 88px)!important}
 }
+
+
+/* Install/download options: clean, typography-first, and intentionally free of promotional artwork. */
+.download-back{
+  display:inline-flex;align-items:center;gap:7px;margin:0 0 18px;padding:8px 0;border:0;background:transparent;
+  color:#a5b3d3;font:500 12px 'Space Grotesk',sans-serif;cursor:pointer
+}
+.download-back:hover{color:#e8faff}
+.download-options{display:grid;gap:13px;margin-top:22px;max-width:860px}
+.download-option{
+  display:grid;grid-template-columns:44px minmax(0,1fr);align-items:start;gap:16px;
+  padding:22px;border:1px solid rgba(151,176,234,.17);border-radius:18px;
+  background:rgba(11,16,34,.72);box-shadow:0 12px 32px rgba(0,0,0,.12)
+}
+.download-option-icon{
+  display:grid;place-items:center;width:44px;height:44px;border:1px solid rgba(97,228,255,.2);
+  border-radius:13px;color:#80e8ff;background:rgba(61,189,230,.08)
+}
+.download-option-copy{min-width:0}
+.download-option-copy h2{margin:1px 0 8px;color:#f0f3ff;font:600 19px 'Space Grotesk',sans-serif;letter-spacing:-.35px}
+.download-option-copy>p{max-width:650px;margin:0 0 14px;color:#a6aec8;font-size:12px;line-height:1.8}
+.download-option-copy .download-help{margin:13px 0 0;color:#7f8aa8;font-size:10px;line-height:1.75}
+.download-help strong{color:#c8d8f5;font-weight:600}
+.download-action{
+  display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:43px;
+  padding:0 16px;border:1px solid rgba(118,226,255,.22);border-radius:12px;
+  color:#06121e;background:linear-gradient(135deg,#96efff,#54c8f5);
+  font:600 12px 'Space Grotesk',sans-serif;text-decoration:none;cursor:pointer
+}
+.download-action:hover{filter:brightness(1.06);transform:translateY(-1px)}
+.download-action:focus-visible,.download-back:focus-visible{outline:2px solid #78e6ff;outline-offset:3px}
+.download-back:focus-visible{border-radius:5px}
+@media(max-width:560px){
+  .download-options{margin-top:17px;gap:10px}
+  .download-option{grid-template-columns:35px minmax(0,1fr);gap:12px;padding:15px;border-radius:15px}
+  .download-option-icon{width:35px;height:35px;border-radius:11px}
+  .download-option-copy h2{font-size:16px}
+  .download-option-copy>p{font-size:11px}
+  .download-action{width:100%;min-height:44px}
+}
