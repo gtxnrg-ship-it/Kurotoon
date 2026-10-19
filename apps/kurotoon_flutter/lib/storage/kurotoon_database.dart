@@ -596,14 +596,16 @@ class KurotoonDatabase {
 
   Future<void> _replaceCatalogSearchTerms(DatabaseExecutor tx, CatalogEntry entry) async {
     await tx.delete('catalog_search_terms', where: 'work_id = ?', whereArgs: [entry.work.id]);
+    final batch = tx.batch();
     for (final term in _searchTerms([
       entry.work.title,
       ...entry.work.alternateTitles,
       ...entry.work.creatorNames,
     ])) {
-      await tx.insert('catalog_search_terms', {'work_id': entry.work.id, 'term': term},
+      batch.insert('catalog_search_terms', {'work_id': entry.work.id, 'term': term},
           conflictAlgorithm: ConflictAlgorithm.ignore);
     }
+    await batch.commit(noResult: true);
   }
 
   static Set<String> _searchTerms(Iterable<String> values) {
