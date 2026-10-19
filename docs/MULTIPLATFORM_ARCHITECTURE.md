@@ -6,16 +6,20 @@ KuroToon is a multiplatform application family, not an Android-only app and not 
 
 The same product identity, series/catalog model, source contracts, chapter reconciliation rules, preferences schema, and Galaxy visual language should carry across platforms. Each platform must still feel designed for its device.
 
-## Recommended technology
+## Recommended technology: Flutter first, native adapters where needed
 
-Use **Kotlin Multiplatform (KMP)** for portable domain logic and data contracts, with **Compose Multiplatform** as the leading candidate for shared UI across Android, iOS, Windows, Linux and macOS. Compose Multiplatform documents stable support for Android, iOS and desktop; the web target is separate and less mature, and is not required for the native app family.
+For KuroToon's priorities—highly animated UI, a distinctive GPU-rendered Galaxy atmosphere, Android + iOS + Windows + Linux, and a single carefully tuned UI implementation—the leading recommendation is **Flutter with Dart**, using Flutter's Impeller renderer on supported targets. Flutter has first-party deployment paths for Android, iOS, Windows, Linux and macOS, while Impeller is designed for predictable rendering by compiling shaders ahead of runtime and managing graphics resources explicitly. This is a better initial fit to benchmark for the *whole animated product* than committing to Kotlin/Compose as the universal UI stack.
 
-Keep platform integrations behind interfaces and implement them in platform-specific source sets:
-- Android: lifecycle, system TTS, haptics, notifications, background scheduling and Android storage adapters.
-- iOS/iPadOS: AVFoundation speech/audio, Core Haptics where available, background-task constraints, Files integration and iOS-native distribution.
-- Desktop: native windowing, keyboard shortcuts, pointer/trackpad support, desktop audio, filesystem/export and platform packaging.
+This is a reasoned architecture recommendation, not a promise that Flutter automatically guarantees smoothness. Every framework can stutter when images, network work, state updates, decoding, audio inference or GPU work are poorly scheduled. We must validate the decision on actual low-end hardware before treating it as settled.
 
-Do not assume a platform API or library works on every target merely because it works on Android. Check and test every dependency for each target.
+- **UI and interaction:** Flutter/Dart for adaptive screens, navigation, shop interactions, transitions, settings and shared mobile/desktop UI.
+- **Rendering:** Impeller where supported; custom shaders and particle rendering only after profiling. Keep the Galaxy renderer isolated so it can be optimized or replaced without rewriting catalog/business logic.
+- **Shared domain logic:** Dart packages initially for series identity, catalog merging, source contracts, reading progress and app state. Keep clear interfaces so genuinely CPU-heavy algorithms can later move to Rust only if benchmarks prove it necessary.
+- **Platform adapters:** Kotlin/Java for Android-only integrations; Swift/Objective-C for iOS integrations; small native Windows/Linux bridges only when Flutter plugins do not cover a required capability.
+- **Voice and audio:** Flutter-facing service interface, platform audio/session adapters, and optional model runtime chosen only after testing memory use, startup latency, licenses and support on each target.
+- **Distribution:** Flutter build/release jobs per OS. iOS builds require macOS and Xcode; desktop release formats are platform-specific.
+
+Do not use a WebView or wrap the existing website as the primary app. The app should use Flutter's native application runtime and platform integrations. Do not assume a plugin works on every OS just because it works on Android; check and test each target.
 
 ## Proposed repository structure
 
@@ -71,6 +75,23 @@ The Galaxy effect is an interactive rendering system, not a pre-rendered animate
 
 Each platform can use a renderer optimized for its GPU and lifecycle while following the same visual specification and tests.
 
+
+
+## Performance contract: smoothness is a release gate
+
+“Runs on the device” is not enough. The target is consistently responsive across the entire app, not just the reader.
+
+- **Frame budget:** target 60 fps on the agreed low-end reference devices, with p95 frame times within 16.7 ms for scrolling, transitions, shop micro-animations and the Galaxy background. Higher-refresh devices should use their available refresh rate where practical; the 90/120 Hz budgets are tighter (11.1/8.3 ms).
+- **Jank testing:** record missed frames and p50/p95/p99 frame times in profile/release builds, not debug-only builds. Test long catalog lists, fast scroll + image loading, shop transitions, tab switching, search typing, downloads, and particle effects together.
+- **No main-thread blocking:** network calls, image decoding, database work, parsing, archive operations and model loading must never block UI interaction. Use cancellation, bounded concurrency and incremental results.
+- **Adaptive quality:** dynamically reduce particle density, blur resolution, glow layers and background update rate when frame times or thermal pressure rise. Respect reduced-motion settings and battery saver. Never let decorative effects starve taps or scrolling.
+- **Images and cache:** virtualized lists, thumbnail sizes, progressive image loading, decode limits, memory-aware cache eviction and no unbounded prefetch.
+- **Voice packs:** optional downloads with checksums, resumable transfers and storage caps. Keep neural inference off the UI isolate/thread, use quantized models where suitable, load models on demand, and release memory when voice is inactive. A voice pack must not make browsing or animations hitch.
+- **Particles and transitions:** use bounded particle counts, deterministic seeds, reusable buffers and GPU-friendly batching; avoid per-frame allocations and rebuilds of unrelated UI. Animation work must pause when not visible.
+- **Release gate:** no platform is marked supported until the performance test suite passes on a documented low-end device and representative desktop/mobile hardware. If a target misses the gate, optimize or lower effect quality gracefully rather than claiming flawless performance.
+
+Framework choice gives us a strong starting point; profiling, budgets and hardware testing are what protect the feel over time.
+
 ## Source ecosystem and safety boundaries
 
 The source API must be versioned and platform-neutral. A provider advertises capabilities (search, metadata, chapter list, page resolution, updates), supported languages, attribution and permission requirements. Network concurrency, retries, cancellation, parsing size and per-provider timeouts are enforced by the host.
@@ -105,10 +126,10 @@ A green Android build does not prove the iOS or desktop app builds. Show separat
 ## Migration order
 
 1. Keep the current prototype and Android experiment as references; do not delete working work prematurely.
-2. Establish shared models and platform-neutral catalog/source contracts, with tests before migration.
-3. Convert the Android app to consume shared modules.
-4. Build the same core into an iOS/iPadOS target and add platform adapters; validate with Xcode on macOS.
-5. Add desktop targets and keyboard/resizable-layout behaviour.
+2. Establish Dart package boundaries and platform-neutral catalog/source contracts, with tests before migration.
+3. Build the Flutter app shell and port the native Android experiment's validated features into shared Flutter/Dart packages; keep native adapters for hardware APIs.
+4. Build and validate the iOS/iPadOS target with Xcode on macOS, including voice, audio, haptics and lifecycle adapters.
+5. Build and validate Windows and Linux desktop targets, keyboard/resizable-layout behaviour and packaging.
 6. Port the reader as a shared feature with platform-specific file/audio/gesture integration.
 7. Integrate optional voice packs and richer haptics only after runtime compatibility and licensing checks.
 8. Test real devices and desktop environments, accessibility, offline mode, memory use and low-end hardware.
