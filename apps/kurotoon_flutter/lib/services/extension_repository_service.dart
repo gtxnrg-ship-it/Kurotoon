@@ -9,6 +9,40 @@ import 'package:path_provider/path_provider.dart';
 
 import '../storage/kurotoon_database.dart';
 
+/// Validates persisted install paths before deleting extension files.
+///
+/// A database row is not trusted as a filesystem capability: it may be stale,
+/// corrupted, or modified. Only a manifest inside the app-owned extension
+/// directory for the exact extension ID may be removed.
+class ExtensionInstallPathPolicy {
+  const ExtensionInstallPathPolicy._();
+
+  static bool isSafeManifestPath({
+    required String extensionsRoot,
+    required String extensionId,
+    required String manifestPath,
+  }) {
+    if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{2,127}$').hasMatch(extensionId)) {
+      return false;
+    }
+    final root = path.normalize(path.absolute(extensionsRoot));
+    final expectedExtensionRoot = path.normalize(path.absolute(path.join(root, extensionId)));
+    final candidate = path.normalize(path.absolute(manifestPath));
+    if (path.basename(candidate) != 'manifest.json' ||
+        !path.isWithin(expectedExtensionRoot, candidate)) {
+      return false;
+    }
+    // Installed layout is extensions/<id>/<version>/<digest>/manifest.json.
+    final relative = path.relative(candidate, from: expectedExtensionRoot);
+    final segments = path.split(relative);
+    return segments.length == 3 &&
+        segments[0].isNotEmpty &&
+        segments[1].isNotEmpty &&
+        RegExp(r'^[a-fA-F0-9]{12}$').hasMatch(segments[1]) &&
+        segments[2] == 'manifest.json';
+  }
+}
+
 class RepositoryPreview {
   const RepositoryPreview({
     required this.indexUri,
@@ -199,7 +233,22 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     return target.path;
   }
 
+  Future<bool> isSafeInstalledManifestPath({
+    required String extensionId,
+    required String manifestPath,
+  }) async {
+    final root = await getApplicationSupportDirectory();
+    return ExtensionInstallPathPolicy.isSafeManifestPath(
+      extensionsRoot: path.join(root.path, 'extensions'),
+      extensionId: extensionId,
+      manifestPath: manifestPath,
+    );
+  }
+
   Future<void> uninstallExtension(String extensionId) async {
+    if (!RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9._-]{2,127}$').hasMatch(extensionId)) {
+      throw ArgumentError.value(extensionId, 'extensionId', 'Invalid extension identifier.');
+    }
     final rows = await database.loadInstalledExtensions();
     Map<String, Object?>? row;
     for (final item in rows) {
@@ -208,17 +257,36 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
         break;
       }
     }
-    if (row != null && row['install_path'] is String) {
-      final file = File(row['install_path'] as String);
-      if (await file.exists()) await file.delete();
-      final versionDirectory = file.parent;
-      if (await versionDirectory.exists() && await versionDirectory.list().isEmpty) {
-        await versionDirectory.delete();
-      }
-      final idDirectory = versionDirectory.parent;
-      if (await idDirectory.exists() && await idDirectory.list().isEmpty) await idDirectory.delete();
-    }
+
+    // Remove the authoritative record first. A filesystem cleanup failure can
+    // leave an orphan to be collected later, but must never leave an installed
+    // extension record pointing at a deleted manifest.
     await database.removeInstalledExtension(extensionId);
+    if (row == null || row['install_path'] is! String) return;
+
+    final root = await getApplicationSupportDirectory();
+    final extensionsRoot = path.join(root.path, 'extensions');
+    final manifestPath = row['install_path'] as String;
+    if (!ExtensionInstallPathPolicy.isSafeManifestPath(
+      extensionsRoot: extensionsRoot,
+      extensionId: extensionId,
+      manifestPath: manifestPath,
+    )) {
+      // The DB record is gone, but a corrupted path is deliberately not
+      // followed. Never delete arbitrary files from a path stored in SQLite.
+      return;
+    }
+
+    final file = File(manifestPath);
+    if (await file.exists()) await file.delete();
+    final versionDirectory = file.parent;
+    if (await versionDirectory.exists() && await versionDirectory.list().isEmpty) {
+      await versionDirectory.delete();
+    }
+    final idDirectory = versionDirectory.parent;
+    if (await idDirectory.exists() && await idDirectory.list().isEmpty) {
+      await idDirectory.delete();
+    }
   }
 
   @override
