@@ -185,7 +185,7 @@ void main() {
       name: 'Example Source',
       version: '1.0.0',
       manifestUri: Uri.parse('https://raw.example.org/repo/source.json'),
-      sha256: 'a' * 64,
+      sha256: List.filled(64, 'a').join(),
       sizeBytes: 10,
       minimumAppApi: 1,
       capabilities: const {ExtensionCapability.search},
