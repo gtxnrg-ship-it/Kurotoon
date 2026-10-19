@@ -33,6 +33,25 @@ These are engineering estimates based on the roadmap and implementation evidence
 
 For the detailed acceptance checklist, see the [Roadmap](docs/ROADMAP.md).
 
+### How the headline percentage is calculated
+
+The headline score is weighted by end-user value and remaining integration work, not by the number of files. The weights below sum to 100%; a policy model or schema only earns foundation credit until the feature is wired through its real user flow.
+
+| Workstream | Weight | Estimate | Weighted points |
+|---|---:|---:|---:|
+| Native build and release delivery | 5% | 90% | 4.50 |
+| Domain models and policies | 10% | 70% | 7.00 |
+| Provider runtime and live sources | 10% | 50% | 5.00 |
+| Persistence and extension safety | 10% | 60% | 6.00 |
+| Cross-source catalog integration | 15% | 45% | 6.75 |
+| Reader and library end-to-end | 30% | 20% | 6.00 |
+| Galaxy polish and accessibility | 10% | 25% | 2.50 |
+| Voice/music/haptics/particle runtime | 10% | 10% | 1.00 |
+| **Total** | **100%** | — | **38.75%** |
+
+The precise weighted estimate rounds to **39%**; the dashboard displays this as **~40%** for readability. Backend foundations are estimated at 55–60% because the policy/data groundwork is ahead of complete app workflows. This is a manually reviewed engineering estimate, not test coverage and not a claim of device readiness.
+
+
 ## 🎯 Product direction
 
 - **Native first:** Flutter/Dart for the cross-platform app and domain core, with platform adapters for native capabilities. No Capacitor-wrapped website as the target architecture.
@@ -173,11 +192,38 @@ The shared Dart core lives in packages/kurotoon_core. Follow the CI workflows as
 5. Do not mark a feature verified without its stated acceptance evidence.
 6. Update this README and the roadmap when implementation status changes.
 
+## 🧰 Handoff contract for future agents
+
+Read these files before making architectural changes:
+
+1. [Product vision](docs/PRODUCT_VISION.md) — experience pillars and non-goals.
+2. [Architecture](docs/ARCHITECTURE.md) and [decision log](docs/DECISIONS.md) — current accepted boundaries and superseded decisions.
+3. [Roadmap](docs/ROADMAP.md) — progress estimates, concrete gaps and acceptance gates.
+4. [Backend foundation](docs/DART_BACKEND_FOUNDATION.md) and [data foundation](docs/DATA_FOUNDATION.md) — implemented services versus integration gaps.
+5. [Extension repositories](docs/EXTENSION_REPOSITORIES.md) — supported index/manifest format and trust limits.
+
+Non-negotiable rules:
+
+- Keep Flutter/Dart as the active native app; do not replace it with a Capacitor/WebView wrapper.
+- Preserve Home → Browser → Shop → Library → Me, with Reader as a separate route and repository controls under Me/settings.
+- Treat Galaxy motion as optional atmosphere. Reader legibility, battery, accessibility and low-end-device responsiveness come first.
+- Keep MangaDex disableable; do not let its schema or IDs become the global catalog model.
+- Never auto-merge series by title alone. Retain provenance, editions, translation details, and user correction/undo pathways.
+- Treat repositories and manifests as untrusted input. Do not execute arbitrary downloaded code or install all extensions when a repository is added.
+- Keep library, preferences, reading progress and pinned offline items out of disposable-cache eviction.
+- Keep Shop mechanics undefined until the product owner specifies them.
+- Do not claim voice, music, haptics, particles, all-platform support, cloud sync or measured 60 FPS until integrated and backed by evidence.
+- A green CI build is not a substitute for testing actual source flows and installing the APK on a physical device.
+- Add regression tests with backend policy changes, migration/recovery tests with schema changes, and update the roadmap only when acceptance evidence changes.
+
 ## 📖 Project documentation
 
 - [Roadmap and progress dashboard](docs/ROADMAP.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Product vision](docs/PRODUCT_VISION.md)
+- [Dart backend foundation](docs/DART_BACKEND_FOUNDATION.md)
+- [Local-first data foundation](docs/DATA_FOUNDATION.md)
+- [Extension repository contract](docs/EXTENSION_REPOSITORIES.md)
 - [Decision log](docs/DECISIONS.md)
 
 ---
