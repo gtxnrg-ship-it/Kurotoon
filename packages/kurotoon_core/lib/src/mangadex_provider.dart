@@ -108,9 +108,6 @@ class IoJsonGetTransport implements JsonGetTransport {
   }
 
   void close({bool force = false}) => _client.close(force: force);
-
-  @override
-  void dispose() => close(force: true);
 }
 
 class MangaDexProvider implements SourceProvider, DisposableProvider {
@@ -145,6 +142,9 @@ class MangaDexProvider implements SourceProvider, DisposableProvider {
       (transport as IoJsonGetTransport).close(force: force);
     }
   }
+
+  @override
+  void dispose() => close(force: true);
 
   @override
   final ProviderDescriptor descriptor = ProviderDescriptor(
