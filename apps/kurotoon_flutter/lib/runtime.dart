@@ -92,9 +92,9 @@ class KurotoonRuntime {
     return service.addRepository(url, expectedPreviewDigest: expectedPreviewDigest);
   }
 
-  Future<ExtensionRepositoryIndex> handleAddRepositoryLink(Uri link) async {
+  Future<RepositoryPreview> handleAddRepositoryLink(Uri link) async {
     final indexUri = AddRepositoryLink.parse(link);
-    return addExtensionRepository(indexUri.toString());
+    return previewExtensionRepository(indexUri.toString());
   }
 
   Future<String> installExtension({
