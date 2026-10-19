@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, BookOpen, Bookmark, Check, CircleAlert, Library, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, BookOpen, Check, CircleAlert, Library, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type { ProviderListing } from '../domain/models';
 import { libraryKey, type LibraryStatus, type SavedSeries } from '../data/repositories';
 import { getDataServices } from '../data/services';
