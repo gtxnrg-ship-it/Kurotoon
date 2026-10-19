@@ -367,22 +367,15 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
 
   Future<void> _validateResolvedAddresses(String host) async {
     final addresses = await InternetAddress.lookup(host).timeout(requestTimeout);
-    if (addresses.isEmpty || addresses.any(_isNonPublic)) {
+    if (addresses.isEmpty || addresses.any(isNonPublicAddress)) {
       throw const HttpException('Repository hostname resolved to a non-public address.');
     }
   }
 
-  bool _isNonPublic(InternetAddress address) {
+  static bool isNonPublicAddress(InternetAddress address) {
     final bytes = address.rawAddress;
     if (address.type == InternetAddressType.IPv4 && bytes.length == 4) {
-      final a = bytes[0], b = bytes[1], c = bytes[2];
-      return a == 0 || a == 10 || a == 127 || a >= 224 ||
-          (a == 100 && b >= 64 && b <= 127) ||
-          (a == 169 && b == 254) ||
-          (a == 172 && b >= 16 && b <= 31) ||
-          (a == 192 && (b == 168 || (b == 0 && c == 0) || (b == 0 && c == 2))) ||
-          (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) ||
-          (a == 203 && b == 0 && c == 113);
+      return _isNonPublicIpv4(bytes);
     }
     if (address.type == InternetAddressType.IPv6 && bytes.length == 16) {
       final allZero = bytes.every((byte) => byte == 0);
@@ -390,9 +383,56 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       final uniqueLocal = (bytes[0] & 0xfe) == 0xfc;
       final linkLocal = bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80;
       final multicast = bytes[0] == 0xff;
-      return allZero || loopback || uniqueLocal || linkLocal || multicast;
+      final ipv4Mapped = bytes.take(10).every((byte) => byte == 0) &&
+          bytes[10] == 0xff &&
+          bytes[11] == 0xff;
+      if (ipv4Mapped) return _isNonPublicIpv4(bytes.sublist(12, 16));
+
+      // Keep network-level checks aligned with RepositoryPolicy's literal gate.
+      // Only global-unicast 2000::/3 is accepted; several transition and
+      // special-purpose prefixes are denied even though they fall inside it.
+      final globalUnicast = (bytes[0] & 0xe0) == 0x20;
+      final documentation = bytes[0] == 0x20 &&
+          bytes[1] == 0x01 &&
+          bytes[2] == 0x0d &&
+          bytes[3] == 0xb8;
+      final teredo = bytes[0] == 0x20 &&
+          bytes[1] == 0x01 &&
+          bytes[2] == 0x00 &&
+          bytes[3] == 0x00;
+      final sixToFour = bytes[0] == 0x20 && bytes[1] == 0x02;
+      final orchid = bytes[0] == 0x20 &&
+          bytes[1] == 0x01 &&
+          bytes[2] == 0x00 &&
+          ((bytes[3] & 0xf0) == 0x10 || (bytes[3] & 0xf0) == 0x20);
+
+      return allZero ||
+          loopback ||
+          uniqueLocal ||
+          linkLocal ||
+          multicast ||
+          !globalUnicast ||
+          documentation ||
+          teredo ||
+          sixToFour ||
+          orchid;
     }
     return true;
+  }
+
+  static bool _isNonPublicIpv4(List<int> bytes) {
+    if (bytes.length != 4) return true;
+    final a = bytes[0], b = bytes[1], c = bytes[2];
+    return a == 0 ||
+        a == 10 ||
+        a == 127 ||
+        a >= 224 ||
+        (a == 100 && b >= 64 && b <= 127) ||
+        (a == 169 && b == 254) ||
+        (a == 172 && b >= 16 && b <= 31) ||
+        (a == 192 && (b == 168 || (b == 0 && c == 0) || (b == 0 && c == 2))) ||
+        (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) ||
+        (a == 203 && b == 0 && c == 113);
   }
 
   String _sha256Of(List<int> bytes) => sha256.convert(bytes).toString();
