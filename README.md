@@ -6,7 +6,7 @@ Kurotoon is intended to become a polished, lightweight, cross-source reader for 
 
 This README is the **canonical product handoff**: it records the product owner's direction, constraints, agreed design principles, implementation priorities, and what is actually built. Treat the vision as requirements for future work—not as evidence that planned features already exist.
 
-> **Current status: early foundation.** The repository contains a React + TypeScript + Vite shell, the five primary navigation destinations, typed catalog/provider contracts, conservative identity matching, seven domain tests, and CI checks. The full cosmic rendering system, functional reader, live providers, persistent library, extension runtime, and immersive media system are not yet implemented.
+> **Current status: early foundation.** Main contains the React + TypeScript + Vite shell, five primary navigation destinations, typed catalog/provider contracts, conservative identity matching, domain tests, and the first CI-verified procedural cosmic canvas. This feature branch adds a live MangaDex search adapter and real Browser results; that work remains pending CI and merge. The built-in chapter reader, durable library, extension runtime, and immersive media system are not yet implemented.
 
 ## The product in one sentence
 
@@ -317,23 +317,25 @@ This order is a plan, not a promise that all stages are complete. Reorder only w
 
 ## Current implementation status
 
-### Implemented / previously CI-verified
+### Implemented / CI-verified
 - React + TypeScript + Vite app shell.
+- First procedural cosmic canvas: layered nebula-like colour fields, sparse large-scale filaments, twinkling stars, subtle pointer/touch ripples, reduced-motion support, visibility pausing, and capped ambient rendering. CI passed; real-device performance and final art-direction tuning remain unverified.
 - Responsive dark cosmic-themed navigation and scaffolds for Home, Browser, Shop, Library, and Me.
 - Typed catalog/domain models and provider adapter contract.
 - Conservative work identity matching with evidence/confidence and tests.
 - Seven domain unit tests.
 - CI build/test and high/critical dependency audit checks.
 
-### In progress — first procedural cosmic layer
-- Added a lightweight, procedurally generated full-screen cosmic backdrop with layered nebula-like colour fields, sparse large-scale filaments, twinkling stars, and restrained pointer/touch ripples.
-- The canvas caps its ambient update rate, scales pixel density on touch devices, pauses while the document is hidden, and respects reduced-motion preferences.
-- This first pass is **not yet CI-verified or tested on physical devices**. It is a foundation, not the final richly detailed universe.
+### In progress — live MangaDex search (feature branch)
+- A provider adapter maps live MangaDex series metadata, cover art, aliases, creators, chapter labels, and page URLs into Kurotoon's typed contracts.
+- Browser search is debounced, cancellable, and has distinct loading, empty, rate-limit/network error, and real-results states.
+- Explicit and safe-default content-rating filters are used for search. Results link transparently to MangaDex until Kurotoon's built-in reader is implemented.
+- Provider tests cover mapping, cancellation, rate limiting, chapter metadata, and safe CDN URL validation. This branch is pending CI and merge.
 
 ### Not implemented yet
 - Full production cosmic art direction, gas-giant/galaxy formation layers, final touch-reactive space bending, adaptive quality controls, and launch sequence.
 - Finished design system and fully wired settings.
-- Functional live catalog search and production source integration.
+- The live MangaDex search work in this branch is not yet merged; further provider verification and the integrated chapter reader remain outstanding.
 - Complete reader/page loading, progress persistence, and durable library.
 - Repository browsing, extension installation/runtime, and proven Android extension compatibility.
 - Shared reader timeline, synchronized sound/haptics, voice/universal dubbing, and music discovery.
