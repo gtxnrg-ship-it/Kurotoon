@@ -2,7 +2,7 @@ import { ArrowUpRight, BookOpen, Bookmark, Check, ExternalLink, Languages } from
 import type { ProviderListing } from '../domain/models';
 import type { UniversalWorkResult } from '../catalog/universalCatalog';
 import { libraryKey } from '../data/repositories';
-import { formatProviderName, providerRegistry } from '../providers/registry';
+import { formatProviderName } from '../providers/registry';
 
 function displayLanguage(language?: string): string {
   if (!language) return 'Language not reported';
