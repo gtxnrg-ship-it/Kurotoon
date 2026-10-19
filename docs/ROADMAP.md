@@ -1,0 +1,139 @@
+# KuroToon Roadmap
+
+This is a living plan. Items stay **Planned** until code exists and the acceptance criteria pass. Do not report a whole phase complete because its documents exist.
+
+## Phase 0 — Foundation and feasibility
+
+Status: **In progress**
+
+- [x] Establish public repository and initial documentation baseline.
+- [ ] Select stack based on a short build/deploy and Android feasibility spike.
+- [ ] Define lint, type-check, unit-test, and build commands.
+- [ ] Add CI checks for pull requests.
+- [ ] Document local setup and environment variables; commit no secrets.
+- [ ] Record a baseline performance budget for mid-range Android devices.
+
+**Exit gate:** a clean checkout can install dependencies, run checks, and build a minimal responsive shell using documented commands.
+
+## Phase 1 — App shell and design system
+
+Status: **Planned**
+
+- [ ] Establish responsive dark-first design tokens, typography, spacing, surfaces, motion, focus states, and reduced-motion support.
+- [ ] Implement persistent five-destination navigation: Home, Browser, Shop, Library, Me.
+- [ ] Add empty, loading, error, offline, and retry states.
+- [ ] Add reader route and shared app-level settings boundary.
+- [ ] Verify narrow mobile, tablet, and desktop layouts.
+- [ ] Keep source/repository management under Me/settings.
+
+**Exit gate:** navigation is keyboard/touch usable, responsive, and does not lose route state during ordinary navigation.
+
+## Phase 2 — Domain model and provider boundary
+
+Status: **Planned**
+
+- [ ] Define typed models for Work, Edition, ProviderListing, Chapter, ChapterListing, Creator, ReadingProgress, LibraryEntry, Repository, Extension, and ProviderHealth.
+- [ ] Define source adapter contract for search, details, chapter list, and page retrieval.
+- [ ] Define capability discovery, cancellation, timeouts, request budgets, and structured errors.
+- [ ] Add identity matching with confidence, provenance, and reversible user decisions.
+- [ ] Add unit tests for duplicates, alternate translations, mini-chapters, specials, and missing sources.
+
+**Exit gate:** domain logic can be tested without UI or a live provider, and source failures are distinguishable from empty results.
+
+## Phase 3 — First real source and core reader
+
+Status: **Planned**
+
+- [ ] Choose one provider only after confirming its current terms, reliability, and implementation fit.
+- [ ] Prove search → series details → chapter list → page retrieval.
+- [ ] Build image preloading with cancellation and bounded concurrency.
+- [ ] Save and restore reading position reliably.
+- [ ] Support next/previous chapter and recover from missing pages.
+- [ ] Add library add/remove/status/sort and progress persistence.
+- [ ] Make source health and attribution visible.
+
+**Exit gate:** a reader can find a series, read a chapter, leave, return, and resume at the expected location; tests cover source failure and progress recovery.
+
+## Phase 4 — Repository and extension research gate
+
+Status: **Planned; high-risk feasibility item**
+
+- [ ] Parse a real community repository index without installing anything.
+- [ ] Inspect package formats, host API versions, dependencies, signatures, and license notices.
+- [ ] Build a disposable Android proof of concept for one extension, if licensing and technical feasibility permit.
+- [ ] Verify search, details, chapters, and page URLs through the host interface.
+- [ ] Document what cannot be supported in a browser/PWA.
+- [ ] Decide between native compatibility, a restricted adapter bridge, and provider adapters authored for KuroToon.
+- [ ] Define source permissions, provenance, update policy, rate limits, and safe failure.
+
+**Exit gate:** a tested architecture decision with evidence. No production promise of generic Mihon/Tachiyomi compatibility before this gate passes.
+
+## Phase 5 — Unified catalog and discovery
+
+Status: **Planned**
+
+- [ ] Cross-provider search with bounded parallel requests and cancellation.
+- [ ] Local search index for already-seen metadata.
+- [ ] Aliases and alternate titles.
+- [ ] High-confidence duplicate grouping with manual correction.
+- [ ] Separate works, editions/translations, listings, and chapters.
+- [ ] Creator/artist pages with provenance.
+- [ ] Explicit handling for specials, mini-chapters, seasons, and doujin structure.
+- [ ] Explain partial results when a source is slow, blocked, or offline.
+
+**Exit gate:** test fixtures prove that distinct editions are not incorrectly merged and source timeouts are not shown as “no results.”
+
+## Phase 6 — Immersive reader and audio
+
+Status: **Planned; staged rollout**
+
+- [ ] Define a single reader timeline and event model.
+- [ ] Add independently controlled dialogue, narration, music, ambience, and effects.
+- [ ] Add safe volume defaults, global pause/mute, audio focus, and no surprise autoplay.
+- [ ] Prototype OCR/bubble order/speaker labeling with confidence indicators.
+- [ ] Add voice profiles and pronunciation dictionaries.
+- [ ] Allow line corrections and persist user-approved corrections.
+- [ ] Add optional auto-scroll and tempo controls.
+- [ ] Test low-memory and interrupted-network behaviour.
+
+**Exit gate:** basic reading works without audio; audio can be disabled instantly; timeline interruption/restart does not corrupt reading progress.
+
+## Phase 7 — Storage, reliability, and privacy
+
+Status: **Planned**
+
+- [ ] Storage dashboard and cache limits.
+- [ ] Separate disposable image/audio cache from durable library/progress data.
+- [ ] Cleanup and recovery tests.
+- [ ] Data export/backup design.
+- [ ] Privacy review for history, analytics, and external speech providers.
+- [ ] Diagnostics that redact tokens and personal data.
+- [ ] Performance tests on slower mobile hardware.
+
+**Exit gate:** cache cleanup cannot erase the library/progress; network and provider failures remain recoverable.
+
+## Phase 8 — Shop / rewards
+
+Status: **Blocked on product specification**
+
+The destination remains in navigation, but mechanics must wait for the product owner's explanation. Do not implement guessed currency, reward loops, tasks, purchases, or monetization.
+
+## Phase 9 — Release readiness
+
+Status: **Planned**
+
+- [ ] Accessibility and interaction audit.
+- [ ] Security and dependency review.
+- [ ] Android/PWA install and update tests.
+- [ ] Reproducible production build.
+- [ ] Clear release notes and known-limitations list.
+- [ ] Validate all claims in README against actual behaviour.
+
+## Working rules
+
+1. Prefer small, reviewable pull requests with a clear acceptance gate.
+2. Keep Implemented separate from Verified.
+3. Add tests with domain behaviour, especially identity/progress/storage logic.
+4. Do not add a dependency without a concrete reason and maintenance assessment.
+5. Never put secrets, private tokens, or personal credentials in source control.
+6. Revisit this roadmap when evidence or the owner's priorities change.
