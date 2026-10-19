@@ -206,14 +206,23 @@ class CacheStorageService {
       final nonce = DateTime.now().microsecondsSinceEpoch;
       final backup = File(entry.filePath + '.remove-' + nonce.toString());
       var staged = false;
+      var metadataRemoved = false;
       try {
         if (await original.exists()) {
           await original.rename(backup.path);
           staged = true;
         }
         await database.confirmCacheEviction([key]);
-        if (staged && await backup.exists()) await backup.delete();
+        metadataRemoved = true;
+        if (staged && await backup.exists()) {
+          try {
+            await backup.delete();
+          } on Object {
+            // Metadata is committed; a leftover disposable file can be cleaned later.
+          }
+        }
       } catch (_) {
+        if (metadataRemoved) rethrow;
         if (staged && await backup.exists()) {
           if (await original.exists()) await original.delete();
           await backup.rename(original.path);
