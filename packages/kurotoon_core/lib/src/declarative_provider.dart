@@ -23,7 +23,7 @@ abstract interface class DeclarativeJsonFetcher {
 
 /// A restricted source adapter: it can only issue declared JSON GET requests,
 /// extract mapped fields, and return normalized catalog candidates.
-class DeclarativeJsonProvider implements SourceProvider, SeriesProvider, ChapterFeedProvider, ReaderPagesProvider {
+class DeclarativeJsonProvider implements SourceProvider, SeriesProvider, ChapterFeedProvider, ReaderPagesProvider, CreatorWorksProvider {
   DeclarativeJsonProvider({
     required this.manifest,
     required this.fetcher,
@@ -45,6 +45,7 @@ class DeclarativeJsonProvider implements SourceProvider, SeriesProvider, Chapter
           if (manifest.capabilities.contains(ExtensionCapability.seriesDetails)) ProviderCapability.series,
           if (manifest.capabilities.contains(ExtensionCapability.chapterFeed)) ProviderCapability.chapters,
           if (manifest.capabilities.contains(ExtensionCapability.readerPages)) ProviderCapability.pages,
+          if (manifest.capabilities.contains(ExtensionCapability.creatorWorks)) ProviderCapability.creators,
         },
         isBuiltIn: false,
         enabledByDefault: manifest.enabledByDefault,
@@ -258,6 +259,47 @@ class DeclarativeJsonProvider implements SourceProvider, SeriesProvider, Chapter
       return ProviderResponse(status: ProviderResultStatus.success, data: List.unmodifiable(chapters));
     } on Object catch (error) {
       return _error<List<ChapterUnit>>(error);
+    }
+  }
+
+  @override
+  Future<ProviderResponse<List<WorkCandidate>>> getCreatorWorks(
+    String creatorId, {
+    required CancellationToken cancellationToken,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final endpoint = _findEndpoint(ExtensionCapability.creatorWorks);
+    if (endpoint == null) {
+      return const ProviderResponse(status: ProviderResultStatus.unsupported, message: 'Creator works are unsupported.');
+    }
+    if (creatorId.trim().isEmpty || limit < 1 || limit > 500 || offset < 0) {
+      return const ProviderResponse(status: ProviderResultStatus.failed, message: 'Invalid creator pagination.');
+    }
+    try {
+      cancellationToken.throwIfCancelled();
+      final uri = endpoint.buildUri(
+        manifest.baseUri,
+        creatorId: creatorId,
+        page: offset ~/ limit + 1,
+        limit: limit,
+      );
+      _validateRequestUri(uri);
+      final payload = await fetcher.getJson(
+        uri,
+        cancellationToken: cancellationToken,
+        maxResponseBytes: endpoint.maxResponseBytes,
+      );
+      cancellationToken.throwIfCancelled();
+      final extractor = const DeclarativeJsonExtractor();
+      final candidates = <WorkCandidate>[];
+      for (final record in extractor.records(endpoint, payload)) {
+        final candidate = _candidateFromFields(extractor.fields(endpoint, record));
+        if (candidate != null) candidates.add(candidate);
+      }
+      return ProviderResponse(status: ProviderResultStatus.success, data: List.unmodifiable(candidates));
+    } on Object catch (error) {
+      return _error<List<WorkCandidate>>(error);
     }
   }
 
