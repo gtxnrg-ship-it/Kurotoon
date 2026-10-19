@@ -95,32 +95,28 @@ class CatalogWorkflowService {
   }
 
   Future<List<CatalogUpsertResult>> _indexBatch(SearchBatch batch) async {
-    final persisted = await database.loadCatalog();
-    final persistedReviews = await database.loadPendingIdentityReviews();
-    final index = CatalogIndex.fromEntries(
-      entries: persisted,
-      pendingReviews: persistedReviews,
-    );
-
-    // Recover from a crash after catalog metadata committed but before the
-    // corresponding review-queue row was removed.
-    for (final review in persistedReviews) {
-      if (index.workIdForListing(review.key) != null) {
-        await database.deletePendingIdentityReview(review.key);
-      }
-    }
-
     final outcomes = <CatalogUpsertResult>[];
     for (final candidate in batch.candidates) {
-      final result = index.upsert(candidate);
+      // Query indexed identity terms for this listing only. Loading the entire
+      // catalog for every search would grow memory and latency with library size.
+      final matchPage = await database.loadCatalogCandidatesForMatching(candidate);
+      final pending = await database.loadPendingIdentityReview(candidate.listingKey);
+      final alreadyAssigned = matchPage.entries.where((entry) =>
+          entry.listings.any((listing) => listing.listingKey == candidate.listingKey)).toList(growable: false);
+      if (pending != null && alreadyAssigned.isNotEmpty) {
+        // Recover the crash window between catalog commit and review deletion.
+        await database.deletePendingIdentityReview(candidate.listingKey);
+      }
+      final index = CatalogIndex.fromEntries(
+        entries: matchPage.entries,
+        pendingReviews: pending == null || alreadyAssigned.isNotEmpty ? const [] : [pending],
+      );
+      final result = index.upsert(candidate, candidatePoolOverflow: matchPage.hasMore);
       if (result.entry != null &&
-          (result.status == CatalogUpsertStatus.created ||
-              result.status == CatalogUpsertStatus.linked)) {
+          (result.status == CatalogUpsertStatus.created || result.status == CatalogUpsertStatus.linked)) {
         await database.upsertCatalogEntry(result.entry!);
       }
-      if (result.review != null) {
-        await database.savePendingIdentityReview(result.review!);
-      }
+      if (result.review != null) await database.savePendingIdentityReview(result.review!);
       outcomes.add(result);
     }
     return List.unmodifiable(outcomes);
@@ -133,9 +129,29 @@ class CatalogWorkflowService {
   }) {
     _ensureOpen();
     return _serialize(() async {
+      final pending = await database.loadPendingIdentityReview(listingKey);
+      if (pending == null) throw ArgumentError.value(listingKey, 'listingKey', 'No pending review');
+      final matchPage = await database.loadCatalogCandidatesForMatching(pending.candidate);
+      final assigned = matchPage.entries.where((entry) =>
+          entry.listings.any((listing) => listing.listingKey == listingKey)).toList(growable: false);
+      if (assigned.isNotEmpty) {
+        await database.deletePendingIdentityReview(listingKey);
+        return CatalogUpsertResult(
+          status: CatalogUpsertStatus.alreadyKnown,
+          entry: assigned.first,
+          message: 'Recovered a previously committed catalog listing.',
+        );
+      }
+      final entriesById = <String, CatalogEntry>{
+        for (final entry in matchPage.entries) entry.work.id: entry,
+      };
+      if (targetWorkId != null && !entriesById.containsKey(targetWorkId)) {
+        final target = await database.loadCatalogEntryById(targetWorkId);
+        if (target != null) entriesById[target.work.id] = target;
+      }
       final index = CatalogIndex.fromEntries(
-        entries: await database.loadCatalog(),
-        pendingReviews: await database.loadPendingIdentityReviews(),
+        entries: entriesById.values,
+        pendingReviews: [pending],
       );
       final result = index.resolveReview(
         listingKey,
@@ -144,8 +160,6 @@ class CatalogWorkflowService {
       );
       final entry = result.entry;
       if (entry == null) throw StateError('Identity resolution did not produce a catalog entry.');
-      // Commit the catalog outcome before removing the recoverable review row.
-      // A crash in between is reconciled by _indexBatch on the next search.
       await database.upsertCatalogEntry(entry);
       await database.deletePendingIdentityReview(listingKey);
       return result;
@@ -202,10 +216,7 @@ class CatalogWorkflowService {
         );
       }
       await _serialize(() async {
-        final index = CatalogIndex.fromEntries(
-          entries: await database.loadCatalog(),
-          pendingReviews: await database.loadPendingIdentityReviews(),
-        );
+        final index = CatalogIndex.fromEntries(entries: [context.entry]);
         final entry = index.refreshKnownListing(refreshed);
         await database.upsertCatalogEntry(entry);
       });
@@ -572,14 +583,7 @@ class CatalogWorkflowService {
   }
 
   Future<_ListingContext> _listingContext(String workId, String providerId) async {
-    final catalog = await database.loadCatalog();
-    CatalogEntry? entry;
-    for (final candidate in catalog) {
-      if (candidate.work.id == workId) {
-        entry = candidate;
-        break;
-      }
-    }
+    final entry = await database.loadCatalogEntryById(workId);
     if (entry == null) throw ArgumentError.value(workId, 'workId', 'Series is not in the catalog.');
     for (final listing in entry.listings) {
       if (listing.providerId == providerId) return _ListingContext(entry: entry, listing: listing);
