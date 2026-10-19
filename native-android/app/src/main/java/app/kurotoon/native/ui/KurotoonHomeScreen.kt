@@ -1,4 +1,4 @@
-package app.kurotoon.native.ui
+package app.kurotoon.android.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -50,12 +50,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
-import app.kurotoon.native.data.ExperienceSettings
-import app.kurotoon.native.data.KurotoonPreferences
-import app.kurotoon.native.data.MangaDexProvider
-import app.kurotoon.native.data.MangaTile
-import app.kurotoon.native.experience.HapticsController
-import app.kurotoon.native.experience.HapticMoment
+import app.kurotoon.android.data.ExperienceSettings
+import app.kurotoon.android.data.KurotoonPreferences
+import app.kurotoon.android.data.MangaDexProvider
+import app.kurotoon.android.data.MangaTile
+import app.kurotoon.android.experience.HapticsController
+import app.kurotoon.android.experience.HapticMoment
 import kotlinx.coroutines.launch
 
 private data class PreviewDestination(
