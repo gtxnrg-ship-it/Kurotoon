@@ -179,6 +179,7 @@ export function ReaderScreen({
   const [scrollRatio, setScrollRatio] = useState(0);
   const [progressReady, setProgressReady] = useState(false);
   const [mode, setMode] = useState<ReaderMode>('paged');
+  const modeRef = useRef<ReaderMode>('paged');
   const [direction, setDirection] = useState<ReaderDirection>('rtl');
   const [gap, setGap] = useState(0);
   const [autoLoad, setAutoLoad] = useState(true);
@@ -200,6 +201,7 @@ export function ReaderScreen({
   const progressStorageKey = progressKey(listing, chapter);
 
   useEffect(() => { onExitRef.current = onSeriesHome; }, [onSeriesHome]);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
 
   useEffect(() => {
     const currentState = window.history.state;
@@ -237,7 +239,7 @@ export function ReaderScreen({
         setPageIndex(restoredPageIndex);
         // Vertical mode mounts pages in batches. Ensure the saved page exists in the
         // DOM before restoring its position, even when it is deep in a long chapter.
-        setVisiblePageCount(Math.min(urls.length, Math.max(6, restoredPageIndex + 2)));
+        setVisiblePageCount(Math.min(urls.length, Math.max(6, modeRef.current === 'vertical' ? restoredPageIndex + 2 : 6)));
         setLoading(false);
         setProgressReady(true);
       })
