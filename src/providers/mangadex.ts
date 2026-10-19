@@ -221,13 +221,15 @@ export class MangaDexProvider implements ComicProvider {
           providerChapterId: record.id,
           url: `https://mangadex.org/chapter/${record.id}`,
           title: attributes.title || undefined,
+          numberLabel: chapter || (attributes.title ? 'Oneshot / special' : 'Unnumbered'),
+          volumeLabel: attributes.volume || undefined,
+          sortOrder: numericChapter,
+          kind: chapter ? 'regular' : 'special',
           languageCode: attributes.translatedLanguage,
           pageCount: attributes.pages,
           publishedAt: attributes.publishAt,
           lastVerifiedAt: new Date().toISOString(),
-          numberLabel: chapter || (attributes.title ? 'Oneshot / special' : 'Unnumbered'),
-          sortOrder: numericChapter,
-        } as ChapterListing & { numberLabel: string; sortOrder?: number };
+        };
       });
       chapters.push(...mapped);
       const total = typeof response.total === 'number' ? response.total : undefined;
