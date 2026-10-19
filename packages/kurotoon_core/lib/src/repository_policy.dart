@@ -31,20 +31,38 @@ class RepositoryPolicy {
     if (_isLocalHost(host) || _isPrivateIp(host)) {
       return const RepositoryDecision(
         allowed: false,
-        reason: 'Local and private-network repository hosts are not allowed',
+        reason: 'Local, reserved, and private-network repository hosts are not allowed',
       );
     }
 
     return RepositoryDecision(allowed: true, reason: 'URL syntax passed initial safety checks', uri: uri);
   }
 
-  bool _isLocalHost(String host) =>
-      host == 'localhost' || host.endsWith('.localhost') || host.endsWith('.local');
+  bool _isLocalHost(String host) {
+    final normalized = host.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+    return normalized == 'localhost' ||
+        normalized.endsWith('.localhost') ||
+        normalized.endsWith('.local');
+  }
 
   bool _isPrivateIp(String host) {
-    if (host == '::' || host == '::1' || host.startsWith('fc') ||
-        host.startsWith('fd') || host.startsWith('fe80:')) {
-      return true;
+    // IPv4-mapped IPv6 literals can otherwise smuggle a private IPv4 target
+    // through code that only checks the IPv6 prefix.
+    if (host.startsWith('::ffff:')) return true;
+
+    if (host.contains(':')) {
+      // Permit only global-unicast IPv6 literals. This intentionally blocks
+      // unspecified, loopback, ULA, link-local, multicast, mapped, transition,
+      // and reserved/non-routable ranges rather than trying to enumerate each.
+      final first = int.tryParse(host.split(':').first, radix: 16);
+      if (first == null || first < 0x2000 || first > 0x3fff) return true;
+      if (host == '::' || host == '::1' ||
+          host.startsWith('2001:db8:') || host == '2001:db8' ||
+          host.startsWith('2001:0:') || host == '2001:0' ||
+          host.startsWith('2002:') || host == '2002') {
+        return true;
+      }
+      return false;
     }
 
     final octets = host.split('.');
@@ -70,7 +88,8 @@ class RepositoryPolicy {
         (a == 203 && b == 0 && values[2] == 113);
   }
 
-  /// This check is only the first gate. Before a request/redirect is followed,
-  /// the network adapter must validate the resolved IP address too, to guard
-  /// against DNS rebinding and redirects into local/private services.
+  /// This is only a syntax/literal gate. Network adapters must also validate
+  /// every resolved address and redirect destination. DNS lookup and connect
+  /// must be treated as separate trust boundaries; this check alone does not
+  /// eliminate DNS-rebinding races.
 }
