@@ -1,19 +1,9 @@
 import { useEffect, useRef } from 'react';
+import { createSeededRandom } from '../cosmos/random';
 
 type Star = { x: number; y: number; radius: number; alpha: number; phase: number; speed: number; hue: number };
 type Cloud = { x: number; y: number; radius: number; hue: number; alpha: number; drift: number };
 type Pointer = { x: number; y: number; targetX: number; targetY: number; strength: number; targetStrength: number };
-
-function seededRandom(seed: number) {
-  let value = seed >>> 0;
-  return () => {
-    value += 0x6d2b79f5;
-    let t = value;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 function makeSeed() {
   try {
@@ -35,7 +25,7 @@ export function CosmicBackdrop() {
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
-    const random = seededRandom(makeSeed());
+    const random = createSeededRandom(makeSeed());
     const pointer: Pointer = { x: 0, y: 0, targetX: 0, targetY: 0, strength: 0, targetStrength: 0 };
     let width = 0;
     let height = 0;
