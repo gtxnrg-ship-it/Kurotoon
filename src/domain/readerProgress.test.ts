@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeReaderProgress, readReaderProgress, writeReaderProgress } from './readerProgress';
+import { normalizeReaderProgress, readLegacyReaderProgress, readReaderProgress, writeReaderProgress } from './readerProgress';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -27,6 +27,16 @@ describe('reader progress persistence', () => {
       pageIndex: 0,
       scrollRatio: 0,
     });
+  });
+
+  it('only migrates a valid legacy record and leaves the original untouched', () => {
+    const storage = memoryStorage({
+      old: JSON.stringify({ pageIndex: 17, scrollRatio: 0.6 }),
+      bad: '{corrupt',
+    });
+    expect(readLegacyReaderProgress('old', storage)).toEqual({ pageIndex: 17, scrollRatio: 0.6 });
+    expect(readLegacyReaderProgress('bad', storage)).toBeUndefined();
+    expect(storage.getItem('old')).toBe(JSON.stringify({ pageIndex: 17, scrollRatio: 0.6 }));
   });
 
   it('writes and reads the position without trusting stored values', () => {
