@@ -27,7 +27,7 @@ Status: **In progress** — the initial procedural cosmic canvas is merged and C
 - [ ] Add reader route and shared app-level settings boundary.
 - [ ] Verify narrow mobile, tablet, and desktop layouts.
 - [ ] Add a first-launch cosmic reveal and shorter subsequent-launch transition only after the base renderer is profiled.
-- [ ] Keep source/repository management under Me/settings.
+- [x] Keep source/repository management under Me/settings; the repository manager is reachable from Me settings without adding a bottom-navigation item.
 
 **Exit gate:** navigation is keyboard/touch usable, responsive, and does not lose route state during ordinary navigation.
 
@@ -60,9 +60,12 @@ Status: **In progress** — the MangaDex adapter and live Browser search are imp
 
 ## Phase 4 — Repository and extension research gate
 
-Status: **Planned; high-risk feasibility item**
+Status: **In progress — metadata-only web proof of concept; extension compatibility is still an open research gate.**
 
-- [ ] Parse a real community repository index without installing anything.
+- [x] Parse a real community repository JSON index without installing anything; parser and tests target the legacy Mihon/Tachiyomi-style JSON index shape.
+- [x] Add a Me → Settings repository manager with HTTPS URL entry, supported deep-link URL extraction, local repository-list persistence, add/check/refresh/remove, metadata list filtering, and explicit error states.
+- [x] Limit index responses to 15 MB and 10,000 records, reject non-HTTPS URLs, and avoid downloading or executing listed APKs.
+- [ ] Add full signature/trust/package-format inspection and source permission presentation.
 - [ ] Inspect package formats, host API versions, dependencies, signatures, and license notices.
 - [ ] Build a disposable Android proof of concept for one extension, if licensing and technical feasibility permit.
 - [ ] Verify search, details, chapters, and page URLs through the host interface.
