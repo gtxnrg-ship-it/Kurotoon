@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:kurotoon_core/kurotoon_core.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 enum LibraryStatus { reading, completed, planned, paused, dropped, rereading }
 
@@ -60,12 +63,15 @@ class KurotoonDatabase {
     String? databasePath,
     DatabaseFactory? factory,
   }) async {
-    final selectedFactory = factory ?? databaseFactory;
+    final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    if (factory == null && isDesktop) sqfliteFfiInit();
+    final DatabaseFactory selectedFactory =
+        factory ?? (isDesktop ? databaseFactoryFfi : databaseFactory);
     final String resolvedPath;
     if (databasePath != null) {
       resolvedPath = databasePath;
     } else {
-      resolvedPath = path.join(await getDatabasesPath(), 'kurotoon.db');
+      resolvedPath = path.join((await getApplicationSupportDirectory()).path, 'kurotoon.db');
     }
     final database = await selectedFactory.openDatabase(
       resolvedPath,
