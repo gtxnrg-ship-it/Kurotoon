@@ -34,6 +34,15 @@ abstract interface class ChapterFeedProvider implements SourceProvider {
   });
 }
 
+abstract interface class CreatorWorksProvider implements SourceProvider {
+  Future<ProviderResponse<List<WorkCandidate>>> getCreatorWorks(
+    String creatorId, {
+    required CancellationToken cancellationToken,
+    int limit = 100,
+    int offset = 0,
+  });
+}
+
 abstract interface class ReaderPagesProvider implements SourceProvider {
   Future<ProviderResponse<ReaderPageManifest>> getPages(
     String chapterId, {
