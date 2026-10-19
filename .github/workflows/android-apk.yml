@@ -101,14 +101,16 @@ jobs:
           Checksum: Kurotoon.apk.sha256
           This is a development build, not a store release; validate on device before relying on it.
           EOF
-          git tag -f continuous-latest "$GITHUB_SHA"
-          git push --force origin refs/tags/continuous-latest
           if gh release view continuous-latest >/dev/null 2>&1; then
+            # Upload both files before moving the stable tag, so the alias is
+            # not switched to a build whose assets have not finished uploading.
             gh release upload continuous-latest release/Kurotoon.apk release/Kurotoon.apk.sha256 --clobber
             gh release edit continuous-latest \
               --title "Kurotoon latest Flutter development build" \
               --notes-file release-notes.md \
               --prerelease
+            git tag -f continuous-latest "$GITHUB_SHA"
+            git push --force origin refs/tags/continuous-latest
           else
             gh release create continuous-latest release/Kurotoon.apk release/Kurotoon.apk.sha256 \
               --title "Kurotoon latest Flutter development build" \
