@@ -1,12 +1,16 @@
 # Kurotoon 🌌
 
+> **[⬇️ Download Kurotoon APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases)** · [View development builds](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml)
+
+**Important:** Current published APKs are experimental development builds produced by the existing Capacitor pipeline. They are **not yet the intended final native Android app**. Kurotoon is moving toward a native Kotlin + Jetpack Compose Android architecture; see [Native Android Migration](docs/NATIVE_ANDROID_MIGRATION.md). Do not interpret an installable APK as proof of native implementation or release readiness.
+
 **A live-first manga and webcomic reader set inside a living, personal cosmic universe.**
 
 Kurotoon is intended to become a polished, lightweight, cross-source reader for manga, manhwa, manhua, webtoons, and other comics. It should combine a genuinely excellent reading experience, a coherent multi-source catalog, a user-owned library, a carefully bounded extension ecosystem, and optional synchronized audio, voice, and haptic experiences.
 
 This README is the **canonical product handoff**: it records the product owner's direction, constraints, agreed design principles, implementation priorities, and what is actually built. Treat the vision as requirements for future work—not as evidence that planned features already exist.
 
-> **Current status: the initial reader and Android build pipeline are merged to `main`.** The repository contains the React + TypeScript + Vite app shell, the five primary destinations, typed catalog/provider contracts, conservative identity matching, a dynamic procedural cosmic canvas, live MangaDex search, the metadata-only repository manager, an in-app series/chapter/page reader, local per-chapter reading progress, and a Capacitor-based Android debug-APK workflow. CI and APK-generation workflows have passed on recent reader changes. The reader supports paged and vertical layouts, reading direction, chapter navigation, failed-page retry, and safe-area-aware controls; progress storage is defensive, and vertical scroll measurement/persistence has been reduced to avoid unnecessary render work. Real-world acceptance is still pending for the complete live search-to-reading flow on a physical low-end Android phone, sustained frame pacing, and system navigation. Durable Library operations, a live comments backend, executable extension runtime, and synchronized audio/voice/haptics remain unimplemented; their UI must continue to label them honestly.
+> **Current status:** the current main branch is a React + TypeScript + Vite prototype packaged with Capacitor. It contains the five primary destinations, typed catalog/provider contracts, conservative identity matching, a procedural cosmic canvas, live MangaDex search, metadata-only repository management, an in-app series/chapter/page reader, local per-chapter progress, and a CI-generated debug APK. Automated build/test and APK workflows have passed on recent changes, but this is not a native Android implementation. Physical-device acceptance remains pending. Durable Library operations, executable extension runtime, and synchronized audio/voice/haptics are not implemented. The agreed direction is to build a native Kotlin + Jetpack Compose app and migrate capabilities incrementally without losing the current prototype's visual/product work.
 
 ## The product in one sentence
 
