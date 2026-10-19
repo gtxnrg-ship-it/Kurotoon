@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -151,29 +152,30 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     HttpClientRequest? request;
     void Function()? detach;
     try {
-      request = await _client.getUrl(uri).timeout(requestTimeout);
-      request.followRedirects = false;
-      request.maxRedirects = 0;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.userAgentHeader, 'KuroToon/0.1 repository-client');
-      detach = cancellationToken?.onCancel((_) => request?.abort());
+      final activeRequest = await _client.getUrl(uri).timeout(requestTimeout);
+      request = activeRequest;
+      activeRequest.followRedirects = false;
+      activeRequest.maxRedirects = 0;
+      activeRequest.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      activeRequest.headers.set(HttpHeaders.userAgentHeader, 'KuroToon/0.1 repository-client');
+      detach = cancellationToken?.onCancel((_) => activeRequest.abort());
       cancellationToken?.throwIfCancelled();
-      final response = await request.close().timeout(requestTimeout);
-    if (response.statusCode >= 300 && response.statusCode < 400) {
-      throw HttpException('Repository redirects are not followed; add the final HTTPS URL instead.', uri: uri);
-    }
-    if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('Repository returned HTTP ' + response.statusCode.toString() + '.', uri: uri);
-    }
-    if (response.contentLength > maxBytes) {
-      response.detachSocket().then((socket) => socket.destroy());
-      throw HttpException('Repository response exceeds the configured size limit.', uri: uri);
-    }
+      final response = await activeRequest.close().timeout(requestTimeout);
+      if (response.statusCode >= 300 && response.statusCode < 400) {
+        throw HttpException('Repository redirects are not followed; add the final HTTPS URL instead.', uri: uri);
+      }
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('Repository returned HTTP ' + response.statusCode.toString() + '.', uri: uri);
+      }
+      if (response.contentLength > maxBytes) {
+        response.detachSocket().then((socket) => socket.destroy());
+        throw HttpException('Repository response exceeds the configured size limit.', uri: uri);
+      }
       final result = <int>[];
       await for (final chunk in response.timeout(requestTimeout)) {
         cancellationToken?.throwIfCancelled();
         if (result.length + chunk.length > maxBytes) {
-          request.abort();
+          activeRequest.abort();
           throw HttpException('Repository response exceeded the configured size limit.', uri: uri);
         }
         result.addAll(chunk);
