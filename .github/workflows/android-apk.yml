@@ -29,11 +29,20 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
       - name: Install web dependencies
         run: npm install --legacy-peer-deps
 
       - name: Typecheck and build web app
         run: npm run build
+
+      - name: Run domain tests
+        run: npm test
 
       - name: Generate Android project
         run: npx cap add android
