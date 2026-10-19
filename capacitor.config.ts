@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'app.kurotoon.reader',
   appName: 'Kurotoon',
   webDir: 'dist',
-  bundledWebRuntime: false,
 };
 
 export default config;
