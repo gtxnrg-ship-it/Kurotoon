@@ -66,6 +66,12 @@ class JsonEndpointSpec {
         path.contains('#') || decodedPath.split('/').any((part) => part == '..' || part == '.')) {
       issues.add('Endpoint path must be root-relative and contain no URL authority or traversal.');
     }
+    for (final match in RegExp(r'\{([^}]+)\}').allMatches(path)) {
+      if (!_allowedPlaceholders.contains(match.group(1))) {
+        issues.add('Unsupported path placeholder: ' + match.group(1)!);
+      }
+    }
+    if (path.contains('{') != path.contains('}')) issues.add('Malformed path placeholder in endpoint ' + id + '.');
     for (final value in query.values) {
       for (final match in RegExp(r'\{([^}]+)\}').allMatches(value)) {
         if (!_allowedPlaceholders.contains(match.group(1))) {
