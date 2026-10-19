@@ -333,6 +333,45 @@ void main() {
       RepositoryTrust.builtIn.name,
     );
   });
+  test('keeps identity terms searchable for writes after the index is initialized', () async {
+    await database.upsertCatalogEntry(entry());
+    final initial = await database.loadCatalogCandidatesForMatching(WorkCandidate(
+      providerId: 'community-source',
+      externalId: 'blue-star-translation',
+      title: 'Blue Star',
+      providerUrl: Uri.parse('https://community.example.org/blue-star'),
+    ));
+    expect(initial.entries.map((item) => item.work.id), contains('work/blue-star'));
+
+    await database.upsertCatalogEntry(CatalogEntry(
+      work: WorkRecord(
+        id: 'work/new-after-index',
+        title: 'New After Index',
+        alternateTitles: const ['Fresh Alias'],
+        creatorNames: const ['New Creator'],
+        format: WorkFormat.manga,
+      ),
+      listings: [WorkCandidate(
+        providerId: 'community-source',
+        externalId: 'new-after-index',
+        title: 'New After Index',
+        alternateTitles: const ['Fresh Alias'],
+        creatorNames: const ['New Creator'],
+        providerUrl: Uri.parse('https://community.example.org/new-after-index'),
+      )],
+    ));
+
+    final afterWrite = await database.loadCatalogCandidatesForMatching(WorkCandidate(
+      providerId: 'second-community-source',
+      externalId: 'fresh-alias-listing',
+      title: 'Fresh Alias',
+      creatorNames: const ['New Creator'],
+      providerUrl: Uri.parse('https://second.example.org/fresh-alias'),
+    ));
+    expect(afterWrite.entries.map((item) => item.work.id), contains('work/new-after-index'));
+    expect(afterWrite.hasMore, isFalse);
+  });
+
   test('pages large catalogs with a stable cursor and bounded search results', () async {
     for (var i = 0; i < 120; i++) {
       final suffix = i.toString().padLeft(3, '0');
