@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'cancellation.dart';
 import 'models.dart';
@@ -89,6 +88,9 @@ class IoJsonGetTransport implements JsonGetTransport {
         headers: response.headers.map,
         body: Map<String, Object?>.from(decoded),
       );
+    } on TimeoutException {
+      request?.abort();
+      rethrow;
     } on Object {
       if (cancellationToken.isCancelled) {
         throw OperationCancelled(cancellationToken.reason);
@@ -128,6 +130,12 @@ class MangaDexProvider implements SourceProvider {
   final JsonGetTransport transport;
   final List<String> contentRatings;
   final int resultLimit;
+
+  void close({bool force = false}) {
+    if (transport is IoJsonGetTransport) {
+      (transport as IoJsonGetTransport).close(force: force);
+    }
+  }
 
   @override
   final ProviderDescriptor descriptor = ProviderDescriptor(
