@@ -214,13 +214,15 @@ class VoicePackStorageService {
     final bytes = address.rawAddress;
     if (address.type == InternetAddressType.IPv4 && bytes.length == 4) {
       final a = bytes[0], b = bytes[1], c = bytes[2];
+      final carrierGradeNat = a == 100 && b >= 64 && b <= 127;
+      final linkLocal = a == 169 && b == 254;
+      final private172 = a == 172 && b >= 16 && b <= 31;
+      final reserved192 = a == 192 && (b == 168 || (b == 0 && (c == 0 || c == 2)));
+      final reserved198 = a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100));
+      final reserved203 = a == 203 && b == 0 && c == 113;
       return a == 0 || a == 10 || a == 127 || a >= 224 ||
-          (a == 100 && b >= 64 && b <= 127) ||
-          (a == 169 && b == 254) ||
-          (a == 172 && b >= 16 && b <= 31) ||
-          (a == 192 && (b == 168 || (b == 0 && (c == 0 || c == 2)))) ||
-          (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) ||
-          (a == 203 && b == 0 && c == 113);
+          carrierGradeNat || linkLocal || private172 ||
+          reserved192 || reserved198 || reserved203;
     }
     if (address.type == InternetAddressType.IPv6 && bytes.length == 16) {
       final allZero = bytes.every((byte) => byte == 0);
