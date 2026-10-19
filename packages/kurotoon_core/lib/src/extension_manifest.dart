@@ -75,7 +75,7 @@ class JsonEndpointSpec {
     for (final value in query.values) {
       for (final match in RegExp(r'\{([^}]+)\}').allMatches(value)) {
         if (!_allowedPlaceholders.contains(match.group(1))) {
-          issues.add('Unsupported query placeholder: \${match.group(1)}');
+          issues.add('Unsupported query placeholder: ${match.group(1)}');
         }
       }
       if (value.contains('{') != value.contains('}')) {
@@ -221,8 +221,8 @@ class ExtensionManifestPolicy {
     }
     final ids = <String>{};
     for (final endpoint in manifest.endpoints) {
-      if (!ids.add(endpoint.id)) issues.add('Duplicate endpoint id: \${endpoint.id}');
-      issues.addAll(endpoint.validate().map((issue) => '\${endpoint.id}: $issue'));
+      if (!ids.add(endpoint.id)) issues.add('Duplicate endpoint id: ${endpoint.id}');
+      issues.addAll(endpoint.validate().map((issue) => '${endpoint.id}: $issue'));
     }
     return ManifestValidation(accepted: issues.isEmpty, issues: List.unmodifiable(issues));
   }
