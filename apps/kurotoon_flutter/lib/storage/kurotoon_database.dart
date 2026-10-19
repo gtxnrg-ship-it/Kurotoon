@@ -568,6 +568,7 @@ class KurotoonDatabase {
         );
         if (rows.isEmpty) break;
         await _database.transaction((tx) async {
+          final batch = tx.batch();
           for (final row in rows) {
             final terms = _searchTerms([
               row['canonical_title'] as String,
@@ -575,10 +576,11 @@ class KurotoonDatabase {
               ..._stringList(row['creator_names_json']),
             ]);
             for (final term in terms) {
-              await tx.insert('catalog_search_terms', {'work_id': row['id'], 'term': term},
+              batch.insert('catalog_search_terms', {'work_id': row['id'], 'term': term},
                   conflictAlgorithm: ConflictAlgorithm.ignore);
             }
           }
+          await batch.commit(noResult: true);
         });
         lastId = rows.last['id'] as String;
       }
