@@ -75,7 +75,7 @@ class WorkIdentityMatcher {
     if (yearConflict || formatConflict) {
       return IdentityDecision(
         verdict: IdentityVerdict.distinct,
-        score: (titleScore * 0.72).clamp(0.0, 1.0),
+        score: (titleScore * 0.72).clamp(0.0, 1.0).toDouble(),
         evidence: List.unmodifiable(evidence),
       );
     }
@@ -85,7 +85,7 @@ class WorkIdentityMatcher {
     if (creatorMatch) score += 0.16;
     if (yearMatch) score += 0.08;
     if (formatMatch) score += 0.04;
-    score = score.clamp(0.0, 1.0);
+    score = score.clamp(0.0, 1.0).toDouble();
 
     final verdict = score >= safeMergeThreshold
         ? IdentityVerdict.safeMatch
