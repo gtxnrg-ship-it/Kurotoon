@@ -381,12 +381,12 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
 
   Future<void> _validateResolvedAddresses(String host) async {
     final addresses = await InternetAddress.lookup(host).timeout(requestTimeout);
-    if (addresses.isEmpty || addresses.any(_isNonPublic)) {
+    if (addresses.isEmpty || addresses.any(isNonPublicAddress)) {
       throw const HttpException('Repository hostname resolved to a non-public address.');
     }
   }
 
-  bool _isNonPublic(InternetAddress address) {
+  static bool isNonPublicAddress(InternetAddress address) {
     final bytes = address.rawAddress;
     if (address.type == InternetAddressType.IPv4 && bytes.length == 4) {
       return _isNonPublicIpv4(bytes);
@@ -397,16 +397,14 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       final uniqueLocal = (bytes[0] & 0xfe) == 0xfc;
       final linkLocal = bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80;
       final multicast = bytes[0] == 0xff;
-
-      // IPv4-mapped IPv6 addresses must be evaluated as IPv4 too. Otherwise
-      // ::ffff:127.0.0.1 could pass a check that only examines IPv6 prefixes.
       final ipv4Mapped = bytes.take(10).every((byte) => byte == 0) &&
           bytes[10] == 0xff &&
           bytes[11] == 0xff;
       if (ipv4Mapped) return _isNonPublicIpv4(bytes.sublist(12, 16));
 
-      // This adapter only accepts global-unicast IPv6 destinations. Reject
-      // special/transition ranges that can obscure the destination semantics.
+      // Keep network-level checks aligned with RepositoryPolicy's literal gate.
+      // Only global-unicast 2000::/3 is accepted; several transition and
+      // special-purpose prefixes are denied even though they fall inside it.
       final globalUnicast = (bytes[0] & 0xe0) == 0x20;
       final documentation = bytes[0] == 0x20 &&
           bytes[1] == 0x01 &&
@@ -417,6 +415,11 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
           bytes[2] == 0x00 &&
           bytes[3] == 0x00;
       final sixToFour = bytes[0] == 0x20 && bytes[1] == 0x02;
+      final orchid = bytes[0] == 0x20 &&
+          bytes[1] == 0x01 &&
+          bytes[2] == 0x00 &&
+          ((bytes[3] & 0xf0) == 0x10 || (bytes[3] & 0xf0) == 0x20);
+
       return allZero ||
           loopback ||
           uniqueLocal ||
@@ -425,12 +428,13 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
           !globalUnicast ||
           documentation ||
           teredo ||
-          sixToFour;
+          sixToFour ||
+          orchid;
     }
     return true;
   }
 
-  bool _isNonPublicIpv4(List<int> bytes) {
+  static bool _isNonPublicIpv4(List<int> bytes) {
     if (bytes.length != 4) return true;
     final a = bytes[0], b = bytes[1], c = bytes[2];
     return a == 0 ||
