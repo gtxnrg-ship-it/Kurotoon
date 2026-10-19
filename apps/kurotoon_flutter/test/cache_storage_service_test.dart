@@ -111,14 +111,14 @@ void main() {
       bucket: CacheBucket.providerResponse,
       bytes: List<int>.filled(70, 4),
     );
-    await database.rawDatabase.execute('''
+    await database.rawDatabase.execute("""
       CREATE TRIGGER reject_incoming_cache
       BEFORE INSERT ON cache_entries
       WHEN NEW.cache_key = 'incoming'
       BEGIN
         SELECT RAISE(ABORT, 'simulated metadata failure');
       END;
-    ''');
+    """);
 
     await expectLater(
       cache.writeBytes(
