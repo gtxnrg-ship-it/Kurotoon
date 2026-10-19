@@ -97,7 +97,9 @@ void main() {
       },
     );
     final uri = endpoint.buildUri(Uri.parse('https://api.source.example.org'), seriesId: 'a/b?x=1');
-    expect(uri.toString(), contains('a%2Fb%3Fx%3D1'));
+    expect(uri.pathSegments.last, 'a/b?x=1');
+    expect(uri.query, isNull);
+    expect(uri.fragment, isNull);
     expect(uri.host, 'api.source.example.org');
   });
 }
