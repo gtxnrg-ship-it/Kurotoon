@@ -1,4 +1,4 @@
-# KuroToon 🌌
+# Kurotoon
 
 > **[⬇️ Download the latest Android APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)** · [All releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases) · [Build history](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml)
 
@@ -165,10 +165,12 @@ The checkbox means its acceptance gate is met—not merely that a class, screen 
 
 **[Download Kurotoon.apk](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)**
 
-- The stable continuous-latest URL is intended to track the latest successful main-branch development build.
-- [Browse all releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases).
+The default APK is the **arm64-v8a** build for most modern Android phones. Other ABI-specific builds are published from the same commit: `Kurotoon-armeabi-v7a.apk` for compatible 32-bit ARM devices and `Kurotoon-x86_64.apk` for compatible x86-64 Android devices/emulators.
+
+- [Download the stable checksum manifest](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/SHA256SUMS.txt) alongside the APKs. Put the APK and `SHA256SUMS.txt` in the same folder and run `sha256sum -c SHA256SUMS.txt` on a device/computer with `sha256sum`.
+- [Browse all numbered releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases).
 - [Inspect Android build runs](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml).
-- If the direct link is temporarily unavailable, open the build history and select a successful run; workflow artifacts have limited retention.
+- If the stable link is temporarily unavailable, open the build history and select a successful run; temporary workflow artifacts have limited retention.
 - Development APKs are for testing, not a claim of production-store signing or release readiness. Android may ask you to confirm installation from your chosen source.
 
 ### Build locally
