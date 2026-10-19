@@ -81,7 +81,14 @@ class VoicePackStorageService {
     // Reuse an already verified copy rather than downloading the same model again.
     if (await target.exists() &&
         await const VoicePackVerifier().verifyStream(target.openRead(), pack.sha256)) {
+      final prior = await database.loadVoicePackInstall(pack.id);
       await _recordInstall(pack, target.path);
+      await _cleanupPreviousInstall(
+        rootPath: root.path,
+        packId: pack.id,
+        previousPath: prior?['install_path'],
+        currentPath: target.path,
+      );
       return target.path;
     }
 
@@ -104,21 +111,12 @@ class VoicePackStorageService {
       await _recordInstall(pack, target.path);
       metadataCommitted = true;
 
-      final priorPath = prior?['install_path'];
-      if (priorPath is String &&
-          priorPath != target.path &&
-          isSafeInstalledVoicePackPath(
-            rootDirectory: root.path,
-            packId: pack.id,
-            installPath: priorPath,
-          )) {
-        try {
-          final oldFile = File(priorPath);
-          if (await oldFile.exists()) await oldFile.delete();
-        } on FileSystemException {
-          // A leftover old model is an orphan; the committed new install stays valid.
-        }
-      }
+      await _cleanupPreviousInstall(
+        rootPath: root.path,
+        packId: pack.id,
+        previousPath: prior?['install_path'],
+        currentPath: target.path,
+      );
       return target.path;
     } catch (_) {
       if (installedNewFile && !metadataCommitted && await target.exists()) {
@@ -137,6 +135,29 @@ class VoicePackStorageService {
           // Temporary downloads are disposable and can be cleaned on next launch.
         }
       }
+    }
+  }
+
+  Future<void> _cleanupPreviousInstall({
+    required String rootPath,
+    required String packId,
+    required Object? previousPath,
+    required String currentPath,
+  }) async {
+    if (previousPath is! String ||
+        previousPath == currentPath ||
+        !isSafeInstalledVoicePackPath(
+          rootDirectory: rootPath,
+          packId: packId,
+          installPath: previousPath,
+        )) {
+      return;
+    }
+    try {
+      final oldFile = File(previousPath);
+      if (await oldFile.exists()) await oldFile.delete();
+    } on FileSystemException {
+      // A leftover old model is an orphan; the committed install stays valid.
     }
   }
 
