@@ -70,7 +70,7 @@ jobs:
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: continuous-\${{ github.run_number }}
+          tag_name: continuous-${{ github.run_number }}
           name: Kurotoon Flutter development build
           prerelease: true
           make_latest: false
@@ -78,17 +78,17 @@ jobs:
           body: |
             Native Flutter/Dart Kurotoon Android development build.
             File: Kurotoon.apk
-            Commit: \${{ github.sha }}
+            Commit: ${{ github.sha }}
 
       - name: Publish versioned APK release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: \${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           name: Kurotoon
           prerelease: false
           files: release/Kurotoon.apk
           body: |
             Native Flutter/Dart Kurotoon Android release.
             File: Kurotoon.apk
-            Commit: \${{ github.sha }}
+            Commit: ${{ github.sha }}
