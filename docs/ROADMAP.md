@@ -14,7 +14,7 @@
 - [ ] Run the native product flows against live sources on-device.
 - [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
-Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stable alias: `continuous-latest`. This native Flutter APK includes managed cache enforcement and persisted provider-health/backoff. The release now contains an arm64-v8a default APK, separate armeabi-v7a and x86_64 builds, and `SHA256SUMS.txt`. The direct link always tracks the latest successful main-branch build.
+Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stable alias: `continuous-latest`. That release contains an arm64-v8a default APK, separate armeabi-v7a and x86_64 builds, and `SHA256SUMS.txt`. Verified voice-pack storage merged at `32acd832c55ec41fe5781e1639445e6938075bc0`; its APK rebuild is running, and the direct link will update after the next successful main build.
 
 ## Progress dashboard
 
@@ -22,16 +22,16 @@ Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stab
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter APK build, analysis, tests and release workflow pass | Real-device install, package metadata/signing strategy, smoke-test automation and other platforms |
 | Pure Dart domain and policy core | 70% | Typed work/edition/chapter models, cancellation, provider coordinator, identity matching, progress reconciliation, cache/effect/voice policies | More adversarial/property tests, manual identity corrections and end-to-end consumers |
-| Persistent state and cache safety | 62% | SQLite schema/migrations, managed cache budget enforcement, serialized writes, pinned-content protection, rollback tests and persisted provider-health snapshots | Verify complete CRUD integration, interrupted-write recovery and physical-device storage behaviour |
+| Persistent state and cache safety | 65% | SQLite schema/migrations, cache-budget enforcement, pinned-content protection, rollback tests, persisted provider-health snapshots and verified voice-pack install records | Verify complete CRUD integration, interrupted-write recovery and physical-device storage behaviour |
 | Provider integration | 58% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns and upstream `Retry-After` handling | Live flow validation, provider-specific request policies, diagnostics UI, more source adapters and schema-drift handling |
 | Repository / extension foundation | 65% | Preview/confirmation API, index/manifest checks, hashes/size caps, redirect rejection, DNS checks, persistent install records | Real repository UI, source permissions and compatibility display, update/uninstall recovery tests, deeper DNS pinning review |
 | Cross-source catalog and chapter merge | 45% | Identity matcher, catalog index, provenance models, candidate grouping, mini-chapter/edition concepts | End-to-end persisted merge pipeline, corrections/undo, creator pages and real multi-source fixtures |
 | Reader and library end-to-end | 20% | Core models/persistence foundation and previous product prototype evidence | Flutter-native reader, chapters/pages, progress resume, durable library CRUD, sorting, empty/error/offline states |
 | Galaxy experience / adaptive performance | 25% | Initial animated Galaxy shell and effect-budget policy | Reduced-motion/lifecycle hardening, GPU/frame/memory/battery profiling, device-tested quality adaptation |
-| Voice, music, haptics and particle runtime | 10% | Timeline/voice license and size/hash policies | Real native adapters, consent UI, stop/lifecycle integration, downloadable packs, music discovery/playback, haptic and particle tuning |
+| Voice, music, haptics and particle runtime | 18% | Timeline/policy foundation plus verified voice-pack storage, offline reuse and safe uninstall | Voice-pack UI/playback, music discovery, native haptics, particle controls and device tests |
 | Cross-platform releases | 10% | Shared Dart core is intended to be portable | iOS/iPadOS/Windows/Linux platform adapters, platform builds, accessibility and device test matrix |
 
-**Engineering estimate of the full product: about 42% complete.** This is a practical scope estimate, not an objective code-coverage statistic. The native build foundation is real and CI-verified; the product is not finished because the real reader, library, repository UI, cross-source integration, effects, and device acceptance are still major work. The separate backend-foundation estimate is roughly 63–65%; a larger portion of the foundations exists than is wired into an end-to-end user experience.
+**Engineering estimate of the full product: about 43% complete.** This is a practical scope estimate, not an objective code-coverage statistic. The native build foundation is real and CI-verified; the product is not finished because the real reader, library, repository UI, cross-source integration, effects, and device acceptance are still major work. The separate backend-foundation estimate is roughly 66–68%; a larger portion of the foundations exists than is wired into an end-to-end user experience.
 
 ## Phase A — Native foundation and release hygiene
 
@@ -136,7 +136,8 @@ Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stab
 - [x] Define chapter-relative cue models/policies and voice-pack license/size/hash constraints.
 - [ ] Wire haptics through an injected native adapter with system preference checks.
 - [ ] Build an optional native audio timeline that respects focus, mute, backgrounding and reader lifecycle.
-- [ ] Build voice-pack discovery/download/install/remove with license, digest, size, free-space and cancellation gates.
+- [x] Implement verified voice-pack storage with opt-in, license/digest/size/free-space gates, streaming SHA-256 verification, safe paths, offline reuse and uninstall safety.
+- [ ] Wire voice-pack discovery/progress/cancel UI and playback into the reader timeline; add end-to-end HTTPS and physical-device tests.
 - [ ] Keep OCR/speaker/emotion/dialogue detection explicitly uncertain, correctable and off by default until accuracy is evaluated.
 - [ ] Build the browser-native atmospheric music discovery engine with explicit source attribution and user-initiated playback.
 - [ ] Add particle/effect budgets, reduced-motion handling, quality controls and a global effects kill switch.
