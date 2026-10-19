@@ -11,8 +11,8 @@ A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolv
 ## 🚦 Project dashboard
 
 **Last roadmap checkpoint:** 19 October 2026  
-**Overall product estimate:** **~41%**  
-**Backend foundation estimate:** **~60–62%**
+**Overall product estimate:** **~42%**  
+**Backend foundation estimate:** **~63–65%**
 
 These are engineering estimates based on the roadmap and implementation evidence—not code-line counts, automated coverage, or a claim that the product is almost finished. Backend models and safety policies count as foundation work; a feature is not considered complete until its real app flow is integrated and tested.
 
@@ -20,8 +20,8 @@ These are engineering estimates based on the roadmap and implementation evidence
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter/Dart app, analysis/tests, release APK workflow | Physical-device install, smoke tests, release/signing policy |
 | Dart domain and policy core | 70% | Typed catalog/provider models, identity matching, cancellation, progress and effect/voice policies | More adversarial tests and full end-to-end consumers |
-| Persistence and cache safety | 60% | SQLite schema/migrations plus a managed cache writer with byte-budget enforcement, serialized writes, pinned-content protection and rollback tests | Verify complete CRUD integration, crash recovery and physical-device storage behaviour |
-| Providers | 50% | Native MangaDex adapter, provider contracts, bounded search coordination | On-device live flow, rate-limit/health handling, more adapters |
+| Persistence and cache safety | 62% | SQLite schema/migrations, enforced cache budgets, serialized writes, pinned-content protection, rollback tests and persisted provider-health snapshots | Verify complete CRUD integration, crash recovery and physical-device storage behaviour |
+| Providers | 58% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns and upstream `Retry-After` handling | Device verification, provider-specific policies, diagnostics UI and more adapters |
 | Repository/extension foundation | 65% | Repository/manifest validation, preview-before-add, hash/size checks, persistent records | Full repository UI, install/update/remove recovery and compatibility proof |
 | Cross-source catalog | 45% | Work/edition/listing concepts, conservative matching and grouping policies | Persisted merge pipeline, undo/corrections, artist pages and real fixtures |
 | Native reader and library | 20% | Domain/persistence foundation and earlier prototype evidence | Flutter-native chapter reader, page loading, progress resume, full library UI |
@@ -108,7 +108,7 @@ The architecture is local-first by default. Keep durable user data separate from
 
 **Disposable data:** thumbnails, temporary search results, page cache, temporary OCR output and generated audio cache.
 
-The backend foundation includes typed domain contracts, provider coordination, conservative identity matching, SQLite persistence/migrations, repository/manifest validation and policy models. Managed cache writes now enforce the shared byte budget, serialize concurrent writes, protect pinned entries, stage evictions/replacements and roll back file changes if SQLite rejects the metadata commit. Remaining integration work includes complete CRUD flows, crash/restart recovery for interrupted cache writes, migration fixtures, provider health/backoff, redacted diagnostics, and explicit backup/import/export flows.
+The backend foundation includes typed domain contracts, provider coordination, conservative identity matching, SQLite persistence/migrations, repository/manifest validation and policy models. Managed cache writes enforce the shared byte budget, serialize concurrent writes, protect pinned entries, stage evictions/replacements and roll back file changes if SQLite rejects the metadata commit. Provider health now tracks failure streaks, uses bounded cooldowns, respects upstream `Retry-After`, and persists validated snapshots locally without saving raw provider error text. Remaining integration work includes complete CRUD flows, crash/restart recovery for interrupted cache writes, migration fixtures, a health/diagnostics UI, provider-specific request policies, redacted diagnostic export, and explicit backup/import/export flows.
 
 Downloads must be explicit, cancellable and visible in storage management. Clearing media cache must not erase library or reading progress. Do not silently accumulate gigabytes of comic pages, audio or artwork.
 
