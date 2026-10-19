@@ -311,11 +311,6 @@ export function ReaderScreen({
     setPageIndex(current => Math.min(pages.length - 1, Math.max(0, current + delta)));
   }, [pages.length]);
 
-  const goNext = useCallback(() => {
-    if (pageIndex < pages.length - 1) turnPage(1);
-    else if (nextChapter) changeChapter(nextChapter);
-  }, [pageIndex, pages.length, nextChapter, turnPage, changeChapter]);
-
   const handleStageClick = (event: MouseEvent<HTMLDivElement>) => {
     if (performance.now() - lastSwipeAtRef.current < 450) return;
     if (panel || commentsOpen) return;
