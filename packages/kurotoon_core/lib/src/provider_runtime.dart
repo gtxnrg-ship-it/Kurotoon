@@ -153,6 +153,16 @@ class ProviderHealthSnapshot {
   final DateTime? cooldownUntil;
   final ProviderResultStatus? lastStatus;
   final String? lastMessage;
+
+  /// Safe-to-persist fields only; raw provider error text is intentionally
+  /// excluded because third-party messages may contain sensitive request data.
+  Map<String, Object?> toJson() => {
+        'consecutiveFailures': consecutiveFailures,
+        'lastSuccessAt': lastSuccessAt?.toUtc().toIso8601String(),
+        'lastFailureAt': lastFailureAt?.toUtc().toIso8601String(),
+        'cooldownUntil': cooldownUntil?.toUtc().toIso8601String(),
+        'lastStatus': lastStatus?.name,
+      };
 }
 
 /// In-memory per-provider circuit breaker. It backs off noisy or failing
@@ -165,6 +175,7 @@ class ProviderHealthTracker {
     this.failureThreshold = 2,
     this.baseCooldown = const Duration(seconds: 15),
     this.maxCooldown = const Duration(minutes: 5),
+    this.onChanged,
   }) : _clock = clock ?? DateTime.now {
     if (failureThreshold < 1) {
       throw ArgumentError.value(failureThreshold, 'failureThreshold');
@@ -178,6 +189,7 @@ class ProviderHealthTracker {
   final int failureThreshold;
   final Duration baseCooldown;
   final Duration maxCooldown;
+  final void Function(ProviderHealthSnapshot snapshot)? onChanged;
   final Map<String, _ProviderHealthRecord> _records = {};
 
   ProviderHealthSnapshot snapshotFor(String providerId) {
@@ -218,12 +230,14 @@ class ProviderHealthTracker {
       record.consecutiveFailures = 0;
       record.lastSuccessAt = _clock();
       record.cooldownUntil = null;
+      _notify(providerId);
       return;
     }
 
     if (response.status == ProviderResultStatus.cancelled ||
         response.status == ProviderResultStatus.disabled ||
         response.status == ProviderResultStatus.unsupported) {
+      _notify(providerId);
       return;
     }
 
@@ -248,6 +262,7 @@ class ProviderHealthTracker {
     } else if (record.consecutiveFailures >= failureThreshold) {
       record.cooldownUntil = now.add(_cooldownFor(record.consecutiveFailures));
     }
+    _notify(providerId);
   }
 
   Duration _cooldownFor(int failures) {
@@ -256,7 +271,45 @@ class ProviderHealthTracker {
     return delay > maxCooldown ? maxCooldown : delay;
   }
 
-  void reset(String providerId) => _records.remove(providerId);
+  /// Restores only validated fields from local settings. Invalid or unknown
+  /// values are ignored rather than preventing application startup.
+  bool restoreFromJson(String providerId, Map<String, Object?> json) {
+    if (providerId.trim().isEmpty) return false;
+    final failures = json['consecutiveFailures'];
+    if (failures is! int || failures < 0 || failures > 1000000) return false;
+
+    DateTime? parseDate(Object? value) {
+      if (value is! String) return null;
+      return DateTime.tryParse(value)?.toUtc();
+    }
+
+    ProviderResultStatus? parseStatus(Object? value) {
+      if (value is! String) return null;
+      for (final status in ProviderResultStatus.values) {
+        if (status.name == value) return status;
+      }
+      return null;
+    }
+
+    final record = _ProviderHealthRecord()
+      ..consecutiveFailures = failures
+      ..lastSuccessAt = parseDate(json['lastSuccessAt'])
+      ..lastFailureAt = parseDate(json['lastFailureAt'])
+      ..cooldownUntil = parseDate(json['cooldownUntil'])
+      ..lastStatus = parseStatus(json['lastStatus']);
+    _records[providerId] = record;
+    return true;
+  }
+
+  void reset(String providerId) {
+    _records.remove(providerId);
+    onChanged?.call(snapshotFor(providerId));
+  }
+
+  void _notify(String providerId) {
+    final callback = onChanged;
+    if (callback != null) callback(snapshotFor(providerId));
+  }
 }
 
 class _ProviderHealthRecord {
