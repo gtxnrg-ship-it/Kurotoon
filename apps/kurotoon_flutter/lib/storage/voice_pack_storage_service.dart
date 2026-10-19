@@ -75,8 +75,15 @@ class VoicePackStorageService {
 
     final root = await _root();
     final packDirectory = Directory(path.join(root.path, pack.id, pack.version, pack.sha256.toLowerCase()));
-    await packDirectory.create(recursive: true);
     final target = File(path.join(packDirectory.path, 'model.bin'));
+    if (!await _isSafeInstalledVoicePackPath(
+      rootDirectory: root.path,
+      packId: pack.id,
+      installPath: target.path,
+    )) {
+      throw const VoicePackInstallException('Voice-pack path resolves through an unsafe filesystem link.');
+    }
+    await packDirectory.create(recursive: true);
 
     // Reuse an already verified copy rather than downloading the same model again.
     if (await target.exists() &&
@@ -146,7 +153,7 @@ class VoicePackStorageService {
   }) async {
     if (previousPath is! String ||
         previousPath == currentPath ||
-        !isSafeInstalledVoicePackPath(
+        !await _isSafeInstalledVoicePackPath(
           rootDirectory: rootPath,
           packId: packId,
           installPath: previousPath,
@@ -270,7 +277,7 @@ class VoicePackStorageService {
     final installPath = prior?['install_path'];
     if (installPath is! String) return;
     final root = await _root();
-    if (!isSafeInstalledVoicePackPath(
+    if (!await _isSafeInstalledVoicePackPath(
       rootDirectory: root.path,
       packId: packId,
       installPath: installPath,
@@ -280,6 +287,33 @@ class VoicePackStorageService {
     }
     final file = File(installPath);
     if (await file.exists()) await file.delete();
+  }
+
+  Future<bool> _isSafeInstalledVoicePackPath({
+    required String rootDirectory,
+    required String packId,
+    required String installPath,
+  }) async {
+    if (!isSafeInstalledVoicePackPath(
+      rootDirectory: rootDirectory,
+      packId: packId,
+      installPath: installPath,
+    )) {
+      return false;
+    }
+    final root = path.normalize(path.absolute(rootDirectory));
+    if (await FileSystemEntity.type(root, followLinks: false) == FileSystemEntityType.link) {
+      return false;
+    }
+    final candidate = path.normalize(path.absolute(installPath));
+    var current = root;
+    for (final segment in path.split(path.relative(candidate, from: root))) {
+      current = path.join(current, segment);
+      if (await FileSystemEntity.type(current, followLinks: false) == FileSystemEntityType.link) {
+        return false;
+      }
+    }
+    return true;
   }
 
   static bool isSafeInstalledVoicePackPath({
