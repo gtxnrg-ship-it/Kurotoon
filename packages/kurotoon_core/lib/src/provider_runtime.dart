@@ -381,10 +381,11 @@ class ProviderCoordinator {
     CancellationToken parent,
   ) async {
     final started = DateTime.now();
-    final cooldown = healthTracker.remainingCooldown(provider.descriptor.id);
+    final providerId = provider.descriptor.id;
+    final cooldown = healthTracker.remainingCooldown(providerId);
     if (cooldown != null) {
       return ProviderSearchResult(
-        providerId: provider.descriptor.id,
+        providerId: providerId,
         response: ProviderResponse<List<WorkCandidate>>(
           status: ProviderResultStatus.rateLimited,
           message: 'Provider temporarily paused after repeated failures',
@@ -393,22 +394,45 @@ class ProviderCoordinator {
         elapsed: Duration.zero,
       );
     }
+
     final child = CancellationToken();
-    final detach = parent.onCancel((reason) => child.cancel(reason));
+    var timedOut = false;
+    final cancellationResult = Completer<ProviderResponse<List<WorkCandidate>>>();
+    final detachParent = parent.onCancel((reason) => child.cancel(reason));
+    final detachChild = child.onCancel((reason) {
+      if (cancellationResult.isCompleted) return;
+      cancellationResult.complete(
+        timedOut
+            ? const ProviderResponse<List<WorkCandidate>>(
+                status: ProviderResultStatus.timedOut,
+                message: 'Provider exceeded its request time budget',
+              )
+            : ProviderResponse<List<WorkCandidate>>(
+                status: ProviderResultStatus.cancelled,
+                message: reason,
+              ),
+      );
+    });
+    final timer = Timer(providerTimeout, () {
+      timedOut = true;
+      child.cancel('Provider request timed out');
+    });
+
     try {
       child.throwIfCancelled();
-      final response = await provider
-          .search(query, cancellationToken: child)
-          .timeout(providerTimeout, onTimeout: () {
-        child.cancel('Provider request timed out');
-        return const ProviderResponse<List<WorkCandidate>>(
-          status: ProviderResultStatus.timedOut,
-          message: 'Provider exceeded its request time budget',
-        );
-      });
-      healthTracker.record(provider.descriptor.id, response);
+      // Future.timeout bounds the wait but does not react promptly to a parent
+      // cancellation when a provider ignores its token. Race the source Future
+      // against the child token so a stale search releases its worker immediately.
+      final providerFuture = Future<ProviderResponse<List<WorkCandidate>>>.sync(
+        () => provider.search(query, cancellationToken: child),
+      );
+      final response = await Future.any<ProviderResponse<List<WorkCandidate>>>([
+        providerFuture,
+        cancellationResult.future,
+      ]);
+      healthTracker.record(providerId, response);
       return ProviderSearchResult(
-        providerId: provider.descriptor.id,
+        providerId: providerId,
         response: response,
         elapsed: DateTime.now().difference(started),
       );
@@ -417,9 +441,9 @@ class ProviderCoordinator {
         status: ProviderResultStatus.cancelled,
         message: error.reason,
       );
-      healthTracker.record(provider.descriptor.id, response);
+      healthTracker.record(providerId, response);
       return ProviderSearchResult(
-        providerId: provider.descriptor.id,
+        providerId: providerId,
         response: response,
         elapsed: DateTime.now().difference(started),
       );
@@ -428,14 +452,16 @@ class ProviderCoordinator {
         status: ProviderResultStatus.failed,
         message: _safeError(error),
       );
-      healthTracker.record(provider.descriptor.id, response);
+      healthTracker.record(providerId, response);
       return ProviderSearchResult(
-        providerId: provider.descriptor.id,
+        providerId: providerId,
         response: response,
         elapsed: DateTime.now().difference(started),
       );
     } finally {
-      detach();
+      timer.cancel();
+      detachChild();
+      detachParent();
     }
   }
 
