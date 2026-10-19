@@ -1,4 +1,4 @@
-package app.kurotoon.native.domain
+package app.kurotoon.android.domain
 
 enum class ChapterKind { REGULAR, MINI, SPECIAL, EXTRA, SEASON_BREAK, UNKNOWN }
 enum class ComicFormat { MANGA, MANHWA, MANHUA, WEBTOON, COMIC, DOUJIN, OTHER, UNKNOWN }
