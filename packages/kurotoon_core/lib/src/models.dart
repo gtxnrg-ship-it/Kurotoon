@@ -107,6 +107,7 @@ class WorkCandidate {
   final String providerId;
   final String externalId;
   final String title;
+  final Uri providerUrl;
   final List<String> alternateTitles;
   final List<String> creatorNames;
   final int? year;
