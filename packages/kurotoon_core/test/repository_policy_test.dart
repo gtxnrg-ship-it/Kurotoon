@@ -18,6 +18,7 @@ void main() {
   test('rejects localhost and common private IPv4 ranges', () {
     for (final url in [
       'https://localhost/repo.json',
+      'https://localhost./repo.json',
       'https://foo.localhost/repo.json',
       'https://127.0.0.1/repo.json',
       'https://10.0.0.4/repo.json',
@@ -41,4 +42,24 @@ void main() {
     }
   });
 
+  test('rejects private and reserved IPv6 repository literals', () {
+    for (final url in [
+      'https://[::]/repo.json',
+      'https://[::1]/repo.json',
+      'https://[fc00::1]/repo.json',
+      'https://[fd00::1]/repo.json',
+      'https://[fe80::1]/repo.json',
+      'https://[ff02::1]/repo.json',
+      'https://[::ffff:127.0.0.1]/repo.json',
+      'https://[::ffff:7f00:1]/repo.json',
+      'https://[2001:db8::1]/repo.json',
+      'https://[2002:7f00:1::1]/repo.json',
+    ]) {
+      expect(policy.validate(url).allowed, isFalse, reason: url);
+    }
+  });
+
+  test('allows a public global-unicast IPv6 literal', () {
+    expect(policy.validate('https://[2606:4700:4700::1111]/repo.json').allowed, isTrue);
+  });
 }
