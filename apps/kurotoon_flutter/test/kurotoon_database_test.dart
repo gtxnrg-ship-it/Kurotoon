@@ -228,4 +228,39 @@ void main() {
   });
 
 
+  test('rejects a library record that pairs one work with another work edition', () async {
+    await database.upsertCatalogEntry(entry());
+    await database.upsertCatalogEntry(CatalogEntry(
+      work: WorkRecord(id: 'work/red-moon', title: 'Red Moon', format: WorkFormat.manga),
+      listings: [
+        WorkCandidate(
+          providerId: 'mangadex',
+          externalId: 'series-red-moon',
+          title: 'Red Moon',
+          format: WorkFormat.manga,
+          providerUrl: Uri.parse('https://mangadex.org/title/series-red-moon'),
+        ),
+      ],
+    ));
+    await database.upsertEdition(EditionRecord(
+      id: 'edition-blue-en',
+      workId: 'work/blue-star',
+      format: WorkFormat.manga,
+      languageCode: 'en',
+    ));
+
+    await expectLater(
+      database.putLibraryRecord(LibraryRecord(
+        workId: 'work/red-moon',
+        editionId: 'edition-blue-en',
+        status: LibraryStatus.reading,
+        addedAt: DateTime.utc(2026, 1, 1),
+        sortOrder: 1,
+      )),
+      throwsStateError,
+    );
+    expect(await database.loadLibrary(), isEmpty);
+    expect((await database.loadEdition('edition-blue-en')), isNull);
+  });
+
 }
