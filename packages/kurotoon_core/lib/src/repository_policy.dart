@@ -65,9 +65,9 @@ class RepositoryPolicy {
         (a == 100 && b >= 64 && b <= 127) ||
         (a == 169 && b == 254) ||
         (a == 172 && b >= 16 && b <= 31) ||
-        (a == 192 && (b == 168 || (b == 0 && (octets[2] == 0 || octets[2] == 2)))) ||
-        (a == 198 && (b == 18 || b == 19 || (b == 51 && octets[2] == 100))) ||
-        (a == 203 && b == 0 && octets[2] == 113);
+        (a == 192 && (b == 168 || (b == 0 && (values[2] == 0 || values[2] == 2)))) ||
+        (a == 198 && (b == 18 || b == 19 || (b == 51 && values[2] == 100))) ||
+        (a == 203 && b == 0 && values[2] == 113);
   }
 
   /// This check is only the first gate. Before a request/redirect is followed,
