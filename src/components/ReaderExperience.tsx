@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type TouchEvent } from 'react';
 import {
   ArrowLeft, ArrowLeftRight, BookOpen, Check, ChevronLeft, ChevronRight,
-  Home, List, LoaderCircle, MessageCircle, RotateCcw, Settings2, Volume2,
+  Home, List, LoaderCircle, MessageCircle, MoreHorizontal, RotateCcw, Settings2, Volume2,
   Vibrate, X, ZoomIn,
 } from 'lucide-react';
 import type { ChapterListing, ProviderListing } from '../domain/models';
@@ -385,7 +385,8 @@ export function ReaderScreen({
     const root = scrollRef.current;
     if (!root) return;
     const available = Math.max(1, root.scrollHeight - root.clientHeight);
-    setScrollRatio(Math.max(0, Math.min(1, root.scrollTop / available)));
+    const nextRatio = Math.max(0, Math.min(1, root.scrollTop / available));
+    setScrollRatio(previous => Math.abs(previous - nextRatio) > 0.008 ? nextRatio : previous);
     const images = Array.from(root.querySelectorAll<HTMLImageElement>('img[data-page-index]'));
     const reference = root.getBoundingClientRect().top + root.clientHeight * 0.45;
     let visibleIndex = 0;
@@ -408,7 +409,7 @@ export function ReaderScreen({
     <div className="reader-top-chrome">
       <button className="reader-home-button" onClick={closeReader} aria-label="Return to this series home"><Home size={18}/><span>Series home</span></button>
       {chromeVisible && <div className="reader-top-title"><strong>{currentLabel}</strong><small>{listing.title}</small></div>}
-      {chromeVisible && <button className="reader-icon-button reader-chapter-list-shortcut" onClick={() => openPanel('navigation')} aria-label="Open chapter navigation"><List size={18}/></button>}
+      {chromeVisible && <div className="reader-top-actions"><button className="reader-icon-button" onClick={() => changeChapter(previousChapter)} disabled={!previousChapter} aria-label="Previous chapter"><ChevronLeft size={18}/></button><button className="reader-icon-button" onClick={() => changeChapter(nextChapter)} disabled={!nextChapter} aria-label="Next chapter"><ChevronRight size={18}/></button><button className="reader-icon-button reader-chapter-list-shortcut" onClick={() => openPanel('navigation')} aria-label="Open chapter navigation"><List size={18}/></button></div>}
     </div>
 
     <div className={'reader-stage ' + (mode === 'vertical' ? 'reader-stage-vertical' : 'reader-stage-paged')}
@@ -471,6 +472,7 @@ export function ReaderScreen({
           <button className={panel === 'comments' ? 'active' : ''} onClick={() => setPanel('comments')}><MessageCircle size={15}/><span>Comments</span></button>
           <button className={panel === 'sound' ? 'active' : ''} onClick={() => setPanel('sound')}><Volume2 size={15}/><span>Audio</span></button>
           <button className={panel === 'haptics' ? 'active' : ''} onClick={() => setPanel('haptics')}><Vibrate size={15}/><span>Haptics</span></button>
+          <button className={panel === 'more' ? 'active' : ''} onClick={() => setPanel('more')}><MoreHorizontal size={15}/><span>More</span></button>
         </nav>
         <div className="reader-sheet-content">
           {panel === 'reading' && <>
