@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:kurotoon_core/kurotoon_core.dart';
+import 'services/extension_repository_service.dart';
 import 'storage/kurotoon_database.dart';
 
 /// Composition root for application services. The visual shell deliberately
@@ -24,6 +28,14 @@ class KurotoonRuntime {
     ..register(MangaDexMultimediaProvider());
 
   final KurotoonDatabase? database;
+  ExtensionRepositoryService? _extensionRepositoryService;
+  final Map<String, String> extensionLoadErrors = {};
+
+  ExtensionRepositoryService? get extensionRepositories {
+    final store = database;
+    if (store == null) return null;
+    return _extensionRepositoryService ??= ExtensionRepositoryService(database: store);
+  }
 
   Future<void> restoreProviderSettings() async {
     final store = database;
@@ -32,6 +44,65 @@ class KurotoonRuntime {
       final saved = await store.getProviderEnabled(provider.descriptor.id);
       if (saved != null) providers.setEnabled(provider.descriptor.id, saved);
     }
+    await loadInstalledExtensions();
+  }
+
+  Future<void> loadInstalledExtensions() async {
+    final store = database;
+    final service = extensionRepositories;
+    if (store == null || service == null) return;
+    extensionLoadErrors.clear();
+    final rows = await store.loadInstalledExtensions();
+    for (final row in rows) {
+      final id = row['extension_id'] as String;
+      try {
+        final path = row['install_path'];
+        if (path is! String) throw const FormatException('Installed manifest path is missing.');
+        final file = File(path);
+        if (!await file.exists()) throw const FormatException('Installed manifest file is missing.');
+        final decoded = jsonDecode(await file.readAsString());
+        if (decoded is! Map) throw const FormatException('Installed manifest is not a JSON object.');
+        final manifest = parseDeclarativeExtensionManifest(Map<String, Object?>.from(decoded));
+        if (manifest.id != id) throw const FormatException('Installed manifest id does not match its record.');
+        if (providers.all.any((provider) => provider.descriptor.id == id)) {
+          throw StateError('Provider id is already registered.');
+        }
+        providers.register(DeclarativeJsonProvider(manifest: manifest, fetcher: service));
+        providers.setEnabled(id, row['enabled'] == 1);
+      } on Object catch (error) {
+        extensionLoadErrors[id] = error.toString();
+      }
+    }
+  }
+
+  Future<String> installExtension({
+    required ExtensionPackageEntry entry,
+    required String repositoryId,
+  }) async {
+    final service = extensionRepositories;
+    if (service == null) throw StateError('Persistent storage is required to install extensions.');
+    final installPath = await service.installDeclarativeExtension(entry: entry, repositoryId: repositoryId);
+    await loadInstalledExtensions();
+    return installPath;
+  }
+
+  Future<void> uninstallExtension(String extensionId) async {
+    final service = extensionRepositories;
+    if (service == null) throw StateError('Persistent storage is required to uninstall extensions.');
+    await service.uninstallExtension(extensionId);
+    final provider = providers.all.where((item) => item.descriptor.id == extensionId);
+    if (provider.isNotEmpty) providers.removeCommunityProvider(extensionId);
+    extensionLoadErrors.remove(extensionId);
+  }
+
+  Future<void> setExtensionEnabled(String extensionId, bool enabled) async {
+    final store = database;
+    if (store == null) throw StateError('Persistent storage is required to change extension state.');
+    if (!providers.all.any((provider) => provider.descriptor.id == extensionId)) {
+      throw ArgumentError.value(extensionId, 'extensionId', 'Extension is not loaded.');
+    }
+    await store.setExtensionEnabled(extensionId, enabled);
+    providers.setEnabled(extensionId, enabled);
   }
 
   Future<void> setProviderEnabled(String providerId, bool enabled) async {
@@ -41,6 +112,7 @@ class KurotoonRuntime {
 
   Future<void> dispose() async {
     providers.dispose();
+    _extensionRepositoryService?.dispose();
     await database?.close();
   }
 
