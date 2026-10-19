@@ -172,4 +172,37 @@ void main() {
     expect(plan.filesToEvict, isEmpty);
     expect((await database.loadCacheEntries()), hasLength(2));
   });
+
+  test('persists repositories and keeps their installed extensions tied to provenance', () async {
+    final repository = ExtensionRepository(
+      id: 'org.example.repository',
+      name: 'Example Repository',
+      indexUri: Uri.parse('https://raw.example.org/repo/index.min.json'),
+    );
+    await database.saveExtensionRepository(repository);
+    final entry = ExtensionPackageEntry(
+      id: 'org.example.source',
+      name: 'Example Source',
+      version: '1.0.0',
+      manifestUri: Uri.parse('https://raw.example.org/repo/source.json'),
+      sha256: 'a' * 64,
+      sizeBytes: 10,
+      minimumAppApi: 1,
+      capabilities: const {ExtensionCapability.search},
+    );
+    await database.recordInstalledExtension(
+      entry: entry,
+      repositoryId: repository.id,
+      installPath: p.join(temp.path, 'extensions', 'source.json'),
+    );
+    expect((await database.loadExtensionRepositories()).single['index_url'], repository.indexUri.toString());
+    expect((await database.loadInstalledExtensions()).single['repository_id'], repository.id);
+    await database.setExtensionEnabled(entry.id, true);
+    expect((await database.loadInstalledExtensions()).single['enabled'], 1);
+    await expectLater(database.removeExtensionRepository(repository.id), throwsStateError);
+    await database.removeInstalledExtension(entry.id);
+    await database.removeExtensionRepository(repository.id);
+    expect(await database.loadExtensionRepositories(), isEmpty);
+  });
+
 }
