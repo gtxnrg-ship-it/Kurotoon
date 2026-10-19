@@ -77,6 +77,12 @@ class KurotoonRuntime {
     }
   }
 
+  Future<RepositoryPreview> previewExtensionRepository(String url) async {
+    final service = extensionRepositories;
+    if (service == null) throw StateError('Persistent storage is required to preview repositories.');
+    return service.previewRepository(url);
+  }
+
   Future<ExtensionRepositoryIndex> addExtensionRepository(String url) async {
     final service = extensionRepositories;
     if (service == null) throw StateError('Persistent storage is required to add repositories.');
