@@ -73,6 +73,9 @@ class KurotoonRuntime {
       try {
         final path = row['install_path'];
         if (path is! String) throw const FormatException('Installed manifest path is missing.');
+        if (!await service.isSafeInstalledManifestPath(extensionId: id, manifestPath: path)) {
+          throw const FormatException('Installed manifest path is outside the managed extension directory.');
+        }
         final file = File(path);
         if (!await file.exists()) throw const FormatException('Installed manifest file is missing.');
         final decoded = jsonDecode(await file.readAsString());
