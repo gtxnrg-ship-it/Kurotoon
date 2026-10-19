@@ -9,7 +9,7 @@ import { readLegacyReaderProgress } from '../domain/readerProgress';
 import { createDataRepositories } from '../data/repositories';
 import { getDefaultDataStore } from '../data/store';
 import { isProviderRequestError } from '../domain/provider';
-import { mangaDexProvider } from '../providers/mangadex';
+import { providerRegistry } from '../providers/registry';
 
 type ReaderMode = 'paged' | 'vertical';
 type ReaderDirection = 'rtl' | 'ltr';
@@ -68,10 +68,18 @@ export function SeriesPage({
     setChapters([]);
     setLoading(true);
     setError('');
-    mangaDexProvider.getWorkDetails(listing.providerWorkId, controller.signal)
+    let provider;
+    try {
+      provider = providerRegistry.require(listing.providerId);
+    } catch (reason) {
+      setError(friendlyError(reason));
+      setLoading(false);
+      return () => controller.abort();
+    }
+    provider.getWorkDetails(listing.providerWorkId, controller.signal)
       .then(value => { if (!controller.signal.aborted) setDetails(value); })
       .catch(() => { /* Search metadata remains a useful fallback. */ });
-    mangaDexProvider.listChapters(listing.providerWorkId, controller.signal)
+    provider.listChapters(listing.providerWorkId, controller.signal)
       .then(value => {
         if (controller.signal.aborted) return;
         const ordered = [...value].sort((a, b) => {
@@ -88,7 +96,26 @@ export function SeriesPage({
         setLoading(false);
       });
     return () => controller.abort();
-  }, [listing.providerWorkId]);
+  }, [listing.providerId, listing.providerWorkId]);
+
+  const retryChapters = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const provider = providerRegistry.require(listing.providerId);
+      const value = await provider.listChapters(listing.providerWorkId);
+      const ordered = [...value].sort((a, b) => {
+        const left = a.sortOrder ?? Number.POSITIVE_INFINITY;
+        const right = b.sortOrder ?? Number.POSITIVE_INFINITY;
+        return left - right || (a.numberLabel || '').localeCompare(b.numberLabel || '', undefined, { numeric: true });
+      });
+      setChapters(ordered);
+    } catch (reason) {
+      setError(friendlyError(reason));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const visibleChapters = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -112,7 +139,7 @@ export function SeriesPage({
             : <div className="series-cover-fallback"><BookOpen size={28}/></div>}
         </div>
         <div className="series-intro">
-          <div className="reader-eyebrow">MANGADEX · SERIES</div>
+          <div className="reader-eyebrow">{providerRegistry.get(listing.providerId)?.displayName ?? listing.providerId} · SERIES</div>
           <h1>{details.title}</h1>
           {details.creators.length > 0 && <p className="series-creators">{details.creators.slice(0, 4).map(creator => creator.name).join(' · ')}</p>}
           <div className="series-meta">
@@ -136,22 +163,22 @@ export function SeriesPage({
           </button>
         </div>
         <label className="chapter-search"><List size={16}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Find a chapter or title…" aria-label="Find a chapter"/></label>
-        {loading && <div className="reader-status"><LoaderCircle className="reader-spinner" size={20}/><span>Loading chapter list from MangaDex…</span></div>}
+        {loading && <div className="reader-status"><LoaderCircle className="reader-spinner" size={20}/><span>Loading chapter list from {providerRegistry.get(listing.providerId)?.displayName ?? listing.providerId}…</span></div>}
         {!loading && error && <div className="reader-status reader-status-error"><div><strong>Chapters couldn't load.</strong><p>{error}</p><button className="reader-text-button" onClick={() => {
           setLoading(true); setError('');
-          mangaDexProvider.listChapters(listing.providerWorkId).then(setChapters).catch(reason => setError(friendlyError(reason))).finally(() => setLoading(false));
+          void retryChapters();
         }}><RotateCcw size={14}/> Try again</button></div></div>}
         {!loading && !error && chapters.length === 0 && <div className="reader-status"><span>No English chapters were returned for this series.</span></div>}
         {!loading && !error && chapters.length > 0 && visibleChapters.length === 0 && <div className="reader-status"><span>No chapters match that search.</span></div>}
         <div className="series-chapter-list">
           {visibleChapters.map(chapter => <button key={chapter.providerChapterId} className="series-chapter-row" onClick={() => onReadChapter(chapter, chapters)}>
             <span className="chapter-row-mark"><BookOpen size={16}/></span>
-            <span className="chapter-row-copy"><strong>{readableChapter(chapter)}</strong><small>{chapter.volumeLabel ? 'Volume ' + chapter.volumeLabel + ' · ' : ''}{chapter.publishedAt ? new Date(chapter.publishedAt).toLocaleDateString() : 'MangaDex · English listing'}</small></span>
+            <span className="chapter-row-copy"><strong>{readableChapter(chapter)}</strong><small>{chapter.volumeLabel ? 'Volume ' + chapter.volumeLabel + ' · ' : ''}{chapter.publishedAt ? new Date(chapter.publishedAt).toLocaleDateString() : (providerRegistry.get(chapter.providerId)?.displayName ?? chapter.providerId) + (chapter.languageCode ? ' · ' + chapter.languageCode : '')}</small></span>
             <ChevronRight size={17}/>
           </button>)}
         </div>
       </section>
-      <footer className="reader-route-footer"><span>KUROTOON ✦</span><span>Series home · MangaDex source</span></footer>
+      <footer className="reader-route-footer"><span>KUROTOON ✦</span><span>Series home · {providerRegistry.get(listing.providerId)?.displayName ?? listing.providerId} source</span></footer>
     </div>
   </div>;
 }
@@ -274,7 +301,7 @@ export function ReaderScreen({
 
       // Fetch the page manifest and durable position concurrently. Progress failure
       // must never stop a valid chapter from opening.
-      const pagesPromise = mangaDexProvider.getChapterPages(chapter.providerChapterId, controller.signal);
+      const pagesPromise = providerRegistry.require(chapter.providerId).getChapterPages(chapter.providerChapterId, controller.signal);
       const urls = await pagesPromise;
       if (controller.signal.aborted) return;
       if (!urls.length) throw new Error('This chapter did not return any readable pages.');
@@ -313,7 +340,7 @@ export function ReaderScreen({
       setLoadError(friendlyError(error));
     });
     return () => controller.abort();
-  }, [chapter.providerChapterId, progressStorageKey, listing.providerId, listing.providerWorkId]);
+  }, [chapter.providerId, chapter.providerChapterId, progressStorageKey, listing.providerId, listing.providerWorkId]);
 
   useEffect(() => {
     const cancelInitial = loadPages();
@@ -545,7 +572,7 @@ export function ReaderScreen({
       onScroll={mode === 'vertical' ? rememberVerticalPosition : undefined}
       style={mode === 'vertical' ? { gap: gap + 'px' } : undefined}
       aria-label={listing.title + ', ' + currentLabel}>
-      {loading && <div className="reader-loading"><LoaderCircle className="reader-spinner" size={27}/><strong>Opening your chapter…</strong><span>Fetching page images from MangaDex.</span></div>}
+      {loading && <div className="reader-loading"><LoaderCircle className="reader-spinner" size={27}/><strong>Opening your chapter…</strong><span>Fetching page images from {providerRegistry.get(chapter.providerId)?.displayName ?? chapter.providerId}.</span></div>}
       {!loading && loadError && <div className="reader-error-state"><div className="reader-error-icon"><BookOpen size={24}/></div><h2>We couldn't open this chapter.</h2><p>{loadError}</p><button className="reader-primary-button" onClick={loadPages}><RotateCcw size={15}/> Retry chapter</button><button className="reader-text-button" onClick={closeReader}><ArrowLeft size={14}/> Back to series</button></div>}
       {!loading && !loadError && pages.length > 0 && mode === 'paged' && <>
         <div className="reader-paged-image-wrap">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, Check, ChevronRight, Compass, Headphones, Library, Search, Settings2, ShieldCheck, Sparkles, Store, WandSparkles, Wifi, Download, CircleHelp, Smartphone, ExternalLink } from 'lucide-react';
+import { AudioLines, ArrowRight, ArrowUpRight, BookOpen, Bookmark, Check, ChevronRight, CircleAlert, Compass, Headphones, Library, Search, Settings2, ShieldCheck, Sparkles, Store, WandSparkles, Wifi, Download, CircleHelp, Smartphone, ExternalLink } from 'lucide-react';
 import { CosmicBackdrop } from './components/CosmicBackdrop';
 import { ReaderScreen, SeriesPage } from './components/ReaderExperience';
 import { RepositoryManager } from './components/RepositoryManager';
@@ -7,8 +7,11 @@ import { LibraryScreen } from './components/LibraryScreen';
 import { getDataServices } from './data/services';
 import { libraryKey, type SavedSeries } from './data/repositories';
 import type { ChapterListing, ProviderListing } from './domain/models';
-import { isProviderRequestError } from './domain/provider';
-import { mangaDexProvider } from './providers/mangadex';
+import type { SearchSourceOutcome } from './domain/models';
+import { buildUniversalCatalog, type UniversalWorkResult } from './catalog/universalCatalog';
+import { searchUniversalCatalog } from './search/universalSearch';
+import { providerRegistry, formatProviderName } from './providers/registry';
+import { UniversalResultCard } from './components/UniversalResultCard';
 
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
 
@@ -29,7 +32,10 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [query, setQuery] = useState('');
   const [searchKey, setSearchKey] = useState(0);
-  const [results, setResults] = useState<ProviderListing[]>([]);
+  const [results, setResults] = useState<UniversalWorkResult[]>([]);
+  const [sourceOutcomes, setSourceOutcomes] = useState<SearchSourceOutcome[]>([]);
+  const [searchPartial, setSearchPartial] = useState(false);
+  const [providerRegistryRevision, setProviderRegistryRevision] = useState(0);
   const [searchStatus, setSearchStatus] = useState<'idle' | 'loading' | 'success' | 'empty' | 'error'>('idle');
   const [searchError, setSearchError] = useState('');
   const [savedEntries, setSavedEntries] = useState<SavedSeries[]>([]);
@@ -83,6 +89,10 @@ function App() {
     return () => { alive = false; };
   }, [active, libraryRefreshToken]);
 
+  useEffect(() => providerRegistry.subscribe(() => {
+    setProviderRegistryRevision(value => value + 1);
+  }), []);
+
   useEffect(() => {
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -108,32 +118,69 @@ function App() {
     const trimmed = query.trim();
     if (!trimmed) {
       setResults([]);
+      setSourceOutcomes([]);
+      setSearchPartial(false);
       setSearchError('');
       setSearchStatus('idle');
       return;
     }
+
     const controller = new AbortController();
     setSearchStatus('loading');
     setSearchError('');
     const timer = window.setTimeout(() => {
-      void mangaDexProvider.search({ query: trimmed, limit: 20, signal: controller.signal })
-        .then(response => {
-          if (controller.signal.aborted) return;
-          setResults(response.listings);
-          setSearchStatus(response.listings.length ? 'success' : 'empty');
-        })
-        .catch(error => {
-          if (controller.signal.aborted || (isProviderRequestError(error) && error.code === 'cancelled')) return;
-          setResults([]);
+      void searchUniversalCatalog(providerRegistry.list(), {
+        query: trimmed,
+        limit: 20,
+        signal: controller.signal,
+      }, { signal: controller.signal }).then(response => {
+        if (controller.signal.aborted) return;
+        const catalog = buildUniversalCatalog(response.listings.map(listing => ({
+          listing,
+          externalIds: listing.externalIds,
+        })));
+        const failures = response.outcomes.filter(
+          (outcome): outcome is Extract<SearchSourceOutcome, { status: 'failed' }> => outcome.status === 'failed',
+        );
+        setResults(catalog);
+        setSourceOutcomes(response.outcomes);
+        setSearchPartial(response.isPartial);
+        setSearchError(failures.map(outcome =>
+          formatProviderName(outcome.providerId) + ': ' + outcome.failure.message,
+        ).join(' · '));
+
+        if (catalog.length > 0) {
+          setSearchStatus('success');
+        } else if (response.outcomes.length === 0) {
           setSearchStatus('error');
-          setSearchError(error instanceof Error ? error.message : 'Something went wrong while searching MangaDex.');
-        });
+          setSearchError('No compatible live source adapters are currently enabled.');
+        } else if (failures.length === response.outcomes.length) {
+          setSearchStatus('error');
+        } else {
+          setSearchStatus('empty');
+        }
+      }).catch(error => {
+        if (controller.signal.aborted) return;
+        setResults([]);
+        setSourceOutcomes([]);
+        setSearchPartial(false);
+        setSearchStatus('error');
+        setSearchError(error instanceof Error ? error.message : 'Universal search could not complete.');
+      });
     }, 350);
+
     return () => {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query, searchKey]);
+  }, [query, searchKey, providerRegistryRevision]);
+  const connectedProviders = providerRegistry.list();
+  const connectedProviderNames = connectedProviders.map(provider => provider.displayName);
+  const sourceRecordCount = results.reduce((count, work) => count + work.listings.length, 0);
+  const failedSourceOutcomes = sourceOutcomes.filter(
+    (outcome): outcome is Extract<SearchSourceOutcome, { status: 'failed' }> => outcome.status === 'failed',
+  );
+
   const Settings = [
     { icon: BookOpen, title: 'Reading experience', detail: 'Layout, gestures, progress, and accessibility' },
     { icon: AudioLines, title: 'Sound & voice', detail: 'Future audio modes and independent volume controls' },
@@ -157,7 +204,34 @@ function App() {
         <section className="section"><div className="section-head"><div><div className="eyebrow">WIDE OPEN WORLDS</div><h2>Find your next obsession.</h2></div><button className="subtle-link" onClick={()=>setActive('Browser')}>Browse stories <ArrowRight size={14}/></button></div><div className="feature-grid"><button className="feature purple" onClick={()=>setActive('Browser')}><Compass size={19}/><small>01 / DISCOVER</small><h3>One search.<br/>Many worlds.</h3><p>A unified doorway to your comic sources.</p><ArrowRight className="feature-arrow" size={17}/></button><button className="feature blue" onClick={()=>setActive('Library')}><Library size={19}/><small>02 / COLLECT</small><h3>Your worlds,<br/>in one place.</h3><p>A library that remembers your progress.</p><ArrowRight className="feature-arrow" size={17}/></button><button className="feature pink" onClick={()=>setActive('Me')}><Headphones size={19}/><small>03 / EXPERIENCE</small><h3>More than<br/>just pages.</h3><p>Optional sound and cinematic reading.</p><ArrowRight className="feature-arrow" size={17}/></button></div></section>
         <div className="notice"><ShieldCheck size={16}/><span>MangaDex search and the in-app chapter reader are available. Saved series are stored locally when durable browser storage is supported.</span></div>
       </>}
-      {active==='Browser'&&<><Heading eyebrow="THE MULTIVERSE IS YOURS" title="Find your next world." description="Search live MangaDex listings. More providers can join this catalog as they are implemented."/><form className="search-box" onSubmit={event=>{event.preventDefault();setSearchKey(value=>value+1)}}><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search titles or alternate names…" aria-label="Search comics"/><button type="submit" aria-label="Search" disabled={!query.trim()}><ArrowRight size={18}/></button></form><div className="source-caption"><span className="source-dot"/> MangaDex · live source <span>·</span> series and chapters open inside Kurotoon</div>{libraryFeedback && <div className="library-feedback" role="status"><ShieldCheck size={15}/><span>{libraryFeedback}</span></div>}{searchStatus==='loading'&&<div className="status-panel" role="status"><span className="loading-spinner"/><div><strong>Searching the universe…</strong><p>Fetching real results from MangaDex.</p></div></div>}{searchStatus==='error'&&<div className="status-panel status-error" role="alert"><i/><div><strong>Search couldn't complete</strong><p>{searchError}</p><button className="text-link" onClick={()=>setSearchKey(value=>value+1)}>Try again <ArrowRight size={15}/></button></div></div>}{searchStatus==='empty'&&<div className="section"><EmptyState icon={Search} title="No matching titles found" text="MangaDex returned no matches for this query. Try an alternate title or fewer words."/></div>}{searchStatus==='idle'&&<div className="section"><EmptyState icon={Compass} title="Your next world is waiting" text="Search for a title to fetch real listings. Results are never filled with pretend demo series."/></div>}{searchStatus==='success'&&<section className="section"><div className="section-head"><div><div className="eyebrow">LIVE PROVIDER RESULTS</div><h2>{results.length} {results.length===1?'series':'series'} found</h2></div><span className="result-source">MangaDex</span></div><div className="results-grid">{results.map(item=><article className="result-card" key={item.providerWorkId}><div className="result-cover">{item.coverUrl?<img src={item.coverUrl} alt={item.title+' cover'} loading="lazy" decoding="async"/>:<div className="cover-fallback"><BookOpen size={23}/></div>}</div><div className="result-info"><h3>{item.title}</h3>{item.creators.length>0&&<p className="result-creators">{item.creators.slice(0,2).map(creator=>creator.name).join(' · ')}</p>}<span className={'status-chip '+item.publicationStatus}>{item.publicationStatus==='unknown'?'Status unknown':item.publicationStatus}</span>{item.description&&<p className="result-description">{item.description}</p>}<div className="result-card-actions"><button className="result-link" onClick={() => openSeries(item)}>Open series in Kurotoon <ArrowUpRight size={14}/></button><button className="result-save-button" disabled={libraryBusyIds.includes(libraryKey(item))} aria-pressed={savedEntries.some(entry => entry.id === libraryKey(item))} onClick={() => void toggleSavedListing(item)}>{savedEntries.some(entry => entry.id === libraryKey(item)) ? <Check size={14}/> : <Bookmark size={14}/>}<span>{libraryBusyIds.includes(libraryKey(item)) ? 'Saving…' : savedEntries.some(entry => entry.id === libraryKey(item)) ? 'Saved' : 'Save'}</span></button></div></div></article>)}</div><p className="results-footnote">Series metadata and cover art come from MangaDex. Kurotoon opens the series, chapter list, and reader in-app; the original source link remains available for attribution.</p></section>}</>}
+      {active==='Browser'&&<>
+        <Heading eyebrow="THE MULTIVERSE IS YOURS" title="Find your next world." description="Search across enabled live source adapters. Kurotoon groups likely duplicates while keeping each original source listing available."/>
+        <form className="search-box" onSubmit={event=>{event.preventDefault();setSearchKey(value=>value+1)}}>
+          <Search size={20}/>
+          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search titles or alternate names…" aria-label="Search comics"/>
+          <button type="submit" aria-label="Search" disabled={!query.trim()}><ArrowRight size={18}/></button>
+        </form>
+        <div className="source-caption">
+          <span className="source-dot"/>
+          {connectedProviders.length} compatible live {connectedProviders.length===1?'source adapter':'source adapters'}
+          <span>·</span>
+          <span>{connectedProviderNames.join(' · ') || 'No adapters enabled'}</span>
+        </div>
+        {libraryFeedback && <div className="library-feedback" role="status"><ShieldCheck size={15}/><span>{libraryFeedback}</span></div>}
+        {searchPartial && searchStatus!=='error' && <div className="partial-results-panel" role="status">
+          <CircleAlert size={17}/>
+          <div><strong>Some sources couldn't be reached.</strong><p>{failedSourceOutcomes.map(outcome=>formatProviderName(outcome.providerId)+': '+outcome.failure.message).join(' · ')}</p><small>These results include only the sources that responded; this is not a complete catalogue check.</small></div>
+        </div>}
+        {searchStatus==='loading'&&<div className="status-panel" role="status"><span className="loading-spinner"/><div><strong>Searching enabled sources…</strong><p>Grouping high-confidence matches while preserving source listings and alternate titles.</p></div></div>}
+        {searchStatus==='error'&&<div className="status-panel status-error" role="alert"><i/><div><strong>Search couldn't complete</strong><p>{searchError}</p><button className="text-link" onClick={()=>setSearchKey(value=>value+1)}>Try again <ArrowRight size={15}/></button></div></div>}
+        {searchStatus==='empty'&&<div className="section"><EmptyState icon={Search} title="No matching titles found" text={searchPartial?"The sources that responded returned no matching titles. Some sources were unavailable, so try again later.":"The enabled sources returned no matches for this query. Try an alternate title or fewer words."}/></div>}
+        {searchStatus==='idle'&&<div className="section"><EmptyState icon={Compass} title="Your next world is waiting" text="Search a title or alternate name. Results are grouped only when identity evidence is strong, so unrelated series with similar names stay separate."/></div>}
+        {searchStatus==='success'&&<section className="section">
+          <div className="section-head"><div><div className="eyebrow">UNIVERSAL CATALOG</div><h2>{results.length} {results.length===1?'series':'series'} found</h2></div><span className="result-source">{sourceRecordCount} source {sourceRecordCount===1?'listing':'listings'}</span></div>
+          <div className="results-grid">{results.map(work=><UniversalResultCard key={work.identityKey} work={work} savedIds={savedEntries.map(entry=>entry.id)} busyIds={libraryBusyIds} onOpenSource={openSeries} onToggleSave={listing=>void toggleSavedListing(listing)}/>)}</div>
+          <p className="results-footnote">Each universal result preserves the original source listings. Alternative names are retained, and ambiguous title-only matches are kept separate instead of being silently merged. Chapter freshness is shown only when a provider observation is available.</p>
+        </section>}
+      </>}
       {active==='Shop'&&<><Heading eyebrow="A LITTLE EXTRA MAGIC" title="The Shop." description="A dedicated space in the Kurotoon universe, waiting for its rules."/><div className="shop-panel"><div className="shop-sigil"><WandSparkles size={30}/></div><div className="eyebrow">INTENTIONALLY UNDEFINED</div><h2>This space is yours to design.</h2><p>The reward system needs your full explanation before its currencies, actions, progression, or rewards can be designed. Nothing is being guessed or quietly locked in.</p><div className="shop-foot"><Sparkles size={16}/> Reserved for your original reward system</div></div></>}
       {active==='Library'&&<LibraryScreen active={active==='Library'} refreshToken={libraryRefreshToken} onOpenSeries={openSeries} onBrowse={()=>setActive('Browser')}/>} 
       {active==='Me'&&meSection==='repositories'&&<RepositoryManager onBack={()=>setMeSection('settings')}/>}
