@@ -205,4 +205,27 @@ void main() {
     expect(await database.loadExtensionRepositories(), isEmpty);
   });
 
+
+  test('repository refresh preserves its identity but cannot silently change its URL', () async {
+    final repository = ExtensionRepository(
+      id: 'org.example.repository',
+      name: 'Example Repository',
+      indexUri: Uri.parse('https://raw.example.org/repo/index.min.json'),
+    );
+    await database.saveExtensionRepository(repository);
+    await database.saveExtensionRepository(repository, indexDigest: List.filled(64, 'a').join());
+    expect((await database.loadExtensionRepositories()).single['last_index_digest'], List.filled(64, 'a').join());
+
+    await expectLater(
+      database.saveExtensionRepository(ExtensionRepository(
+        id: repository.id,
+        name: repository.name,
+        indexUri: Uri.parse('https://different.example.org/index.json'),
+      )),
+      throwsStateError,
+    );
+    expect((await database.loadExtensionRepositories()).single['index_url'], repository.indexUri.toString());
+  });
+
+
 }
