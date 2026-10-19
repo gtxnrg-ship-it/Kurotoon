@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
-
 import 'package:kurotoon_core/kurotoon_core.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -61,14 +59,13 @@ class KurotoonDatabase {
   final Database _database;
   bool _closed = false;
   Future<void>? _catalogSearchIndexFuture;
-  Future<void>? _creatorIndexFuture;
 
   Database get rawDatabase {
     _ensureOpen();
     return _database;
   }
 
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 4;
 
   static Future<KurotoonDatabase> open({
     String? databasePath,
@@ -205,7 +202,6 @@ class KurotoonDatabase {
         name TEXT NOT NULL,
         aliases_json TEXT NOT NULL DEFAULT '[]'
       )''',
-      'CREATE INDEX creator_profiles_name_idx ON creator_profiles(name COLLATE NOCASE, id)',
       '''CREATE TABLE creator_credits (
         creator_id TEXT NOT NULL,
         work_id TEXT NOT NULL,
@@ -216,7 +212,6 @@ class KurotoonDatabase {
         FOREIGN KEY(creator_id) REFERENCES creator_profiles(id) ON UPDATE CASCADE ON DELETE CASCADE,
         FOREIGN KEY(work_id) REFERENCES works(id) ON UPDATE CASCADE ON DELETE RESTRICT
       )''',
-      'CREATE INDEX creator_credits_work_idx ON creator_credits(work_id, creator_id)',
       '''CREATE TABLE identity_review_queue (
         listing_key TEXT PRIMARY KEY NOT NULL,
         candidate_json TEXT NOT NULL,
@@ -280,12 +275,6 @@ class KurotoonDatabase {
     if (oldVersion < 2 && newVersion >= 2) await _createExtensionSchema(db);
     if (oldVersion < 3 && newVersion >= 3) await _createCatalogIndexes(db);
     if (oldVersion < 4 && newVersion >= 4) await _createCatalogSearchTermsTable(db);
-    if (oldVersion < 5 && newVersion >= 5) await _createCreatorCatalogIndexes(db);
-  }
-
-  static Future<void> _createCreatorCatalogIndexes(DatabaseExecutor db) async {
-    await db.execute('CREATE INDEX IF NOT EXISTS creator_profiles_name_idx ON creator_profiles(name COLLATE NOCASE, id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS creator_credits_work_idx ON creator_credits(work_id, creator_id)');
   }
 
   static Future<void> _createCatalogSearchTermsTable(DatabaseExecutor db) async {
@@ -377,7 +366,6 @@ class KurotoonDatabase {
         );
       }
       await _replaceCatalogSearchTerms(tx, entry);
-      await _replaceCreatorCredits(tx, entry);
     });
   }
 
@@ -404,21 +392,15 @@ class KurotoonDatabase {
     final args = <Object?>[];
     final trimmedQuery = query?.trim();
     if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
-      // This is an autocomplete-style prefix search over indexed tokens, not a
-      // leading-wildcard scan over the entire works table. Refuse SQL wildcard
-      // syntax rather than allowing user input to change query semantics.
-      if (trimmedQuery.contains('%') || trimmedQuery.contains('_')) {
-        return const <CatalogEntry>[];
-      }
-      await _ensureCatalogSearchIndexReady();
-      final normalized = WorkIdentityMatcher.normalizeTitle(trimmedQuery);
-      final tokens = normalized.split(' ').where((token) => token.isNotEmpty).toSet().take(8).toList();
-      if (tokens.isEmpty) return const <CatalogEntry>[];
-      for (final token in tokens) {
-        clauses.add("id IN (SELECT work_id FROM catalog_search_terms WHERE term LIKE ? ESCAPE '!')");
-        final escaped = token.replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_');
-        args.add('$escaped%');
-      }
+      // '!' is the SQL LIKE escape character, so user-supplied wildcards are
+      // treated literally instead of turning a short query into a table scan.
+      final escaped = trimmedQuery
+          .replaceAll('!', '!!')
+          .replaceAll('%', '!%')
+          .replaceAll('_', '!_');
+      final pattern = '%$escaped%';
+      clauses.add("(canonical_title LIKE ? ESCAPE '!' OR alternate_titles_json LIKE ? ESCAPE '!' OR creator_names_json LIKE ? ESCAPE '!' OR id IN (SELECT work_id FROM provider_listings WHERE title LIKE ? ESCAPE '!'))");
+      args.addAll([pattern, pattern, pattern, pattern]);
     }
     if (afterTitle != null && afterId != null) {
       clauses.add('(canonical_title COLLATE NOCASE > ? OR (canonical_title COLLATE NOCASE = ? AND id > ?))');
@@ -580,7 +562,6 @@ class KurotoonDatabase {
         );
         if (rows.isEmpty) break;
         await _database.transaction((tx) async {
-          final batch = tx.batch();
           for (final row in rows) {
             final terms = _searchTerms([
               row['canonical_title'] as String,
@@ -588,11 +569,10 @@ class KurotoonDatabase {
               ..._stringList(row['creator_names_json']),
             ]);
             for (final term in terms) {
-              batch.insert('catalog_search_terms', {'work_id': row['id'], 'term': term},
+              await tx.insert('catalog_search_terms', {'work_id': row['id'], 'term': term},
                   conflictAlgorithm: ConflictAlgorithm.ignore);
             }
           }
-          await batch.commit(noResult: true);
         });
         lastId = rows.last['id'] as String;
       }
@@ -601,214 +581,20 @@ class KurotoonDatabase {
     } catch (error, stackTrace) {
       _catalogSearchIndexFuture = null;
       completer.completeError(error, stackTrace);
-      await completer.future;
-      return;
+      return completer.future;
     }
   }
 
   Future<void> _replaceCatalogSearchTerms(DatabaseExecutor tx, CatalogEntry entry) async {
     await tx.delete('catalog_search_terms', where: 'work_id = ?', whereArgs: [entry.work.id]);
-    final batch = tx.batch();
     for (final term in _searchTerms([
       entry.work.title,
       ...entry.work.alternateTitles,
       ...entry.work.creatorNames,
     ])) {
-      batch.insert('catalog_search_terms', {'work_id': entry.work.id, 'term': term},
+      await tx.insert('catalog_search_terms', {'work_id': entry.work.id, 'term': term},
           conflictAlgorithm: ConflictAlgorithm.ignore);
     }
-    await batch.commit(noResult: true);
-  }
-
-  Future<void> _ensureCreatorIndexReady() async {
-    final active = _creatorIndexFuture;
-    if (active != null) return active;
-    final completer = Completer<void>();
-    _creatorIndexFuture = completer.future;
-    try {
-      if (await getSetting<String>('internal.creatorIndexVersion') == '1') {
-        completer.complete();
-        return;
-      }
-      await _database.delete('creator_credits', where: 'role = ?', whereArgs: [CreatorRole.other.name]);
-      String? lastId;
-      while (true) {
-        final workRows = await _database.query(
-          'works',
-          columns: ['id', 'canonical_title', 'alternate_titles_json', 'creator_names_json', 'year', 'format', 'locked_distinct_identity', 'verified'],
-          where: lastId == null ? null : 'id > ?',
-          whereArgs: lastId == null ? null : [lastId],
-          orderBy: 'id ASC',
-          limit: 250,
-        );
-        if (workRows.isEmpty) break;
-        final ids = workRows.map((row) => row['id'] as String).toList(growable: false);
-        final listingRows = await _database.query(
-          'provider_listings',
-          where: 'work_id IN (${List.filled(ids.length, '?').join(',')})',
-          whereArgs: ids,
-          orderBy: 'work_id ASC, provider_id ASC, external_id ASC',
-        );
-        final listingsByWork = <String, List<WorkCandidate>>{};
-        for (final row in listingRows) {
-          final candidate = _candidateFromRow(row);
-          if (candidate != null) {
-            (listingsByWork[row['work_id'] as String] ??= <WorkCandidate>[]).add(candidate);
-          }
-        }
-        await _database.transaction((tx) async {
-          for (final row in workRows) {
-            final work = WorkRecord(
-              id: row['id'] as String,
-              title: row['canonical_title'] as String,
-              alternateTitles: _stringList(row['alternate_titles_json']),
-              creatorNames: _stringList(row['creator_names_json']),
-              year: row['year'] as int?,
-              format: _enumByName(WorkFormat.values, row['format'] as String, WorkFormat.unknown),
-              lockedDistinctIdentity: (row['locked_distinct_identity'] as int? ?? 0) == 1,
-            );
-            await _replaceCreatorCredits(tx, CatalogEntry(
-              work: work,
-              listings: listingsByWork[work.id] ?? const <WorkCandidate>[],
-              verified: (row['verified'] as int? ?? 0) == 1,
-            ));
-          }
-        });
-        lastId = workRows.last['id'] as String;
-      }
-      await setSetting('internal.creatorIndexVersion', '1');
-      completer.complete();
-    } catch (error, stackTrace) {
-      _creatorIndexFuture = null;
-      completer.completeError(error, stackTrace);
-      await completer.future;
-      return;
-    }
-  }
-
-  /// Rebuilds source-scoped creator credits from the metadata attached to each
-  /// provider listing. Creator names are not globally merged across providers,
-  /// because identical names are not proof of identical people.
-  Future<void> _replaceCreatorCredits(DatabaseExecutor tx, CatalogEntry entry) async {
-    final providerIds = entry.listings.map((listing) => listing.providerId).toSet();
-    for (final providerId in providerIds) {
-      await tx.delete(
-        'creator_credits',
-        where: 'work_id = ? AND provider_id = ? AND role = ?',
-        whereArgs: [entry.work.id, providerId, CreatorRole.other.name],
-      );
-    }
-    final inserted = <String>{};
-    for (final listing in entry.listings) {
-      for (final rawName in listing.creatorNames) {
-        final name = rawName.trim();
-        final normalized = WorkIdentityMatcher.normalizeTitle(name);
-        if (name.isEmpty || normalized.isEmpty) continue;
-        final digest = sha256.convert(utf8.encode('${listing.providerId}|$normalized')).toString();
-        final creatorId = 'creator/$digest';
-        final profileRows = await tx.query(
-          'creator_profiles',
-          columns: ['name', 'aliases_json'],
-          where: 'id = ?',
-          whereArgs: [creatorId],
-          limit: 1,
-        );
-        if (profileRows.isEmpty) {
-          await tx.insert('creator_profiles', {
-            'id': creatorId,
-            'name': name,
-            'aliases_json': jsonEncode(const <String>[]),
-          });
-        } else {
-          final existingName = profileRows.single['name'] as String;
-          final aliases = _stringList(profileRows.single['aliases_json']).toSet();
-          if (existingName != name) aliases.add(name);
-          await tx.update(
-            'creator_profiles',
-            {'aliases_json': jsonEncode(aliases.toList())},
-            where: 'id = ?',
-            whereArgs: [creatorId],
-          );
-        }
-        final creditKey = '$creatorId|${entry.work.id}|${listing.providerId}';
-        if (!inserted.add(creditKey)) continue;
-        await tx.insert('creator_credits', {
-          'creator_id': creatorId,
-          'work_id': entry.work.id,
-          'edition_id': null,
-          'provider_id': listing.providerId,
-          'role': CreatorRole.other.name,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
-      }
-    }
-  }
-
-  /// Prefix-searches creator profiles with a stable keyset cursor. Use
-  /// [loadCreatorWorks] for bounded work pages rather than materializing all
-  /// credits for a popular creator in the profile card response.
-  Future<List<CreatorProfile>> searchCreatorProfiles(
-    String query, {
-    int limit = 50,
-    String? afterName,
-    String? afterId,
-  }) async {
-    _ensureOpen();
-    if (limit < 1 || limit > 100) {
-      throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 100.');
-    }
-    if ((afterName == null) != (afterId == null)) {
-      throw ArgumentError('afterName and afterId must be supplied together.');
-    }
-    final trimmed = query.trim();
-    if (trimmed.isEmpty || trimmed.contains('%') || trimmed.contains('_')) {
-      return const <CreatorProfile>[];
-    }
-    await _ensureCreatorIndexReady();
-    final escaped = trimmed.replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_');
-    final clauses = <String>["name LIKE ? ESCAPE '!'"];
-    final args = <Object?>['$escaped%'];
-    if (afterName != null && afterId != null) {
-      clauses.add('(name COLLATE NOCASE > ? OR (name COLLATE NOCASE = ? AND id > ?))');
-      args.addAll([afterName, afterName, afterId]);
-    }
-    final rows = await _database.query(
-      'creator_profiles',
-      where: clauses.join(' AND '),
-      whereArgs: args,
-      orderBy: 'name COLLATE NOCASE ASC, id ASC',
-      limit: limit,
-    );
-    return List.unmodifiable(rows.map((row) => CreatorProfile(
-      id: row['id'] as String,
-      name: row['name'] as String,
-      aliases: _stringList(row['aliases_json']),
-    )));
-  }
-
-  /// Returns one bounded, title-sorted page of works credited to a creator.
-  Future<List<CatalogEntry>> loadCreatorWorks(
-    String creatorId, {
-    int limit = 50,
-    int offset = 0,
-  }) async {
-    _ensureOpen();
-    if (creatorId.trim().isEmpty) throw ArgumentError.value(creatorId, 'creatorId');
-    await _ensureCreatorIndexReady();
-    if (limit < 1 || limit > 100) {
-      throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 100.');
-    }
-    if (offset < 0) throw ArgumentError.value(offset, 'offset');
-    final rows = await _database.rawQuery(
-      'SELECT DISTINCT w.id FROM works w INNER JOIN creator_credits c ON c.work_id = w.id '
-      'WHERE c.creator_id = ? ORDER BY w.canonical_title COLLATE NOCASE ASC, w.id ASC LIMIT ? OFFSET ?',
-      [creatorId, limit, offset],
-    );
-    final entries = <CatalogEntry>[];
-    for (final row in rows) {
-      final entry = await loadCatalogEntryById(row['id'] as String);
-      if (entry != null) entries.add(entry);
-    }
-    return List.unmodifiable(entries);
   }
 
   static Set<String> _searchTerms(Iterable<String> values) {
@@ -1428,7 +1214,6 @@ class KurotoonDatabase {
 
   Future<CreatorProfile?> loadCreatorProfile(String creatorId) async {
     _ensureOpen();
-    await _ensureCreatorIndexReady();
     final profiles = await _database.query(
       'creator_profiles',
       where: 'id = ?',
