@@ -10,7 +10,7 @@
 - [x] Dart core CI passed on the same main commit.
 - [x] APK is uploaded as `Kurotoon.apk` to a continuous development release.
 - [ ] Install and verify the current APK on a real Android device.
-- [ ] Add and verify a stable direct-download alias for the README.
+- [ ] Verify the new stable direct-download alias on a successful post-merge main build and confirm its checksum asset.
 - [ ] Run the native product flows against live sources on-device.
 - [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
