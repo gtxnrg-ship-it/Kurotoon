@@ -94,18 +94,26 @@ export async function searchAcrossProviders(
     for (const signal of externalSignals) signal.addEventListener('abort', abortFromCaller, { once: true });
 
     let timedOut = false;
+    let rejectTimeout!: (reason: Error) => void;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => { rejectTimeout = reject; });
     const timeout = setTimeout(() => {
       timedOut = true;
       controller.abort();
+      rejectTimeout(new Error('The source request exceeded its deadline.'));
     }, timeoutMs);
 
     try {
-      const result = await provider.search({
-        ...queryInput,
-        query,
-        limit,
-        signal: controller.signal,
-      });
+      // Race the deadline as well as aborting the adapter. An uncooperative extension
+      // must not be allowed to hold a universal search open forever.
+      const result = await Promise.race([
+        provider.search({
+          ...queryInput,
+          query,
+          limit,
+          signal: controller.signal,
+        }),
+        timeoutPromise,
+      ]);
       if (options.signal?.aborted || queryInput.signal?.aborted) throw makeAbortError();
       if (timedOut) {
         outcomes[resultIndex] = { providerId: provider.id, status: 'failed', failure: toFailure(provider.id, new Error('timeout'), true) };
