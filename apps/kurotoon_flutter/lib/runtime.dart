@@ -6,6 +6,7 @@ import 'package:kurotoon_core/kurotoon_core.dart';
 import 'services/extension_repository_service.dart';
 import 'storage/cache_storage_service.dart';
 import 'storage/kurotoon_database.dart';
+import 'storage/voice_pack_storage_service.dart';
 
 /// Composition root for application services. The visual shell deliberately
 /// stays out of this file so domain rules can be tested without a widget tree.
@@ -32,6 +33,7 @@ class KurotoonRuntime {
   final KurotoonDatabase? database;
   ExtensionRepositoryService? _extensionRepositoryService;
   Future<CacheStorageService>? _cacheStorageFuture;
+  VoicePackStorageService? _voicePackStorageService;
   bool _disposing = false;
   final Map<String, String> extensionLoadErrors = {};
 
@@ -52,6 +54,12 @@ class KurotoonRuntime {
     final store = database;
     if (store == null) return null;
     return _extensionRepositoryService ??= ExtensionRepositoryService(database: store);
+  }
+
+  VoicePackStorageService? get voicePacks {
+    final store = database;
+    if (store == null) return null;
+    return _voicePackStorageService ??= VoicePackStorageService(database: store);
   }
 
   Future<void> restoreProviderSettings() async {
@@ -171,6 +179,7 @@ class KurotoonRuntime {
     _disposing = true;
     providers.dispose();
     _extensionRepositoryService?.dispose();
+    _voicePackStorageService?.dispose();
     final pendingCache = _cacheStorageFuture;
     if (pendingCache != null) {
       try {
