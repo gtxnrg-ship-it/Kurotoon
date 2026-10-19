@@ -67,6 +67,15 @@ void main() {
       factory: databaseFactoryFfi,
     );
     expect((await database.loadCatalog()).single.listings.single.providerUrl.host, 'mangadex.org');
+    final restoredMatch = await database.loadCatalogCandidatesForMatching(WorkCandidate(
+      providerId: 'community-source',
+      externalId: 'blue-star-translation',
+      title: 'The Blue Star',
+      creatorNames: const ['A. Artist'],
+      providerUrl: Uri.parse('https://community.example.org/blue-star'),
+    ));
+    expect(restoredMatch.entries.map((entry) => entry.work.id), contains('work/blue-star'));
+    expect(restoredMatch.hasMore, isFalse);
   });
 
   test('stores edition chapters and the user library independently', () async {
