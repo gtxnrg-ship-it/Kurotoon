@@ -15,9 +15,10 @@ void main() {
     expect(policy.validate('https://user:pass@example.org/repo.json').allowed, isFalse);
   });
 
-  test('rejects localhost and common private IPv4 ranges', () {
+  test('rejects localhost, trailing-dot localhost and common private IPv4 ranges', () {
     for (final url in [
       'https://localhost/repo.json',
+      'https://localhost./repo.json',
       'https://foo.localhost/repo.json',
       'https://127.0.0.1/repo.json',
       'https://10.0.0.4/repo.json',
@@ -28,7 +29,7 @@ void main() {
     }
   });
 
-  test('rejects custom ports fragments and additional reserved IPv4 ranges', () {
+  test('rejects custom ports fragments and reserved IPv4 ranges', () {
     expect(policy.validate('https://extensions.example.org:8443/repo.json').allowed, isFalse);
     expect(policy.validate('https://extensions.example.org/repo.json#fragment').allowed, isFalse);
     for (final url in [
@@ -36,9 +37,33 @@ void main() {
       'https://192.0.2.1/repo.json',
       'https://198.18.0.1/repo.json',
       'https://203.0.113.1/repo.json',
+      'https://0177.0.0.1/repo.json',
+      'https://127.1/repo.json',
     ]) {
       expect(policy.validate(url).allowed, isFalse, reason: url);
     }
   });
 
+  test('rejects private, reserved and mapped IPv6 repository literals', () {
+    for (final url in [
+      'https://[::]/repo.json',
+      'https://[::1]/repo.json',
+      'https://[fc00::1]/repo.json',
+      'https://[fd00::1]/repo.json',
+      'https://[fe80::1]/repo.json',
+      'https://[ff02::1]/repo.json',
+      'https://[::ffff:127.0.0.1]/repo.json',
+      'https://[::ffff:7f00:1]/repo.json',
+      'https://[2001:db8::1]/repo.json',
+      'https://[2002:7f00:1::1]/repo.json',
+      'https://[2001:0::1]/repo.json',
+      'https://[2001:10::1]/repo.json',
+    ]) {
+      expect(policy.validate(url).allowed, isFalse, reason: url);
+    }
+  });
+
+  test('allows a public global-unicast IPv6 literal', () {
+    expect(policy.validate('https://[2606:4700:4700::1111]/repo.json').allowed, isTrue);
+  });
 }
