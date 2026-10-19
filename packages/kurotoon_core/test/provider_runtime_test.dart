@@ -160,12 +160,14 @@ void main() {
     expect(batch.results.single.response.message, isNot(contains('example.org')));
   });
 
-  test('times out an unresponsive provider within a bounded wait', () async {
+  test('times out an unresponsive provider and signals cooperative cancellation', () async {
+    final observedCancel = Completer<void>();
+    final never = Completer<ProviderResponse<List<WorkCandidate>>>();
     final registry = ProviderRegistry()
       ..register(FakeProvider(
         descriptor: descriptor('slow'),
-        handler: (query, token) async {
-          final never = Completer<ProviderResponse<List<WorkCandidate>>>();
+        handler: (query, token) {
+          token.onCancel((_) => observedCancel.complete());
           return never.future;
         },
       ));
@@ -174,5 +176,6 @@ void main() {
       providerTimeout: const Duration(milliseconds: 10),
     ).search('test');
     expect(batch.results.single.response.status, ProviderResultStatus.timedOut);
+    expect(observedCancel.isCompleted, isTrue);
   });
 }
