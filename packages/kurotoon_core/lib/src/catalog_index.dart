@@ -46,7 +46,63 @@ class CatalogUpsertResult {
 class CatalogIndex {
   CatalogIndex({WorkIdentityMatcher matcher = const WorkIdentityMatcher()}) : _matcher = matcher;
 
+  /// Rehydrates a persisted catalog before new provider results are indexed.
+  ///
+  /// Entries are restored first so their listing identities always win over
+  /// stale review-queue records left behind by an interrupted persistence step.
+  factory CatalogIndex.fromEntries({
+    WorkIdentityMatcher matcher = const WorkIdentityMatcher(),
+    Iterable<CatalogEntry> entries = const <CatalogEntry>[],
+    Iterable<PendingIdentityReview> pendingReviews = const <PendingIdentityReview>[],
+  }) {
+    final index = CatalogIndex(matcher: matcher);
+    for (final entry in entries) {
+      index.restoreEntry(entry);
+    }
+    for (final review in pendingReviews) {
+      // Crash recovery: a listing that has already been committed to the
+      // catalog must not reappear as a pending duplicate review.
+      if (!index._listingToWork.containsKey(review.key)) {
+        index.restorePendingReview(review);
+      }
+    }
+    return index;
+  }
+
   final WorkIdentityMatcher _matcher;
+
+  /// Restores an already-persisted catalog entry without re-running identity
+  /// matching. Conflicting stable IDs or provider listing keys are rejected.
+  void restoreEntry(CatalogEntry entry) {
+    if (_works.containsKey(entry.work.id)) {
+      throw StateError('Catalog work is already restored: ${entry.work.id}');
+    }
+    final keys = <String>{};
+    for (final listing in entry.listings) {
+      final key = listing.listingKey;
+      if (!keys.add(key) || _listingToWork.containsKey(key) || _pending.containsKey(key)) {
+        throw StateError('Provider listing identity is already assigned: $key');
+      }
+    }
+    _works[entry.work.id] = entry;
+    for (final key in keys) {
+      _listingToWork[key] = entry.work.id;
+    }
+  }
+
+  /// Restores a persisted review only if its identity remains unassigned.
+  void restorePendingReview(PendingIdentityReview review) {
+    if (review.key != review.candidate.listingKey) {
+      throw StateError('Pending review key does not match its provider listing.');
+    }
+    if (_listingToWork.containsKey(review.key)) {
+      throw StateError('A catalog listing cannot also be pending review: ${review.key}');
+    }
+    if (_pending.containsKey(review.key)) {
+      throw StateError('Pending identity review is already restored: ${review.key}');
+    }
+    _pending[review.key] = review;
+  }
   final Map<String, CatalogEntry> _works = {};
   final Map<String, String> _listingToWork = {};
   final Map<String, PendingIdentityReview> _pending = {};
@@ -107,6 +163,43 @@ class CatalogIndex {
     }
 
     return CatalogUpsertResult(status: CatalogUpsertStatus.created, entry: _createWork(candidate));
+  }
+
+  /// Refreshes one existing provider listing without changing the canonical
+  /// work identity or accidentally merging it with a different series.
+  CatalogEntry refreshKnownListing(WorkCandidate candidate) {
+    final workId = _listingToWork[candidate.listingKey];
+    if (workId == null) {
+      throw ArgumentError.value(candidate.listingKey, 'candidate', 'Provider listing is not in the catalog.');
+    }
+    final current = _works[workId];
+    if (current == null) throw StateError('Catalog listing points to a missing work.');
+
+    final aliases = <String>{...current.work.alternateTitles};
+    if (WorkIdentityMatcher.normalizeTitle(candidate.title) !=
+        WorkIdentityMatcher.normalizeTitle(current.work.title)) {
+      aliases.add(candidate.title);
+    }
+    aliases.addAll(candidate.alternateTitles);
+    final creators = <String>{...current.work.creatorNames, ...candidate.creatorNames};
+    final listings = current.listings
+        .map((listing) => listing.listingKey == candidate.listingKey ? candidate : listing)
+        .toList(growable: false);
+    final refreshed = CatalogEntry(
+      work: WorkRecord(
+        id: current.work.id,
+        title: current.work.title,
+        alternateTitles: aliases.toList(growable: false),
+        creatorNames: creators.toList(growable: false),
+        year: current.work.year ?? candidate.year,
+        format: current.work.format == WorkFormat.unknown ? candidate.format : current.work.format,
+        lockedDistinctIdentity: current.work.lockedDistinctIdentity,
+      ),
+      listings: listings,
+      verified: current.verified,
+    );
+    _works[workId] = refreshed;
+    return refreshed;
   }
 
   /// Explicitly resolve a candidate. Pass [targetWorkId] to link it to a work,
