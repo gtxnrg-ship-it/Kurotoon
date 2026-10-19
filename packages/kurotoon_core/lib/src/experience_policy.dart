@@ -159,15 +159,18 @@ class GalaxyEffectPolicy {
         particles = (particles * 0.45).round();
         nebulaLayers = nebulaLayers > 1 ? nebulaLayers - 1 : 1;
         blur *= 0.6;
-        updates = updates < 30 ? updates : 30;
+        updates = updates < 30 ? updates : 30.0;
+        break;
       case GalaxyQualityPreference.standard:
-        particles = particles.clamp(48, 100);
-        nebulaLayers = nebulaLayers.clamp(1, 3);
+        particles = particles.clamp(48, 100).toInt();
+        nebulaLayers = nebulaLayers.clamp(1, 3).toInt();
         blur = blur.clamp(3.0, 8.0).toDouble();
+        break;
       case GalaxyQualityPreference.high:
         particles = lowEnd ? 72 : 200;
         nebulaLayers = lowEnd ? 2 : 5;
         blur = lowEnd ? 6 : 15;
+        break;
     }
 
     final intensity = (environment.userIntensity * motionIntensity).clamp(0.0, 1.0).toDouble();
