@@ -1,0 +1,259 @@
+enum ExtensionCapability { search, seriesDetails, chapterFeed, readerPages, creatorWorks }
+
+class JsonPath {
+  JsonPath(List<Object> segments)
+      : segments = List.unmodifiable(segments) {
+    if (segments.any((segment) =>
+        !(segment is String && segment.isNotEmpty) &&
+        !(segment is int && segment >= 0))) {
+      throw ArgumentError('JSON paths contain only non-empty object keys or non-negative list indexes.');
+    }
+  }
+
+  final List<Object> segments;
+
+  Object? read(Object? root) {
+    Object? value = root;
+    for (final segment in segments) {
+      if (segment is String && value is Map) {
+        value = value[segment];
+      } else if (segment is int && value is List && segment < value.length) {
+        value = value[segment];
+      } else {
+        return null;
+      }
+    }
+    return value;
+  }
+}
+
+class JsonEndpointSpec {
+  JsonEndpointSpec({
+    required this.id,
+    required this.capability,
+    required this.path,
+    required this.resultPath,
+    required Map<String, String> query,
+    required Map<String, JsonPath> fields,
+    this.maxResponseBytes = 1048576,
+  })  : query = Map.unmodifiable(query),
+        fields = Map.unmodifiable(fields) {
+    if (id.trim().isEmpty) throw ArgumentError.value(id, 'id');
+    if (maxResponseBytes < 1 || maxResponseBytes > 2 * 1024 * 1024) {
+      throw ArgumentError.value(maxResponseBytes, 'maxResponseBytes', 'Must be 1 byte to 2 MiB');
+    }
+  }
+
+  final String id;
+  final ExtensionCapability capability;
+  final String path;
+  final JsonPath resultPath;
+  final Map<String, String> query;
+  final Map<String, JsonPath> fields;
+  final int maxResponseBytes;
+
+  static const Set<String> _allowedPlaceholders = {
+    'query',
+    'page',
+    'limit',
+    'seriesId',
+    'chapterId',
+    'language',
+  };
+
+  List<String> validate() {
+    final issues = <String>[];
+    final normalized = Uri.decodeComponent(path);
+    if (!path.startsWith('/') || path.startsWith('//') || path.contains('://') ||
+        path.contains('#') || normalized.split('/').any((part) => part == '..' || part == '.')) {
+      issues.add('Endpoint path must be a safe root-relative path with no traversal or URL authority.');
+    }
+    for (final value in query.values) {
+      for (final match in RegExp(r'\{([^}]+)\}').allMatches(value)) {
+        if (!_allowedPlaceholders.contains(match.group(1))) {
+          issues.add('Unsupported query placeholder: \${match.group(1)}');
+        }
+      }
+      if (value.contains('{') != value.contains('}')) {
+        issues.add('Malformed query placeholder in endpoint \${id}.');
+      }
+    }
+    if (!fields.containsKey('id') || !fields.containsKey('title') || !fields.containsKey('url')) {
+      issues.add('A source endpoint must map id, title, and url fields.');
+    }
+    return List.unmodifiable(issues);
+  }
+
+  Uri buildUri(
+    Uri baseUri, {
+    String? queryText,
+    int page = 1,
+    int limit = 20,
+    String? seriesId,
+    String? chapterId,
+    String? language,
+  }) {
+    final values = <String, String>{
+      'query': queryText ?? '',
+      'page': '$page',
+      'limit': '$limit',
+      'seriesId': seriesId ?? '',
+      'chapterId': chapterId ?? '',
+      'language': language ?? '',
+    };
+    final parameters = <String, String>{};
+    for (final entry in query.entries) {
+      var value = entry.value;
+      for (final placeholder in _allowedPlaceholders) {
+        value = value.replaceAll('{\$placeholder}', values[placeholder]!);
+      }
+      parameters[entry.key] = value;
+    }
+    final basePath = baseUri.path.replaceFirst(RegExp(r'/+$'), '');
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    return baseUri.replace(
+      path: '$basePath$normalizedPath',
+      query: parameters.isEmpty ? null : null,
+      queryParameters: parameters.isEmpty ? null : parameters,
+      fragment: null,
+    );
+  }
+}
+
+class DeclarativeExtensionManifest {
+  DeclarativeExtensionManifest({
+    required this.id,
+    required this.name,
+    required this.version,
+    required this.minimumAppApi,
+    required this.homepage,
+    required this.baseUri,
+    required this.licenseId,
+    required this.developer,
+    required Set<String> allowedHosts,
+    required List<JsonEndpointSpec> endpoints,
+    this.enabledByDefault = false,
+  })  : allowedHosts = Set.unmodifiable(allowedHosts.map((host) => host.toLowerCase())),
+        endpoints = List.unmodifiable(endpoints) {
+    if (id.trim().isEmpty || name.trim().isEmpty || version.trim().isEmpty || developer.trim().isEmpty) {
+      throw ArgumentError('Extension manifest requires id, name, version, and developer.');
+    }
+  }
+
+  final String id;
+  final String name;
+  final String version;
+  final int minimumAppApi;
+  final Uri homepage;
+  final Uri baseUri;
+  final String licenseId;
+  final String developer;
+  final Set<String> allowedHosts;
+  final List<JsonEndpointSpec> endpoints;
+  final bool enabledByDefault;
+
+  Set<ExtensionCapability> get capabilities =>
+      Set.unmodifiable(endpoints.map((endpoint) => endpoint.capability));
+}
+
+class ManifestValidation {
+  const ManifestValidation({required this.accepted, required this.issues});
+
+  final bool accepted;
+  final List<String> issues;
+}
+
+class ExtensionManifestPolicy {
+  const ExtensionManifestPolicy({
+    this.supportedAppApi = 1,
+    this.maxEndpoints = 32,
+    this.allowedLicenses = const {'MIT', 'Apache-2.0', 'BSD-3-Clause', 'GPL-3.0-only', 'MPL-2.0'},
+  });
+
+  final int supportedAppApi;
+  final int maxEndpoints;
+  final Set<String> allowedLicenses;
+
+  ManifestValidation validate(DeclarativeExtensionManifest manifest) {
+    final issues = <String>[];
+    if (manifest.minimumAppApi > supportedAppApi) issues.add('Extension requires a newer app API.');
+    if (!allowedLicenses.contains(manifest.licenseId)) issues.add('Extension license is not approved.');
+    if (manifest.endpoints.isEmpty || manifest.endpoints.length > maxEndpoints) {
+      issues.add('Endpoint count is outside the supported range.');
+    }
+    _validatePublicHttps(manifest.homepage, 'Extension homepage', issues);
+    _validatePublicHttps(manifest.baseUri, 'API base URL', issues);
+
+    final baseHost = manifest.baseUri.host.toLowerCase();
+    if (!manifest.allowedHosts.contains(baseHost)) {
+      issues.add('Allowed-host list must include the API base host.');
+    }
+    for (final hostValue in manifest.allowedHosts) {
+      final host = hostValue.trim().toLowerCase();
+      if (host.isEmpty || host.contains('*') || host.contains('/') || host.contains(':') ||
+          host.startsWith('.') || host.endsWith('.')) {
+        issues.add('Allowed hosts must be exact hostnames; wildcards and ports are forbidden.');
+        continue;
+      }
+      if (_isLocalHost(host) || _isPrivateIp(host)) {
+        issues.add('Local/private-network hosts are forbidden in extension manifests.');
+      }
+    }
+
+    final endpointIds = <String>{};
+    for (final endpoint in manifest.endpoints) {
+      if (!endpointIds.add(endpoint.id)) issues.add('Duplicate endpoint id: \${endpoint.id}');
+      issues.addAll(endpoint.validate().map((issue) => '\${endpoint.id}: $issue'));
+    }
+    return ManifestValidation(accepted: issues.isEmpty, issues: List.unmodifiable(issues));
+  }
+
+  void _validatePublicHttps(Uri uri, String label, List<String> issues) {
+    if (!uri.isAbsolute || uri.scheme.toLowerCase() != 'https' || uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty || (uri.hasPort && uri.port != 443) || uri.hasFragment) {
+      issues.add('$label must be public HTTPS without credentials, custom ports, or fragments.');
+      return;
+    }
+    final host = uri.host.toLowerCase();
+    if (_isLocalHost(host) || _isPrivateIp(host)) issues.add('$label cannot point to a local/private host.');
+  }
+
+  bool _isLocalHost(String host) =>
+      host == 'localhost' || host.endsWith('.localhost') || host.endsWith('.local');
+
+  bool _isPrivateIp(String host) {
+    if (host == '::' || host == '::1' || host.startsWith('fc') ||
+        host.startsWith('fd') || host.startsWith('fe80:')) return true;
+    final parts = host.split('.');
+    if (parts.length != 4) return false;
+    final octets = parts.map(int.tryParse).toList();
+    if (octets.any((n) => n == null || n < 0 || n > 255)) return false;
+    final a = octets[0]!;
+    final b = octets[1]!;
+    return a == 0 || a == 10 || a == 127 || (a == 169 && b == 254) ||
+        (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || a >= 224;
+  }
+}
+
+/// Extracts records and fields from JSON without executing downloaded scripts.
+/// It is intentionally only a mapper; transport, redirects, DNS checks, and
+/// response-size enforcement are provided by the source networking adapter.
+class DeclarativeJsonExtractor {
+  const DeclarativeJsonExtractor();
+
+  List<Map<String, Object?>> records(JsonEndpointSpec endpoint, Object? payload) {
+    final value = endpoint.resultPath.read(payload);
+    if (value is! List) return const [];
+    return List.unmodifiable(value.whereType<Map>().map(
+      (record) => Map<String, Object?>.from(record),
+    ));
+  }
+
+  Map<String, Object?> fields(JsonEndpointSpec endpoint, Map<String, Object?> record) {
+    final result = <String, Object?>{};
+    for (final entry in endpoint.fields.entries) {
+      result[entry.key] = entry.value.read(record);
+    }
+    return Map.unmodifiable(result);
+  }
+}
