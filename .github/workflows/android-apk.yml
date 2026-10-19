@@ -14,6 +14,11 @@ on:
 permissions:
   contents: write
 
+# Prevent older, slower main-branch builds from publishing over a newer APK.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   android:
     name: Build native Flutter Kurotoon APK
