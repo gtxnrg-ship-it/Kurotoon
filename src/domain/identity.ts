@@ -24,7 +24,7 @@ function normalized(value: string): string {
 }
 
 function comparisonTitle(value: string): string {
-  return normalized(value).replace(/^(?:the|a|an)\\s+/u, '');
+  return normalized(value).replace(/^(?:the|a|an)\s+/u, '');
 }
 
 function titleSet(candidate: WorkIdentityCandidate): Set<string> {
