@@ -596,6 +596,9 @@ class KurotoonDatabase {
         whereArgs: [repository.id],
         limit: 1,
       );
+      if (existing.isNotEmpty && existing.single['index_url'] != repository.indexUri.toString()) {
+        throw StateError('Changing a repository URL requires removing and re-adding it explicitly.');
+      }
       final values = <String, Object?>{
         'id': repository.id,
         'name': repository.name,
@@ -665,6 +668,27 @@ class KurotoonDatabase {
       limit: 1,
     );
     if (repo.isEmpty) throw StateError('Cannot install from an unknown repository.');
+    final repositoryRows = await _database.query(
+      'extension_repositories',
+      columns: ['index_url'],
+      where: 'id = ?',
+      whereArgs: [repositoryId],
+      limit: 1,
+    );
+    final repositoryUri = Uri.tryParse(repositoryRows.single['index_url'] as String);
+    if (repositoryUri == null || repositoryUri.host.toLowerCase() != entry.manifestUri.host.toLowerCase()) {
+      throw StateError('Extension package origin does not match its repository.');
+    }
+    final existingInstall = await _database.query(
+      'installed_extensions',
+      columns: ['repository_id'],
+      where: 'extension_id = ?',
+      whereArgs: [entry.id],
+      limit: 1,
+    );
+    if (existingInstall.isNotEmpty && existingInstall.single['repository_id'] != repositoryId) {
+      throw StateError('An extension with this ID is already installed from another repository.');
+    }
     await _database.insert(
       'installed_extensions',
       {
