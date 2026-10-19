@@ -6,3 +6,6 @@ export 'src/reader_timeline.dart';
 export 'src/reading_progress.dart';
 export 'src/repository_policy.dart';
 export 'src/storage_budget.dart';
+export 'src/catalog_entities.dart';
+export 'src/catalog_index.dart';
+export 'src/mangadex_provider.dart';
