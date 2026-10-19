@@ -723,7 +723,7 @@ class _RepositoryManagerPageState extends State<_RepositoryManagerPage> {
                               final index = indexSnapshot.data!;
                               if (index.extensions.isEmpty) return const Text('No extensions listed.', style: TextStyle(color: Colors.white54, fontSize: 12));
                               return Column(children: index.extensions.map((entry) {
-                                final installed = widget.runtime.providers.all.any((p) => p.descriptor.id == entry.id);
+                                final installed = widget.runtime.providers.all.any((p) => p.descriptor.id == entry.id && !p.descriptor.isBuiltIn);
                                 final enabled = installed && widget.runtime.providers.isEnabled(entry.id);
                                 return Container(
                                   margin: const EdgeInsets.only(top: 10),
