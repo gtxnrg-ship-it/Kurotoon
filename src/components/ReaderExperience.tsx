@@ -176,7 +176,11 @@ export function ReaderScreen({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [pageIndex, setPageIndex] = useState(0);
-  const [scrollRatio, setScrollRatio] = useState(0);
+  const pageIndexRef = useRef(0);
+  pageIndexRef.current = pageIndex;
+  const scrollRatioRef = useRef(0);
+  const verticalPositionFrameRef = useRef<number | null>(null);
+  const progressSaveTimerRef = useRef<number | null>(null);
   const [progressReady, setProgressReady] = useState(false);
   const [mode, setMode] = useState<ReaderMode>('paged');
   const modeRef = useRef<ReaderMode>('paged');
@@ -199,6 +203,17 @@ export function ReaderScreen({
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const lastSwipeAtRef = useRef(0);
   const progressStorageKey = progressKey(listing, chapter);
+  const scheduleProgressSave = useCallback(() => {
+    if (!progressReady || !pages.length) return;
+    if (progressSaveTimerRef.current !== null) window.clearTimeout(progressSaveTimerRef.current);
+    progressSaveTimerRef.current = window.setTimeout(() => {
+      progressSaveTimerRef.current = null;
+      writeReaderProgress(progressStorageKey, {
+        pageIndex: pageIndexRef.current,
+        scrollRatio: scrollRatioRef.current,
+      });
+    }, 320);
+  }, [progressReady, pages.length, progressStorageKey]);
 
   useEffect(() => { onExitRef.current = onSeriesHome; }, [onSeriesHome]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
@@ -228,13 +243,15 @@ export function ReaderScreen({
     setVisiblePageCount(6);
     verticalRestoreKeyRef.current = '';
     const saved = readReaderProgress(progressStorageKey);
+    pageIndexRef.current = saved.pageIndex;
+    scrollRatioRef.current = saved.scrollRatio;
     setPageIndex(saved.pageIndex);
-    setScrollRatio(saved.scrollRatio);
     mangaDexProvider.getChapterPages(chapter.providerChapterId, controller.signal)
       .then(urls => {
         if (controller.signal.aborted) return;
         if (!urls.length) throw new Error('This chapter did not return any readable pages.');
         const restoredPageIndex = Math.min(saved.pageIndex, urls.length - 1);
+        pageIndexRef.current = restoredPageIndex;
         setPages(urls);
         setPageIndex(restoredPageIndex);
         // Vertical mode mounts pages in batches. Ensure the saved page exists in the
@@ -255,6 +272,10 @@ export function ReaderScreen({
     const cancelInitial = loadPages();
     return () => {
       cancelInitial?.();
+      if (verticalPositionFrameRef.current !== null) {
+        window.cancelAnimationFrame(verticalPositionFrameRef.current);
+        verticalPositionFrameRef.current = null;
+      }
       requestAbortRef.current?.abort();
       requestAbortRef.current = null;
     };
@@ -262,8 +283,19 @@ export function ReaderScreen({
 
   useEffect(() => {
     if (!progressReady || !pages.length) return;
-    writeReaderProgress(progressStorageKey, { pageIndex, scrollRatio });
-  }, [pageIndex, scrollRatio, progressReady, pages.length, progressStorageKey]);
+    scheduleProgressSave();
+  }, [pageIndex, progressReady, pages.length, progressStorageKey, scheduleProgressSave]);
+
+  // Flush a pending write when a chapter is changed or the reader is exited.
+  useEffect(() => () => {
+    if (progressSaveTimerRef.current === null) return;
+    window.clearTimeout(progressSaveTimerRef.current);
+    progressSaveTimerRef.current = null;
+    writeReaderProgress(progressStorageKey, {
+      pageIndex: pageIndexRef.current,
+      scrollRatio: scrollRatioRef.current,
+    });
+  }, [progressStorageKey]);
 
   useEffect(() => {
     if (mode !== 'vertical' || !autoLoad || !sentinelRef.current || !scrollRef.current || visiblePageCount >= pages.length) return;
@@ -404,19 +436,46 @@ export function ReaderScreen({
     else onSeriesHome();
   };
   const rememberVerticalPosition = () => {
-    const root = scrollRef.current;
-    if (!root) return;
-    const available = Math.max(1, root.scrollHeight - root.clientHeight);
-    const nextRatio = Math.max(0, Math.min(1, root.scrollTop / available));
-    setScrollRatio(previous => Math.abs(previous - nextRatio) > 0.008 ? nextRatio : previous);
-    const images = Array.from(root.querySelectorAll<HTMLImageElement>('img[data-page-index]'));
-    const reference = root.getBoundingClientRect().top + root.clientHeight * 0.45;
-    let visibleIndex = 0;
-    for (const image of images) {
-      if (image.getBoundingClientRect().top <= reference) visibleIndex = Number(image.dataset.pageIndex || 0);
-      else break;
-    }
-    setPageIndex(visibleIndex);
+    // Coalesce scroll events into one measurement pass per display frame.
+    if (verticalPositionFrameRef.current !== null) return;
+    verticalPositionFrameRef.current = window.requestAnimationFrame(() => {
+      verticalPositionFrameRef.current = null;
+      const root = scrollRef.current;
+      if (!root) return;
+
+      const available = Math.max(1, root.scrollHeight - root.clientHeight);
+      const nextRatio = Math.max(0, Math.min(1, root.scrollTop / available));
+      if (Math.abs(scrollRatioRef.current - nextRatio) > 0.008) {
+        scrollRatioRef.current = nextRatio;
+        scheduleProgressSave();
+      }
+
+      // Binary-search page wrappers instead of measuring every mounted image on scroll.
+      const wrappers = root.querySelector('.reader-vertical-pages')?.children;
+      if (!wrappers?.length) return;
+      const reference = root.getBoundingClientRect().top + root.clientHeight * 0.45;
+      let low = 0;
+      let high = wrappers.length - 1;
+      let best = 0;
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        const wrapper = wrappers.item(middle) as HTMLElement | null;
+        if (!wrapper) break;
+        if (wrapper.getBoundingClientRect().top <= reference) {
+          best = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+      const currentWrapper = wrappers.item(best) as HTMLElement | null;
+      const visibleIndex = Number(currentWrapper?.dataset.pageIndex || 0);
+      if (visibleIndex !== pageIndexRef.current) {
+        pageIndexRef.current = visibleIndex;
+        setPageIndex(visibleIndex);
+        scheduleProgressSave();
+      }
+    });
   };
 
   const currentLabel = chapter.numberLabel ? 'Chapter ' + chapter.numberLabel : 'Chapter';
@@ -457,7 +516,7 @@ export function ReaderScreen({
       </>}
       {!loading && !loadError && pages.length > 0 && mode === 'vertical' && <>
         <div className="reader-vertical-pages">
-          {pages.slice(0, visiblePageCount).map((url, index) => <div className="reader-vertical-page" key={url + ':' + (retries[index] || 0)} style={{ marginBottom: gap + 'px' }}>
+          {pages.slice(0, visiblePageCount).map((url, index) => <div className="reader-vertical-page" data-page-index={index} key={url + ':' + (retries[index] || 0)} style={{ marginBottom: gap + 'px' }}>
             {pageFailed(index)
               ? <div className="reader-page-failed"><strong>Page {index + 1} couldn't load.</strong><button className="reader-primary-button" onClick={() => retryPage(index)}><RotateCcw size={14}/> Retry page</button></div>
               : <img data-page-index={index} src={url} alt={'Page ' + (index + 1)} loading={index < 3 || index === pageIndex ? 'eager' : 'lazy'} decoding="async" draggable={false} onError={() => markFailed(index)} />}
@@ -508,7 +567,7 @@ export function ReaderScreen({
             </div><p className="reader-control-help">This changes page turns and swipe direction, not the original artwork.</p></div>}
             {mode === 'vertical' && <><div className="reader-control-group"><div className="reader-control-label">Space between pages <strong>{gap}px</strong></div><input className="reader-range" type="range" min="0" max="32" step="2" value={gap} onChange={event => setGap(Number(event.target.value))}/></div><div className="reader-setting-toggle"><span><strong>Load pages automatically</strong><small>Bring in a few pages at a time as you read.</small></span><button className={'reader-toggle ' + (autoLoad ? 'on' : '')} onClick={() => setAutoLoad(value => !value)} role="switch" aria-checked={autoLoad}><i/></button></div></>}
             {mode === 'paged' && <div className="reader-control-group"><div className="reader-control-label">Page zoom <strong>{zoom}%</strong></div><input className="reader-range" type="range" min="70" max="130" step="5" value={zoom} onChange={event => setZoom(Number(event.target.value))}/><p className="reader-control-help"><ZoomIn size={13}/> Zoom applies to the current page view.</p></div>}
-            <div className="reader-control-group"><div className="reader-control-label">Page position</div><div className="reader-inline-action"><span>{pages.length ? 'Page ' + (pageIndex + 1) + ' of ' + pages.length : 'Page position will appear when loaded'}</span><button className="reader-text-button" onClick={() => { setPageIndex(0); setScrollRatio(0); if (scrollRef.current) scrollRef.current.scrollTop = 0; setPanel(null); }}>Return to start</button></div></div>
+            <div className="reader-control-group"><div className="reader-control-label">Page position</div><div className="reader-inline-action"><span>{pages.length ? 'Page ' + (pageIndex + 1) + ' of ' + pages.length : 'Page position will appear when loaded'}</span><button className="reader-text-button" onClick={() => { pageIndexRef.current = 0; scrollRatioRef.current = 0; setPageIndex(0); if (scrollRef.current) scrollRef.current.scrollTop = 0; scheduleProgressSave(); setPanel(null); }}>Return to start</button></div></div>
           </>}
           {panel === 'navigation' && <>
             <div className="reader-control-group"><div className="reader-control-label">Current chapter</div><div className="reader-current-chapter"><strong>{readableChapter(chapter)}</strong><small>{listing.title}</small></div></div>
