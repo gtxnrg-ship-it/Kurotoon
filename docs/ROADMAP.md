@@ -14,7 +14,7 @@
 - [ ] Run the native product flows against live sources on-device.
 - [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
 
-Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stable alias: `continuous-latest`. That release contains an arm64-v8a default APK, separate armeabi-v7a and x86_64 builds, and `SHA256SUMS.txt`. Verified voice-pack storage merged at `32acd832c55ec41fe5781e1639445e6938075bc0`; its APK rebuild is running, and the direct link will update after the next successful main build.
+Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stable alias: `continuous-latest`. This native Flutter APK includes managed cache enforcement and persisted provider-health/backoff. The release now contains an arm64-v8a default APK, separate armeabi-v7a and x86_64 builds, and `SHA256SUMS.txt`. The direct link always tracks the latest successful main-branch build.
 
 ## Progress dashboard
 
