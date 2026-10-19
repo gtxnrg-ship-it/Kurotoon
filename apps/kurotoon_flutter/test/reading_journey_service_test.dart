@@ -14,7 +14,6 @@ class _FakeProvider
   final String _id;
   int pageRequests = 0;
 
-  static const _series = WorkCandidateFactory();
   @override
   ProviderDescriptor get descriptor => ProviderDescriptor(
         id: _id,
@@ -116,10 +115,6 @@ class _FakeProvider
       ),
     );
   }
-}
-
-class WorkCandidateFactory {
-  const WorkCandidateFactory();
 }
 
 void main() {
@@ -259,10 +254,9 @@ void main() {
   });
 
   test('disabled providers cannot be used to load details or chapters', () async {
-    providerResponseDisable() => provider.descriptor.id;
     final candidate = (await journey.search('Blue Star')).candidates.single;
     final registry = journey.providers;
-    registry.setEnabled(providerResponseDisable(), false);
+    registry.setEnabled(provider.descriptor.id, false);
 
     await expectLater(
       journey.openSeries(candidate),
