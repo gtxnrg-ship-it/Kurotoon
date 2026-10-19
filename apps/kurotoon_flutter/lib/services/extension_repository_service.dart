@@ -74,17 +74,60 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     return index;
   }
 
+  Future<ExtensionRepositoryIndex> loadRepositoryIndex(String repositoryId) async {
+    final rows = await database.loadExtensionRepositories();
+    Map<String, Object?>? row;
+    for (final item in rows) {
+      if (item['id'] == repositoryId) {
+        row = item;
+        break;
+      }
+    }
+    if (row == null || row['index_url'] is! String) {
+      throw StateError('Repository is not installed.');
+    }
+    final uri = Uri.tryParse(row['index_url'] as String);
+    if (uri == null) throw const FormatException('Stored repository URL is invalid.');
+    final index = await refreshRepository(uri);
+    if (index.id != repositoryId) {
+      throw const FormatException('Repository identity changed. Remove and add the repository again after review.');
+    }
+    return index;
+  }
+
+  Future<String> installExtensionById({
+    required String repositoryId,
+    required String extensionId,
+  }) async {
+    final index = await loadRepositoryIndex(repositoryId);
+    ExtensionPackageEntry? selected;
+    for (final entry in index.extensions) {
+      if (entry.id == extensionId) {
+        selected = entry;
+        break;
+      }
+    }
+    if (selected == null) throw StateError('This extension is not listed in the selected repository.');
+    return _installDeclarativeExtension(entry: selected, repositoryId: repositoryId);
+  }
+
   Future<ExtensionRepositoryIndex> refreshRepository(Uri indexUri) async {
     final bytes = await _getBytes(indexUri, maxBytes: maxIndexBytes);
     final index = RepositoryIndexValidator(maxIndexBytes: maxIndexBytes).parse(
       body: utf8.decode(bytes, allowMalformed: false),
       indexUri: indexUri,
     );
+    final savedRepositories = await database.loadExtensionRepositories();
+    final registered = savedRepositories.any((row) =>
+        row['id'] == index.id && row['index_url'] == indexUri.toString());
+    if (!registered) {
+      throw const FormatException('Repository identity or URL does not match a saved repository.');
+    }
     await database.markRepositoryChecked(index.id, indexDigest: _sha256Of(bytes));
     return index;
   }
 
-  Future<String> installDeclarativeExtension({
+  Future<String> _installDeclarativeExtension({
     required ExtensionPackageEntry entry,
     required String repositoryId,
   }) async {
