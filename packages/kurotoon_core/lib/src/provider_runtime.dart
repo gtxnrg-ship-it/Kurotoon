@@ -220,7 +220,7 @@ class ProviderHealthTracker {
     return remaining > Duration.zero ? remaining : null;
   }
 
-  void record(String providerId, ProviderResponse<Object?> response) {
+  void record<T>(String providerId, ProviderResponse<T> response) {
     final record = _records.putIfAbsent(providerId, _ProviderHealthRecord.new);
     record.lastStatus = response.status;
     record.lastMessage = response.message;
