@@ -1,8 +1,8 @@
+# Kurotoon
+
 > **[⬇️ Download the latest Android APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)** · [All releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases) · [Build history](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml)
 
-# KuroToon 🌌
-
-**KuroToon is being built as a native Flutter/Dart app—not a website wrapped in Capacitor.** The default download is an `arm64-v8a` APK to avoid bundling unused CPU architectures. Older 32-bit ARM devices can use `Kurotoon-armeabi-v7a.apk`; x86-64 builds and SHA-256 checksums are included on the [latest release](https://github.com/gtxnrg-ship-it/Kurotoon/releases/tag/continuous-latest). This is a development build; install and test it on your device before relying on it.
+**Kurotoon is being built as a native Flutter/Dart app—not a website wrapped in Capacitor.** The default download is an `arm64-v8a` APK to avoid bundling unused CPU architectures. Older 32-bit ARM devices can use `Kurotoon-armeabi-v7a.apk`; x86-64 builds and SHA-256 checksums are included on the [latest release](https://github.com/gtxnrg-ship-it/Kurotoon/releases/tag/continuous-latest). This is a development build; install and test it on your device before relying on it.
 
 A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolving cosmic universe. The goal is a lightweight, polished reading app with a unified multi-source catalog, a durable user-owned library, safe repositories/extensions, and optional synchronized voice, audio, music and haptics.
 
@@ -11,7 +11,7 @@ A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolv
 ## 🚦 Project dashboard
 
 **Last roadmap checkpoint:** 19 October 2026  
-**Overall product estimate:** **~42%**  
+**Overall product estimate:** **~40% (weighted estimate: 39.75%)**  
 **Backend foundation estimate:** **~63–65%**
 
 These are engineering estimates based on the roadmap and implementation evidence—not code-line counts, automated coverage, or a claim that the product is almost finished. Backend models and safety policies count as foundation work; a feature is not considered complete until its real app flow is integrated and tested.
@@ -32,6 +32,25 @@ These are engineering estimates based on the roadmap and implementation evidence
 **How to read this:** the foundation is ahead of the end-user experience. A green CI run proves that the tested code builds and its automated tests pass; it does not prove real-source reliability, phone performance, or complete feature wiring.
 
 For the detailed acceptance checklist, see the [Roadmap](docs/ROADMAP.md).
+
+### How the headline percentage is calculated
+
+This is a weighted engineering estimate, not code-line count or test coverage. End-user flows intentionally carry more weight than foundational abstractions. A schema or policy class earns foundation credit but does not count as a complete feature until it is connected to its real user flow and verified.
+
+| Workstream | Weight | Current estimate | Weighted points |
+|---|---:|---:|---:|
+| Native build and release delivery | 5% | 90% | 4.50 |
+| Domain models and policies | 10% | 70% | 7.00 |
+| Provider runtime and live sources | 10% | 58% | 5.80 |
+| Persistence and extension safety | 10% | 62% | 6.20 |
+| Cross-source catalog integration | 15% | 45% | 6.75 |
+| Reader and library end-to-end | 30% | 20% | 6.00 |
+| Galaxy polish and accessibility | 10% | 25% | 2.50 |
+| Voice/music/haptics/particle runtime | 10% | 10% | 1.00 |
+| **Total** | **100%** | — | **39.75%** |
+
+So the defensible headline is **~40% complete**. Backend foundations are estimated at **~63–65%** because validation, persistent metadata and request handling are ahead of the real Reader/Library experience. The score should change only when implementation or acceptance evidence changes, not just when this document is edited.
+
 
 ## 🎯 Product direction
 
@@ -144,13 +163,16 @@ The checkbox means its acceptance gate is met—not merely that a class, screen 
 
 ### Android APK
 
-**[Download Kurotoon.apk](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)**
+**[Download the default arm64-v8a APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon.apk)**
 
-- The stable continuous-latest URL is intended to track the latest successful main-branch development build.
-- [Browse all releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases).
-- [Inspect Android build runs](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml).
-- If the direct link is temporarily unavailable, open the build history and select a successful run; workflow artifacts have limited retention.
-- Development APKs are for testing, not a claim of production-store signing or release readiness. Android may ask you to confirm installation from your chosen source.
+The default Android download is now about **19.4 MB**, compared with the prior 56.0 MB universal APK—roughly **65% smaller** by excluding native libraries for other CPU architectures.
+
+- [32-bit ARM APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon-armeabi-v7a.apk) — for compatible older ARM devices.
+- [x86-64 APK](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/Kurotoon-x86_64.apk) — for compatible Android emulators/devices.
+- [SHA-256 checksums](https://github.com/gtxnrg-ship-it/Kurotoon/releases/download/continuous-latest/SHA256SUMS.txt) — download beside the APK(s), keep all files in the same folder, then run `sha256sum -c SHA256SUMS.txt`.
+- [Browse numbered releases](https://github.com/gtxnrg-ship-it/Kurotoon/releases) or [inspect Android build runs](https://github.com/gtxnrg-ship-it/Kurotoon/actions/workflows/android-apk.yml).
+- The stable alias is updated only by the Android workflow on `main` after analysis, tests, ABI-specific compilation and checksum generation succeed. Numbered releases remain available for comparisons.
+- This is a development APK, not a store release or physical-device certification. Android may ask permission to install apps from your download source.
 
 ### Build locally
 
@@ -173,11 +195,31 @@ The shared Dart core lives in packages/kurotoon_core. Follow the CI workflows as
 5. Do not mark a feature verified without its stated acceptance evidence.
 6. Update this README and the roadmap when implementation status changes.
 
+## 🧰 Handoff contract for future agents
+
+Before significant changes, read the [Product vision](docs/PRODUCT_VISION.md), [Architecture](docs/ARCHITECTURE.md), [Decision log](docs/DECISIONS.md), [Roadmap](docs/ROADMAP.md), [Backend foundation](docs/DART_BACKEND_FOUNDATION.md), [Data foundation](docs/DATA_FOUNDATION.md) and [Extension repository contract](docs/EXTENSION_REPOSITORIES.md).
+
+- **Native app:** Flutter/Dart is the active app; do not replace it with a Capacitor/WebView wrapper.
+- **Navigation:** preserve **Home → Browser → Shop → Library → Me**. Reader is a separate route; repositories/extensions belong under Me/settings.
+- **Galaxy identity:** slow layered colour fields, stars and restrained particles. Contrast, readable comic pages, battery use, accessibility and low-end-device performance beat decorative effects.
+- **Catalog:** keep Work, Edition, ProviderListing, Chapter and ChapterListing separate. Never auto-merge by title alone; preserve provenance and support review/correction.
+- **Sources:** MangaDex remains user-disableable and must not become the global identity schema. Respect source terms, pacing, cancellation and response-size bounds.
+- **Extensions:** treat repo indexes/manifests as untrusted. Use constrained declarative JSON, explicit preview/confirm/install and no arbitrary downloaded-code execution or bulk installation.
+- **Storage:** keep user-owned library, settings, progress and pinned/offline content separate from cache. Every transient media producer should use the bounded transactional cache service.
+- **Optional effects:** voice/music/haptics/particles are opt-in and must not block reading; do not claim them complete until the native lifecycle is wired and tested.
+- **Performance:** 60 FPS on ordinary hardware is a target, not a measured claim. Profile low-end and mid-range physical devices; support reduced motion and disable motion in background.
+- **Product decisions:** Shop mechanics remain undefined; do not invent monetization, rewards or currencies.
+- **Validation:** add policy regression tests, migration/recovery tests for schema changes and real integration evidence for network/platform behaviour. CI green is not device acceptance.
+- **Status honesty:** update the roadmap after meaningful merges; distinguish code foundations from end-to-end functionality, and leave unverified acceptance gates open.
+
 ## 📖 Project documentation
 
 - [Roadmap and progress dashboard](docs/ROADMAP.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Product vision](docs/PRODUCT_VISION.md)
+- [Dart backend foundation](docs/DART_BACKEND_FOUNDATION.md)
+- [Local-first data foundation](docs/DATA_FOUNDATION.md)
+- [Extension repository contract](docs/EXTENSION_REPOSITORIES.md)
 - [Decision log](docs/DECISIONS.md)
 
 ---
