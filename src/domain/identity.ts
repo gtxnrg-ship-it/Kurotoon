@@ -80,7 +80,7 @@ export function assessWorkMatch(
     reasons.push('at least one creator identifier matches');
   }
 
-  confidence = Math.min(confidence, 0.95);
+  confidence = Math.min(Math.round(confidence * 100) / 100, 0.95);
   const autoMerge = primaryTitleMatches && creatorsOverlap && confidence >= 0.9;
   if (!reasons.length) reasons.push('no strong identity evidence');
   return { confidence, autoMerge, reasons };
