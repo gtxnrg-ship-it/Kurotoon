@@ -1,4 +1,4 @@
-package app.kurotoon.native.domain
+package app.kurotoon.android.domain
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
