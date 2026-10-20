@@ -3,6 +3,7 @@ import 'package:kurotoon_core/kurotoon_core.dart';
 
 import '../runtime.dart';
 import '../services/reading_journey_service.dart';
+import 'reader_page.dart';
 
 const _cyan = Color(0xFF6EE7F9);
 const _violet = Color(0xFF9D8CFF);
@@ -164,7 +165,13 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
         title: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
         subtitle: Text([if (chapter.volumeNumber != null) 'Vol. ' + chapter.volumeNumber.toString(), if (language.isNotEmpty) language, 'Chapter ' + (index + 1).toString() + ' in loaded list'].join(' · '), style: const TextStyle(color: Colors.white54, fontSize: 11)),
         trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
-        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('The reader is the next integration step; this chapter is now available in the catalog.'))),
+        onTap: () {
+          final workId = _workId;
+          if (workId == null) return;
+          Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => ReaderPage(runtime: widget.runtime, workId: workId, chapter: chapter),
+          ));
+        },
       ),
     );
   }
