@@ -5,6 +5,7 @@ import 'package:kurotoon_core/kurotoon_core.dart';
 
 import 'runtime.dart';
 import 'ui/library_page.dart';
+import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
 
 void main() {
@@ -493,7 +494,22 @@ class _MePageState extends State<_MePage> {
         const SizedBox(height: 22),
         const _InlineNotice(
           icon: Icons.extension_rounded,
-          text: 'Repository management and individual extension installation are implemented in the backend; their settings screens are still being connected.',
+          text: 'Review repositories, browse verified declarative extensions, and manage installed sources. Compiled extension APKs are not executed.',
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => RepositoryManagementPage(runtime: widget.runtime),
+            ),
+          ),
+          icon: const Icon(Icons.settings_input_component_rounded),
+          label: const Text('Manage repositories & extensions'),
+          style: FilledButton.styleFrom(
+            backgroundColor: _violet,
+            foregroundColor: const Color(0xFF080B18),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
         ),
       ],
     );
