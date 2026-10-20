@@ -37,8 +37,13 @@ class _ReaderPageState extends State<ReaderPage> {
       final resume = await service.loadResumeTarget(workId: widget.workId, editionId: widget.chapter.editionId);
       var page = resume != null && resume.chapter?.id == widget.chapter.id
           ? (resume.progress.fraction * urls.length).ceil() - 1 : 0;
-      if (page < 0) page = 0;
-      if (page >= urls.length) page = urls.length - 1;
+      // A source can return an empty manifest. Never pass a negative initial
+      // page to PageController while the empty-manifest recovery UI is shown.
+      if (urls.isEmpty) {
+        page = 0;
+      } else {
+        page = page.clamp(0, urls.length - 1);
+      }
       if (!mounted) return;
       _controller?.dispose();
       _controller = PageController(initialPage: page);
@@ -132,7 +137,7 @@ class _ReaderPageState extends State<ReaderPage> {
           Expanded(child: Column(children: [
             if (urls.isNotEmpty) LinearProgressIndicator(value: (_page + 1) / urls.length),
             const SizedBox(height: 5),
-            Text(urls.isEmpty ? 'Progress saved locally' : 'Page ' + (_page + 1).toString() + ' of ' + urls.length.toString(), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            Text(urls.isEmpty ? 'No pages available' : 'Page ' + (_page + 1).toString() + ' of ' + urls.length.toString(), style: const TextStyle(color: Colors.white54, fontSize: 11)),
           ])),
           IconButton.filledTonal(onPressed: () => _adjacent(1), icon: const Icon(Icons.skip_next_rounded)),
         ])),
