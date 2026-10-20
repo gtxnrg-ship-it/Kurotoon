@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
 
 import 'runtime.dart';
+import 'ui/library_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -150,12 +151,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
         subtitle: 'Your future home for themes, reading experiences and optional voice packs.',
         detail: 'The shop is not connected yet. No paid items or downloads are simulated.',
       ),
-      const _ComingSoonPage(
-        icon: Icons.bookmarks_rounded,
-        title: 'Your Library',
-        subtitle: 'Your collection belongs on your device.',
-        detail: 'Library persistence is in the backend. Library browsing and editing UI are next.',
-      ),
+      LibraryPage(runtime: widget.runtime),
       _MePage(runtime: widget.runtime),
     ];
     return Scaffold(
