@@ -36,7 +36,7 @@ class _ReaderPageState extends State<ReaderPage> {
       final urls = manifest.urls(dataSaver: _dataSaver);
       final resume = await service.loadResumeTarget(workId: widget.workId, editionId: widget.chapter.editionId);
       var page = resume != null && resume.chapter?.id == widget.chapter.id
-          ? (resume.progress.fraction * urls.length).floor() : 0;
+          ? (resume.progress.fraction * urls.length).ceil() - 1 : 0;
       if (page < 0) page = 0;
       if (page >= urls.length) page = urls.length - 1;
       if (!mounted) return;
@@ -57,7 +57,7 @@ class _ReaderPageState extends State<ReaderPage> {
         workId: widget.workId,
         editionId: widget.chapter.editionId,
         chapterId: widget.chapter.id,
-        fraction: ((page + 1) / count).clamp(0.0, 1.0),
+        fraction: ((page + 1) / count).clamp(0.0, 1.0).toDouble(),
         anchor: 'page:' + (page + 1).toString(),
       );
     } on Object {
