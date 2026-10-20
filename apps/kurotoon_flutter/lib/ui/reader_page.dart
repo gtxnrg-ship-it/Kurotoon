@@ -106,16 +106,27 @@ class _ReaderPageState extends State<ReaderPage> {
                 Text(_error!, textAlign: TextAlign.center),
                 const SizedBox(height: 12), FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('Retry')),
               ])))
-            : PageView.builder(
-                controller: _controller, itemCount: urls.length,
-                onPageChanged: (page) { setState(() => _page = page); _save(page, urls.length); },
-                itemBuilder: (context, index) => InteractiveViewer(
-                  minScale: 1, maxScale: 3,
-                  child: Center(child: Image.network(urls[index].toString(), fit: BoxFit.contain,
-                    loadingBuilder: (context, child, progress) => progress == null ? child : const CircularProgressIndicator(),
-                    errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, size: 48))),
-                ),
-              )),
+            : urls.isEmpty
+              ? Center(child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.menu_book_outlined, size: 46, color: Colors.white54),
+                    const SizedBox(height: 12),
+                    const Text('No readable pages were returned for this chapter.', textAlign: TextAlign.center),
+                    const SizedBox(height: 8),
+                    const Text('Your saved library and previous progress are unchanged.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('Reload chapter')),
+                  ]),
+                ))
+              : PageView.builder(
+                  controller: _controller, itemCount: urls.length,
+                  onPageChanged: (page) { setState(() => _page = page); _save(page, urls.length); },
+                  itemBuilder: (context, index) => InteractiveViewer(
+                    minScale: 1, maxScale: 3,
+                    child: Center(child: _ReaderImage(url: urls[index])),
+                  ),
+                )),
         Padding(padding: const EdgeInsets.all(12), child: Row(children: [
           IconButton.filledTonal(onPressed: () => _adjacent(-1), icon: const Icon(Icons.skip_previous_rounded)),
           Expanded(child: Column(children: [
@@ -126,6 +137,56 @@ class _ReaderPageState extends State<ReaderPage> {
           IconButton.filledTonal(onPressed: () => _adjacent(1), icon: const Icon(Icons.skip_next_rounded)),
         ])),
       ]),
+    );
+  }
+}
+
+
+class _ReaderImage extends StatefulWidget {
+  const _ReaderImage({required this.url});
+  final Uri url;
+
+  @override
+  State<_ReaderImage> createState() => _ReaderImageState();
+}
+
+class _ReaderImageState extends State<_ReaderImage> {
+  int _attempt = 0;
+  bool _failed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.broken_image_outlined, size: 48, color: Colors.white54),
+          const SizedBox(height: 8),
+          const Text('This page could not be loaded.', style: TextStyle(color: Colors.white70)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => setState(() { _failed = false; _attempt++; }),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry page'),
+          ),
+        ],
+      );
+    }
+    return Image.network(
+      widget.url.toString(),
+      key: ValueKey(_attempt),
+      fit: BoxFit.contain,
+      loadingBuilder: (context, child, progress) => progress == null
+          ? child
+          : const Center(child: CircularProgressIndicator()),
+      errorBuilder: (_, __, ___) {
+        if (!_failed) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_failed) setState(() => _failed = true);
+          });
+        }
+        return const Icon(Icons.broken_image_outlined, size: 48, color: Colors.white54);
+      },
     );
   }
 }
