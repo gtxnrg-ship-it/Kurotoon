@@ -137,7 +137,7 @@ class _LibraryPageState extends State<LibraryPage> {
           Text(progress == null ? 'No reading progress saved' : 'Saved progress: ' + (progress.fraction * 100).round().toString() + '% through chapter', style: const TextStyle(color: _cyan, fontSize: 11)),
           const SizedBox(height: 8),
           DropdownButtonFormField<LibraryStatus>(
-            value: book.record.status, isExpanded: true,
+            initialValue: book.record.status, isExpanded: true,
             decoration: const InputDecoration(labelText: 'Reading status', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
             items: LibraryStatus.values.map((s) => DropdownMenuItem(value: s, child: Text(_label(s), style: const TextStyle(fontSize: 12)))).toList(),
             onChanged: (s) { if (s != null && s != book.record.status) _setStatus(book, s); },
