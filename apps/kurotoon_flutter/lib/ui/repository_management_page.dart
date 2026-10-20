@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
 
 import '../runtime.dart';
-import '../storage/kurotoon_database.dart';
 
 const _repoCyan = Color(0xFF6EE7F9);
 const _repoViolet = Color(0xFF9D8CFF);
@@ -234,7 +233,7 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            _notice(Icons.warning_amber_rounded, _error!),
+            _notice(_error!),
           ],
           const SizedBox(height: 24),
           const Text('INSTALLED REPOSITORIES', style: TextStyle(color: _repoCyan, letterSpacing: 2, fontSize: 11, fontWeight: FontWeight.w900)),
