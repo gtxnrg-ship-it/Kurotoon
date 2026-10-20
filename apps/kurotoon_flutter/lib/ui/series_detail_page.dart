@@ -3,6 +3,7 @@ import 'package:kurotoon_core/kurotoon_core.dart';
 
 import '../runtime.dart';
 import '../services/reading_journey_service.dart';
+import '../storage/kurotoon_database.dart';
 import 'reader_page.dart';
 
 const _cyan = Color(0xFF6EE7F9);
