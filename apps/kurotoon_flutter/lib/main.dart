@@ -5,6 +5,7 @@ import 'package:kurotoon_core/kurotoon_core.dart';
 
 import 'runtime.dart';
 import 'ui/library_page.dart';
+import 'ui/series_detail_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -306,6 +307,14 @@ class _BrowserPageState extends State<_BrowserPage> {
     }
   }
 
+  Future<void> _openSeries(WorkCandidate candidate) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SeriesDetailPage(runtime: widget.runtime, candidate: candidate),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 130),
@@ -353,7 +362,7 @@ class _BrowserPageState extends State<_BrowserPage> {
               const _InlineNotice(icon: Icons.search_off_rounded, text: 'No results returned. Try another title or check the source connection.')
             else
               for (final candidate in _batch!.candidates) ...[
-                _SearchResultTile(candidate: candidate),
+                _SearchResultTile(candidate: candidate, onTap: () => _openSeries(candidate)),
                 const SizedBox(height: 10),
               ],
           ],
@@ -367,8 +376,9 @@ class _BrowserPageState extends State<_BrowserPage> {
 }
 
 class _SearchResultTile extends StatelessWidget {
-  const _SearchResultTile({required this.candidate});
+  const _SearchResultTile({required this.candidate, required this.onTap});
   final WorkCandidate candidate;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -418,9 +428,9 @@ class _SearchResultTile extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton.icon(
-                      onPressed: () {},
+                      onPressed: onTap,
                       icon: const Icon(Icons.open_in_new_rounded, size: 15),
-                      label: const Text('Details soon'),
+                      label: const Text('View details'),
                     ),
                   ),
                 ],
