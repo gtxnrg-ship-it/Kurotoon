@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../runtime.dart';
+import '../services/reading_journey_service.dart';
 import '../storage/kurotoon_database.dart';
 
 const _cyan = Color(0xFF6EE7F9);
@@ -23,6 +24,7 @@ class _LibraryPageState extends State<LibraryPage> {
   void initState() { super.initState(); _reload(); }
 
   Future<void> _reload() async {
+    if (!mounted) return;
     setState(() { _loading = true; _error = null; });
     try {
       final service = widget.runtime.readingJourney;
