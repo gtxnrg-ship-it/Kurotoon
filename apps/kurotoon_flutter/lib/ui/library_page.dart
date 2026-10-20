@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../runtime.dart';
 import '../services/reading_journey_service.dart';
 import '../storage/kurotoon_database.dart';
+import 'reader_page.dart';
 
 const _cyan = Color(0xFF6EE7F9);
 const _violet = Color(0xFF9D8CFF);
@@ -46,6 +47,52 @@ class _LibraryPageState extends State<LibraryPage> {
       await _reload();
     } on Object {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not update the reading status.')));
+    }
+  }
+
+  Future<void> _resume(LibraryBook book) async {
+    final edition = book.edition;
+    final service = widget.runtime.readingJourney;
+    if (edition == null || service == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This edition is not available for resume yet.')),
+      );
+      return;
+    }
+    try {
+      final target = await service.loadResumeTarget(
+        workId: book.record.workId,
+        editionId: edition.id,
+      );
+      if (!mounted) return;
+      if (target == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No saved reading position yet. Open a chapter first.')),
+        );
+        return;
+      }
+      if (!target.canResume || target.chapter == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(target.staleReason ?? 'Refresh this source before resuming.')),
+        );
+        return;
+      }
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => ReaderPage(
+            runtime: widget.runtime,
+            workId: book.record.workId,
+            chapter: target.chapter!,
+          ),
+        ),
+      );
+      if (mounted) await _reload();
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not restore this reading position. Refresh the source and try again.')),
+        );
+      }
     }
   }
 
@@ -135,6 +182,17 @@ class _LibraryPageState extends State<LibraryPage> {
           Text([if (entry != null) _format(entry.work.format.name), if (book.edition?.languageCode != null) book.edition!.languageCode!.toUpperCase()].join(' · '), style: const TextStyle(color: Colors.white54, fontSize: 11)),
           const SizedBox(height: 8),
           Text(progress == null ? 'No reading progress saved' : 'Saved progress: ' + (progress.fraction * 100).round().toString() + '% through chapter', style: const TextStyle(color: _cyan, fontSize: 11)),
+          if (progress != null) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                onPressed: () => _resume(book),
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: const Text('Resume reading'),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           DropdownButtonFormField<LibraryStatus>(
             initialValue: book.record.status, isExpanded: true,
