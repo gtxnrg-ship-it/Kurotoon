@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
 
 import 'runtime.dart';
+import 'services/catalog_workflow_service.dart';
 import 'ui/library_page.dart';
 import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
@@ -303,7 +304,7 @@ class _BrowserPage extends StatefulWidget {
 
 class _BrowserPageState extends State<_BrowserPage> {
   final _controller = TextEditingController();
-  SearchBatch? _batch;
+  CatalogSearchOutcome? _outcome;
   bool _loading = false;
   String? _error;
 
@@ -320,18 +321,51 @@ class _BrowserPageState extends State<_BrowserPage> {
     setState(() {
       _loading = true;
       _error = null;
-      _batch = null;
+      _outcome = null;
     });
     try {
-      final batch = await widget.runtime.createSearchCoordinator().search(query);
+      final workflow = widget.runtime.catalogWorkflow;
+      if (workflow == null) throw StateError('Persistent catalog storage is unavailable.');
+      final outcome = await workflow.searchAndCatalog(query);
       if (!mounted) return;
-      setState(() => _batch = batch);
+      setState(() => _outcome = outcome);
     } catch (_) {
       if (!mounted) return;
       setState(() => _error = 'Search could not complete. Check your connection and try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  WorkCandidate _candidateForEntry(CatalogEntry entry) {
+    if (entry.listings.isEmpty) throw StateError('Catalog entry has no source listings.');
+    final candidates = entry.listings.toList();
+    candidates.sort((left, right) {
+      int priority(WorkCandidate candidate) {
+        final providers = widget.runtime.providers.all.where((item) => item.descriptor.id == candidate.providerId);
+        if (providers.isEmpty) return 0;
+        final provider = providers.first;
+        final enabled = widget.runtime.providers.isEnabled(candidate.providerId);
+        final chapters = provider.descriptor.supports(ProviderCapability.chapters);
+        return (enabled ? 2 : 0) + (chapters ? 1 : 0);
+      }
+      return priority(right).compareTo(priority(left));
+    });
+    final source = candidates.first;
+    return WorkCandidate(
+      providerId: source.providerId,
+      externalId: source.externalId,
+      title: entry.work.title,
+      providerUrl: source.providerUrl,
+      alternateTitles: entry.work.alternateTitles,
+      creatorNames: entry.work.creatorNames,
+      year: entry.work.year,
+      format: entry.work.format,
+      language: source.language,
+      description: source.description,
+      coverUrl: source.coverUrl,
+      tags: source.tags,
+    );
   }
 
   Future<void> _openSeries(WorkCandidate candidate) async {
@@ -379,21 +413,30 @@ class _BrowserPageState extends State<_BrowserPage> {
           const SizedBox(height: 18),
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           if (_error != null) _InlineNotice(icon: Icons.wifi_off_rounded, text: _error!),
-          if (_batch != null) ...[
+          if (_outcome != null) ...[
             _SectionHeading(
-              title: _batch!.candidates.length.toString() + ' results',
-              subtitle: _batch!.hasPartialFailures ? 'Some sources did not respond.' : 'Results from connected sources',
+              title: _outcome!.entries.length.toString() + ' unified results',
+              subtitle: _outcome!.batch.hasPartialFailures
+                  ? 'Some sources did not respond. Results are merged where identity matching is safe.'
+                  : 'Duplicate listings are grouped into one series; source alternatives stay attached.',
             ),
             const SizedBox(height: 12),
-            if (_batch!.candidates.isEmpty)
+            if (_outcome!.entries.isEmpty)
               const _InlineNotice(icon: Icons.search_off_rounded, text: 'No results returned. Try another title or check the source connection.')
             else
-              for (final candidate in _batch!.candidates) ...[
-                _SearchResultTile(candidate: candidate, onTap: () => _openSeries(candidate)),
+              for (final entry in _outcome!.entries) ...[
+                _SearchResultTile(
+                  candidate: _candidateForEntry(entry),
+                  sourceLabels: entry.providerIds.map((id) {
+                    final providers = widget.runtime.providers.all.where((provider) => provider.descriptor.id == id);
+                    return providers.isEmpty ? id : providers.first.descriptor.name;
+                  }).toList(growable: false),
+                  onTap: () => _openSeries(_candidateForEntry(entry)),
+                ),
                 const SizedBox(height: 10),
               ],
           ],
-          if (!_loading && _batch == null && _error == null)
+          if (!_loading && _outcome == null && _error == null)
             const _InlineNotice(
               icon: Icons.public_rounded,
               text: 'Search uses live provider APIs. Results depend on source availability; Kurotoon does not host comic content.',
@@ -403,8 +446,13 @@ class _BrowserPageState extends State<_BrowserPage> {
 }
 
 class _SearchResultTile extends StatelessWidget {
-  const _SearchResultTile({required this.candidate, required this.onTap});
+  const _SearchResultTile({
+    required this.candidate,
+    required this.sourceLabels,
+    required this.onTap,
+  });
   final WorkCandidate candidate;
+  final List<String> sourceLabels;
   final VoidCallback onTap;
 
   @override
@@ -450,8 +498,14 @@ class _SearchResultTile extends StatelessWidget {
                         style: const TextStyle(color: _cyan, fontSize: 11)),
                   ],
                   const SizedBox(height: 10),
-                  Text(candidate.providerId.toUpperCase(),
-                      style: const TextStyle(letterSpacing: 1.1, color: _violet, fontSize: 10, fontWeight: FontWeight.bold)),
+                  Text(
+                    sourceLabels.length == 1
+                        ? '1 SOURCE · ${sourceLabels.first}'
+                        : '${sourceLabels.length} SOURCES · ${sourceLabels.take(3).join(' · ')}${sourceLabels.length > 3 ? ' · +' + (sourceLabels.length - 3).toString() : ''}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(letterSpacing: .5, color: _violet, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton.icon(
