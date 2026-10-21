@@ -674,6 +674,7 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       )) {
         return null;
       }
+      final temporaryExistedBeforeRecovery = await File(temporaryPath).exists();
       if (!await _removeTemporaryManifestIfSafe(
         extensionId: journal.extensionId,
         targetPath: targetPath,
@@ -685,8 +686,7 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       final normalizedTarget = _normalizePath(targetPath);
       final committed = installed?['install_path'] is String &&
           _normalizePath(installed!['install_path'] as String) == normalizedTarget;
-      var tempRemoved = 0;
-      if (await File(temporaryPath).exists()) tempRemoved = 1;
+      final tempRemoved = temporaryExistedBeforeRecovery ? 1 : 0;
 
       if (committed) {
         final target = File(targetPath);
