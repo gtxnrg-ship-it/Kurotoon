@@ -572,6 +572,10 @@ class _BrowserPageState extends State<_BrowserPage> {
   String? _languageFilter;
   String _lastSubmittedQuery = '';
   List<String> _recentQueries = const [];
+  bool _creatorMode = false;
+  bool _creatorSearchPerformed = false;
+  String _lastCreatorQuery = '';
+  List<CreatorProfile> _creatorResults = const [];
 
   @override
   void initState() {
@@ -649,6 +653,10 @@ class _BrowserPageState extends State<_BrowserPage> {
   }
 
   Future<void> _search() async {
+    if (_creatorMode) {
+      await _searchCreators();
+      return;
+    }
     final query = _controller.text.trim();
     if (query.isEmpty || _loading) return;
     FocusScope.of(context).unfocus();
@@ -682,6 +690,59 @@ class _BrowserPageState extends State<_BrowserPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _switchBrowserMode(bool creators) async {
+    if (_loading || creators == _creatorMode) return;
+    setState(() {
+      _creatorMode = creators;
+      _creatorSearchPerformed = false;
+      _lastCreatorQuery = '';
+      _creatorResults = const [];
+      _outcome = null;
+      _error = null;
+      _lastSubmittedQuery = '';
+      _formatFilter = null;
+      _sourceFilter = null;
+      _languageFilter = null;
+    });
+    // Creator lookup is local-only, so it can be run immediately for an existing query.
+    if (creators && _controller.text.trim().isNotEmpty) await _searchCreators();
+  }
+
+  Future<void> _searchCreators() async {
+    final query = _controller.text.trim();
+    if (query.isEmpty || _loading) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loading = true;
+      _error = null;
+      _creatorSearchPerformed = true;
+      _lastCreatorQuery = query;
+      _creatorResults = const [];
+      _outcome = null;
+    });
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local creator catalog unavailable.');
+      // Creator discovery queries only the bounded local index; it never calls a network provider.
+      final creators = await database.searchCreatorProfiles(query, limit: 50);
+      if (!mounted) return;
+      setState(() => _creatorResults = creators);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _error = 'Local creator lookup could not complete. Check local storage and retry.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openCreator(CreatorProfile creator) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _CreatorDetailPage(runtime: widget.runtime, creator: creator),
+      ),
+    );
   }
 
   WorkCandidate _candidateForEntry(CatalogEntry entry) {
