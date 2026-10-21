@@ -1018,10 +1018,10 @@ WorkCandidate _candidateForCatalogEntry(CatalogEntry entry, KurotoonRuntime runt
     final candidates = entry.listings.toList();
     candidates.sort((left, right) {
       int priority(WorkCandidate candidate) {
-        final providers = widget.runtime.providers.all.where((item) => item.descriptor.id == candidate.providerId);
+        final providers = runtime.providers.all.where((item) => item.descriptor.id == candidate.providerId);
         if (providers.isEmpty) return 0;
         final provider = providers.first;
-        final enabled = widget.runtime.providers.isEnabled(candidate.providerId);
+        final enabled = runtime.providers.isEnabled(candidate.providerId);
         final chapters = provider is ChapterFeedProvider &&
             provider.descriptor.supports(ProviderCapability.chapters);
         final pages = provider is ReaderPagesProvider &&
