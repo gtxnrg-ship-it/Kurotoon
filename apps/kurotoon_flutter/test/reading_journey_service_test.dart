@@ -155,6 +155,15 @@ void main() {
     await temp.delete(recursive: true);
   });
 
+  test('preferred edition language normalization preserves codes and falls back safely', () {
+    expect(preferredSeriesLanguageCode('ja'), 'ja');
+    expect(preferredSeriesLanguageCode(' PT-br '), 'pt-br');
+    expect(preferredSeriesLanguageCode(null), 'en');
+    expect(preferredSeriesLanguageCode('   '), 'en');
+    expect(preferredSeriesLanguageCode('Japanese'), 'en');
+    expect(() => preferredSeriesLanguageCode('ja', fallback: 'Japanese'), throwsArgumentError);
+  });
+
   test('search, series identity, chapter pagination, fresh pages and progress resume connect', () async {
     final search = await journey.search('Blue Star');
     expect(search.candidates, hasLength(1));
