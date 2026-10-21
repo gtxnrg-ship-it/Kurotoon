@@ -94,7 +94,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         price: item.price,
         useGold: item.currency == CollectibleCurrency.gold,
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       if (result == ShopPurchaseStatus.insufficientFunds) {
         _showMessage('Not enough ${item.currency == CollectibleCurrency.gold ? 'gold' : 'silver'} coins yet. Keep exploring to earn more!');
         return false;
