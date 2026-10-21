@@ -24,6 +24,7 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 - Library membership, reading state and progress remain local.
 - Search matches saved titles, alternate titles, creators and edition metadata without making network requests.
 - Status filters and persisted sort choices work together with local search.
+- Manual ordering is available when the full library is shown; filtered, collection-scoped, or searched views cannot save partial order. The database transaction rejects stale identities and duplicates without changing the prior ordering.
 - Custom collections are stored in SQLite with a versioned schema migration; collection names are normalized and unique, memberships are idempotent, and users can create/select/delete a collection or add/remove one saved edition without making network requests.
 - Deleting a collection removes only its membership organization; deleting a saved library entry cleans its memberships but does not erase separate reading progress.
 - Empty-library, empty-collection, no-status-match, no-search-match and storage-error states are distinguished.
