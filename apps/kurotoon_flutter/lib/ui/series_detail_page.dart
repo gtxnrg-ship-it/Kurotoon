@@ -129,7 +129,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
           warnings.add('${providerId}: chapter feed unavailable (${error.runtimeType})');
         }
       }
-      final merged = _mergeChapters(reset ? const <ChapterUnit>[] : _chapters, fetched);
+      final merged = _mergeChapterVariants(reset ? const <ChapterUnit>[] : _chapters, fetched);
       if (!mounted) return;
       setState(() {
         _chapters = merged;
@@ -159,55 +159,33 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
     }
   }
 
-  List<ChapterUnit> _mergeChapters(
+  List<ChapterUnit> _mergeChapterVariants(
     Iterable<ChapterUnit> existing,
     Iterable<ChapterUnit> incoming,
   ) {
-    final merged = <String, ChapterUnit>{};
-    String identity(ChapterUnit chapter) {
-      final language = (chapter.listings.isEmpty ? 'und' : (chapter.listings.first.languageCode ?? 'und')).toLowerCase();
-      final number = chapter.chapterNumber;
-      final volume = chapter.volumeNumber?.toString() ?? '-';
-      final title = WorkIdentityMatcher.normalizeTitle(chapter.title ?? '');
-      final base = number != null
-          ? 'number:$number:volume:$volume'
-          : 'title:${title.isNotEmpty ? title : chapter.miniGroupId ?? chapter.id}';
-      final mini = chapter.kind == ChapterKind.miniChapter ? ':mini:${chapter.miniIndex ?? 0}' : '';
-      return '$language:${chapter.kind}:$base$mini';
-    }
-
+    // Keep the source-specific ChapterUnit intact. A synthetic chapter that
+    // combines edition IDs would break resume and previous/next navigation.
+    final unique = <String, ChapterUnit>{};
     for (final chapter in [...existing, ...incoming]) {
-      final key = identity(chapter);
-      final prior = merged[key];
-      if (prior == null) {
-        merged[key] = chapter;
-        continue;
-      }
-      final listings = <String, ChapterListing>{
-        for (final listing in prior.listings) listing.key: listing,
-        for (final listing in chapter.listings) listing.key: listing,
-      };
-      merged[key] = ChapterUnit(
-        id: prior.id,
-        editionId: prior.editionId,
-        title: prior.title ?? chapter.title,
-        chapterNumber: prior.chapterNumber ?? chapter.chapterNumber,
-        volumeNumber: prior.volumeNumber ?? chapter.volumeNumber,
-        kind: prior.kind,
-        miniGroupId: prior.miniGroupId ?? chapter.miniGroupId,
-        miniIndex: prior.miniIndex ?? chapter.miniIndex,
-        miniCount: prior.miniCount ?? chapter.miniCount,
-        listings: listings.values.toList(growable: false),
-      );
+      final key = chapter.listings.isEmpty
+          ? '${chapter.editionId}:${chapter.id}'
+          : chapter.listings.map((listing) => listing.key).join('|');
+      unique.putIfAbsent(key, () => chapter);
     }
-    final result = merged.values.toList()
+    final result = unique.values.toList()
       ..sort((left, right) {
         final a = left.chapterNumber;
         final b = right.chapterNumber;
         if (a == null && b != null) return 1;
         if (a != null && b == null) return -1;
         if (a != null && b != null && a != b) return b.compareTo(a);
-        return (left.title ?? '').compareTo(right.title ?? '');
+        final languageA = left.listings.isEmpty ? '' : (left.listings.first.languageCode ?? '');
+        final languageB = right.listings.isEmpty ? '' : (right.listings.first.languageCode ?? '');
+        final languageOrder = languageA.compareTo(languageB);
+        if (languageOrder != 0) return languageOrder;
+        final sourceA = left.listings.isEmpty ? '' : left.listings.first.providerId;
+        final sourceB = right.listings.isEmpty ? '' : right.listings.first.providerId;
+        return sourceA.compareTo(sourceB);
       });
     return List.unmodifiable(result);
   }
@@ -232,6 +210,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
   @override
   Widget build(BuildContext context) {
     final candidate = widget.candidate;
+    final chapterGroups = const UnifiedChapterGrouping().group(_chapters);
     return Scaffold(
       backgroundColor: const Color(0xFF080B18),
       appBar: AppBar(title: const Text('Series details'), backgroundColor: const Color(0xFF0B1020)),
@@ -268,7 +247,10 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
           const SizedBox(height: 26),
           const Text('CHAPTERS', style: TextStyle(letterSpacing: 2.5, color: _cyan, fontSize: 12, fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
-          Text(_chapters.isEmpty && _loadingChapters ? 'Finding available chapters…' : _chapters.length.toString() + ' chapters loaded', style: const TextStyle(color: Colors.white60, fontSize: 12)),
+          Text(_chapters.isEmpty && _loadingChapters
+              ? 'Finding available chapters…'
+              : '${chapterGroups.length} unified chapters · ${_chapters.length} source releases',
+              style: const TextStyle(color: Colors.white60, fontSize: 12)),
           const SizedBox(height: 10),
           if (_chapters.isEmpty && !_loadingChapters && _chapterError == null)
             _notice(Icons.menu_book_rounded, 'No chapters loaded yet', 'Try refreshing the chapter list. Some sources may not provide chapter feeds.'),
@@ -276,7 +258,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
             _notice(Icons.wifi_off_rounded, 'Chapter feed unavailable', _chapterError!),
             Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => _loadChapters(reset: _chapters.isEmpty), icon: const Icon(Icons.refresh), label: const Text('Retry chapters'))),
           ],
-          for (final chapter in _chapters) ...[_chapterTile(chapter), const SizedBox(height: 8)],
+          for (final group in chapterGroups) ...[_chapterTile(group), const SizedBox(height: 8)],
           if (_loadingChapters) const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator())),
           if (!_loadingChapters && _nextOffset != null) OutlinedButton.icon(onPressed: () => _loadChapters(), icon: const Icon(Icons.expand_more_rounded), label: const Text('Load more chapters')),
           if (!_loadingChapters && _chapters.isNotEmpty) Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => _loadChapters(reset: true), icon: const Icon(Icons.refresh), label: const Text('Refresh chapters'))),
@@ -285,14 +267,17 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
     );
   }
 
-  Widget _chapterTile(ChapterUnit chapter) {
+  Widget _chapterTile(UnifiedChapterGroup group) {
+    final chapter = group.representative;
     final number = chapter.chapterNumber;
-    final label = chapter.title ?? (number == null ? 'Special chapter' : 'Chapter ' + (number == number.roundToDouble() ? number.toInt().toString() : number.toString()));
+    final label = chapter.title ?? (number == null
+        ? 'Special chapter'
+        : 'Chapter ' + (number == number.roundToDouble() ? number.toInt().toString() : number.toString()));
     final language = chapter.listings.map((item) => item.languageCode).whereType<String>().toSet().join(', ');
-    final sourceNames = chapter.listings.map((item) {
-      final providers = widget.runtime.providers.all.where((provider) => provider.descriptor.id == item.providerId);
-      return providers.isEmpty ? item.providerId : providers.first.descriptor.name;
-    }).toSet().toList(growable: false);
+    final sourceNames = group.providerIds.map((id) {
+      final providers = widget.runtime.providers.all.where((provider) => provider.descriptor.id == id);
+      return providers.isEmpty ? id : providers.first.descriptor.name;
+    }).toList(growable: false);
     return Container(
       decoration: BoxDecoration(color: Colors.white.withValues(alpha: .045), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withValues(alpha: .06))),
       child: ListTile(
@@ -301,18 +286,62 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
         subtitle: Text([
           if (chapter.volumeNumber != null) 'Vol. ' + chapter.volumeNumber.toString(),
           if (language.isNotEmpty) language,
-          if (sourceNames.length > 1) '${sourceNames.length} sources merged' else if (sourceNames.isNotEmpty) sourceNames.first,
+          if (sourceNames.length > 1) '${sourceNames.length} sources · choose on open'
+          else if (sourceNames.isNotEmpty) sourceNames.first,
         ].join(' · '), style: const TextStyle(color: Colors.white54, fontSize: 11)),
         trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
-        onTap: () {
-          final workId = _workId;
-          if (workId == null) return;
-          Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => ReaderPage(runtime: widget.runtime, workId: workId, chapter: chapter),
-          ));
-        },
+        onTap: () => _openUnifiedChapter(group),
       ),
     );
+  }
+
+  Future<void> _openUnifiedChapter(UnifiedChapterGroup group) async {
+    final workId = _workId;
+    if (workId == null) return;
+    var chapter = group.representative;
+    if (group.chapters.length > 1) {
+      final chosen = await showDialog<ChapterUnit>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Choose a chapter source'),
+          content: SizedBox(
+            width: 420,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final variant in group.chapters)
+                  ListTile(
+                    leading: const Icon(Icons.public_rounded),
+                    title: Text(_sourceNameForChapter(variant)),
+                    subtitle: Text([
+                      if (variant.listings.isNotEmpty && variant.listings.first.languageCode != null)
+                        variant.listings.first.languageCode!,
+                      if (variant.listings.isNotEmpty && variant.listings.first.releaseGroup != null)
+                        variant.listings.first.releaseGroup!,
+                    ].join(' · ')),
+                    onTap: () => Navigator.of(context).pop(variant),
+                  ),
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel'))],
+        ),
+      );
+      if (chosen == null || !mounted) return;
+      chapter = chosen;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ReaderPage(runtime: widget.runtime, workId: workId, chapter: chapter),
+      ),
+    );
+  }
+
+  String _sourceNameForChapter(ChapterUnit chapter) {
+    if (chapter.listings.isEmpty) return 'Unknown source';
+    final id = chapter.listings.first.providerId;
+    final providers = widget.runtime.providers.all.where((provider) => provider.descriptor.id == id);
+    return providers.isEmpty ? id : providers.first.descriptor.name;
   }
 
   Widget _notice(IconData icon, String title, String message) => Container(
