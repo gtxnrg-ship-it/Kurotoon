@@ -289,8 +289,25 @@ class _CollectibleDialogState extends State<_CollectibleDialog> with SingleTicke
       Text('Unique ID: ${item.id}',style:const TextStyle(color:Colors.white30,fontSize:9)),
     ])));
   }
-  Offset _motion(CollectibleAnimation animation,double t)=>switch(animation){CollectibleAnimation.bounce=>Offset(0,-10*math.sin(t*math.pi)),CollectibleAnimation.shake=>Offset(math.sin(t*math.pi*8)*4,0),CollectibleAnimation.float=>Offset(0,7*math.sin(t*math.pi*2)),CollectibleAnimation.orbit=>Offset(5*math.sin(t*math.pi*2),5*math.cos(t*math.pi*2)),_=>Offset.zero};
-  double _scale(CollectibleAnimation animation,double t)=>switch(animation){CollectibleAnimation.pulse=>.06*math.sin(t*math.pi),CollectibleAnimation.bounce=>.035*math.sin(t*math.pi),_=>0};
+  Offset _motion(CollectibleAnimation animation,double t)=>switch(animation){
+    CollectibleAnimation.bounce=>Offset(0,-10*math.sin(t*math.pi)),
+    CollectibleAnimation.shake=>Offset(math.sin(t*math.pi*8)*4,0),
+    CollectibleAnimation.float=>Offset(0,7*math.sin(t*math.pi*2)),
+    CollectibleAnimation.orbit=>Offset(5*math.sin(t*math.pi*2),5*math.cos(t*math.pi*2)),
+    CollectibleAnimation.hearts=>Offset(0,-3-4*math.sin(t*math.pi*2)),
+    CollectibleAnimation.tears=>Offset(0,2*math.sin(t*math.pi*2)),
+    CollectibleAnimation.sparkle=>Offset(0,2*math.sin(t*math.pi*4)),
+    CollectibleAnimation.confetti=>Offset(2*math.sin(t*math.pi*4),-3*math.sin(t*math.pi*2)),
+    CollectibleAnimation.pulse=>Offset.zero,
+  };
+  double _scale(CollectibleAnimation animation,double t)=>switch(animation){
+    CollectibleAnimation.pulse=>.06*math.sin(t*math.pi),
+    CollectibleAnimation.bounce=>.035*math.sin(t*math.pi),
+    CollectibleAnimation.sparkle=>.025*math.sin(t*math.pi*4),
+    CollectibleAnimation.hearts=>.035*math.sin(t*math.pi*2),
+    CollectibleAnimation.confetti=>.018*math.sin(t*math.pi*4),
+    _=>0,
+  };
   Widget _tag(String text,Color color)=>Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:5),decoration:BoxDecoration(color:color.withValues(alpha:.12),borderRadius:BorderRadius.circular(99),border:Border.all(color:color.withValues(alpha:.35))),child:Text(text,style:TextStyle(color:color,fontSize:10,fontWeight:FontWeight.w800)));
 }
 
