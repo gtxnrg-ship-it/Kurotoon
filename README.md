@@ -10,9 +10,9 @@ A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolv
 
 ## 🚦 Project dashboard
 
-**Last roadmap checkpoint:** 19 October 2026  
-**Overall product estimate:** **~43%**  
-**Backend foundation estimate:** **~66–68%**
+**Last roadmap checkpoint:** 21 October 2026  
+**Overall product estimate:** **~49%**  
+**Backend foundation estimate:** **~71%**
 
 These are engineering estimates based on the roadmap and implementation evidence—not code-line counts, automated coverage, or a claim that the product is almost finished. Backend models and safety policies count as foundation work; a feature is not considered complete until its real app flow is integrated and tested.
 
@@ -20,12 +20,12 @@ These are engineering estimates based on the roadmap and implementation evidence
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter/Dart app, analysis/tests, release APK workflow | Physical-device install, smoke tests, release/signing policy |
 | Dart domain and policy core | 70% | Typed catalog/provider models, identity matching, cancellation, progress and effect/voice policies | More adversarial tests and full end-to-end consumers |
-| Persistence and cache safety | 65% | SQLite schema/migrations, enforced cache budgets, pinned-content protection, rollback tests, persisted provider-health snapshots and verified voice-pack install records | Verify complete CRUD integration, crash recovery and physical-device storage behaviour |
-| Providers | 58% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns and upstream `Retry-After` handling | Device verification, provider-specific policies, diagnostics UI and more adapters |
-| Repository/extension foundation | 65% | Repository/manifest validation, preview-before-add, hash/size checks, persistent records | Full repository UI, install/update/remove recovery and compatibility proof |
-| Cross-source catalog | 45% | Work/edition/listing concepts, conservative matching and grouping policies | Persisted merge pipeline, undo/corrections, artist pages and real fixtures |
-| Native reader and library | 20% | Domain/persistence foundation and earlier prototype evidence | Flutter-native chapter reader, page loading, progress resume, full library UI |
-| Galaxy and adaptive performance | 25% | Initial animated native shell and effect-budget policy | Lifecycle/reduced-motion hardening and real device profiling |
+| Persistence and cache safety | 70% | SQLite schema/migrations, enforced cache budgets, pinned-content protection, rollback tests, persisted provider-health snapshots, local library/progress CRUD and verified voice-pack install records | Migration fixtures, interrupted-write recovery and physical-device storage behaviour |
+| Providers | 65% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns, upstream `Retry-After` handling and a local source-diagnostics screen | Live-source/device validation, provider-specific request policies and more tested adapters |
+| Repository/extension foundation | 72% | Me → Extensions & repositories UI, preview/add/refresh/remove flows, JSON and bounded Mihon/Tachiyomi metadata previews, declarative install records | Update/rollback recovery, broader conformance fixtures and a real compatibility proof before compiled extensions are supported |
+| Cross-source catalog | 48% | Persisted work/edition/listing records, conservative identity matching, a search-indexed catalog and chapter variants | User corrections/undo, creator pages, richer translation-aware merging and real multi-source fixtures |
+| Native reader and library | 55% | Flutter reader flow, paged and long-strip layouts, page retry, progress resume, RTL/LTR preference, Continue Reading, library status CRUD and sorting | Real-device/live-source validation, bounded image loading, advanced fit/brightness controls, collections and reliability under long sessions |
+| Galaxy and adaptive performance | 28% | Animated native Galaxy shell, persistent motion preference and a manual motion-off option | Lifecycle/reduced-motion integration, adaptive quality and real device profiling |
 | Voice, music, haptics and particle runtime | 18% | Reader-timeline/policy foundation plus verified voice-pack storage, offline reuse and safe uninstall | Voice-pack UI/playback, music discovery, native haptics, particle controls and device tests |
 | Other platform releases | 10% | Shared Dart core intended to be portable | iOS/iPadOS/Windows/Linux host integration and validation |
 
@@ -72,7 +72,7 @@ The cosmic environment should feel like a coherent, endless universe—not a gen
 
 The intended end-to-end flow is **search → series → chapters → read → save progress → resume**.
 
-The reader must support reliable chapter navigation, paged and long-strip/webtoon layouts, safe image loading, bounded preloading, retry/recovery, reading direction, accessible controls and progress restoration. The Flutter-native reader is still a major implementation gate.
+The reader must support reliable chapter navigation, paged and long-strip/webtoon layouts, safe image loading, bounded preloading, retry/recovery, reading direction, accessible controls and progress restoration. A basic Flutter-native reader is implemented and CI-tested: series → chapter list → paged/long-strip reading, retry, progress save/resume, adjacent-chapter navigation, data saver and persistent RTL/LTR direction. The local Library supports status changes and sorting, and Home surfaces recent reading. Live-source and physical-device acceptance, image-resource limits and advanced reader controls remain open gates.
 
 Catalog rules:
 
@@ -90,7 +90,7 @@ MangaDex remains an additive, disableable provider—not the entire product. Add
 
 The target experience is repository → extension → source management, familiar to users of extension-based readers, with a KuroToon-native UI and safety model.
 
-The repository manager can discover the compatible starter index from this repository URL or README: [KuroToon Official Starter Repository](catalog/official/index.json). This starter currently provides metadata search only; it is not a chapter-reading source.
+The repository manager can discover the compatible starter index from this repository URL or README: [KuroToon Official Starter Repository](catalog/official/index.json). The starter currently provides metadata search only; it is not a chapter-reading source. The native Me → Extensions & repositories screen also previews/refreshes/removes compatible catalogs and includes bounded Mihon/Tachiyomi metadata previews. Compiled APK/JAR entries remain metadata-only and are not executed.
 
 Planned user flow:
 
@@ -104,13 +104,13 @@ Safety requirements include strict URL and redirect validation, bounded download
 
 ## 💾 Backend, data and storage
 
-The architecture is local-first by default. Keep durable user data separate from disposable cache.
+The architecture is local-first by default. Keep durable user data separate from disposable cache. The current Library has durable add/remove/status flows and persistent sort preferences; it does not yet provide custom collections, manual drag ordering, backup/import or cross-device sync.
 
 **Durable data:** library membership, reading state, categories/order, progress, source preferences, identity corrections and user-approved media/voice corrections.
 
 **Disposable data:** thumbnails, temporary search results, page cache, temporary OCR output and generated audio cache.
 
-The backend foundation includes typed domain contracts, provider coordination, conservative identity matching, SQLite persistence/migrations, repository/manifest validation and policy models. Managed cache writes enforce the shared byte budget, serialize concurrent writes, protect pinned entries, stage evictions/replacements and roll back file changes if SQLite rejects the metadata commit. Provider health now tracks failure streaks, uses bounded cooldowns, respects upstream `Retry-After`, and persists validated snapshots locally without saving raw provider error text. Remaining integration work includes complete CRUD flows, crash/restart recovery for interrupted cache writes, migration fixtures, a health/diagnostics UI, provider-specific request policies, redacted diagnostic export, and explicit backup/import/export flows.
+The backend foundation includes typed domain contracts, provider coordination, conservative identity matching, SQLite persistence/migrations, repository/manifest validation and policy models. Managed cache writes enforce the shared byte budget, serialize concurrent writes, protect pinned entries, stage evictions/replacements and roll back file changes if SQLite rejects the metadata commit. Provider health now tracks failure streaks, uses bounded cooldowns, respects upstream `Retry-After`, and persists validated snapshots locally without saving raw provider error text. Remaining integration work includes migration fixtures, crash/restart recovery for interrupted cache writes, provider-specific request policies, redacted diagnostic export, and explicit backup/import/export flows.
 
 Downloads must be explicit, cancellable and visible in storage management. Clearing media cache must not erase library or reading progress. Do not silently accumulate gigabytes of comic pages, audio or artwork.
 
