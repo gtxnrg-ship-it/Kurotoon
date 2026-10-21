@@ -81,6 +81,21 @@ void main() {
       editionId: 'edition-1',
     );
 
+    expect(
+      await database.removeLibraryEntryFromCollection(
+        collectionId: 'collection-later',
+        workId: 'work-1',
+        editionId: 'edition-1',
+      ),
+      isTrue,
+    );
+    expect(await database.loadLibraryCollectionEditionIds('collection-later'), isEmpty);
+
+    await database.addLibraryEntryToCollection(
+      collectionId: 'collection-later',
+      workId: 'work-1',
+      editionId: 'edition-1',
+    );
     await database.removeLibraryRecord('work-1', 'edition-1');
     expect(await database.loadLibraryCollectionEditionIds('collection-later'), isEmpty);
     expect((await database.loadLibraryCollections()).single.itemCount, 0);
