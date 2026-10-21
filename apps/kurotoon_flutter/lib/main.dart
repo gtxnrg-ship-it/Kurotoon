@@ -136,6 +136,35 @@ class _KuroToonShell extends StatefulWidget {
 
 class _KuroToonShellState extends State<_KuroToonShell> {
   int _selected = 0;
+  bool _motionEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreMotionPreference();
+  }
+
+  Future<void> _restoreMotionPreference() async {
+    try {
+      final saved = await widget.runtime.database?.getSetting<bool>('ui.motion_enabled');
+      if (mounted && saved != null) setState(() => _motionEnabled = saved);
+    } on Object {
+      // Keep the default if the optional preference cannot be read.
+    }
+  }
+
+  Future<void> _setMotionEnabled(bool enabled) async {
+    setState(() => _motionEnabled = enabled);
+    try {
+      await widget.runtime.database?.setSetting('ui.motion_enabled', enabled);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Motion changed for this session, but the preference could not be saved.')),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -150,11 +179,12 @@ class _KuroToonShellState extends State<_KuroToonShell> {
       _BrowserPage(runtime: widget.runtime),
       ShopPage(runtime: widget.runtime),
       LibraryPage(runtime: widget.runtime),
-      _MePage(runtime: widget.runtime),
+      _MePage(runtime: widget.runtime, motionEnabled: _motionEnabled, onMotionChanged: _setMotionEnabled),
     ];
     return Scaffold(
       extendBody: true,
       body: _GalaxyScaffold(
+        animated: _motionEnabled,
         child: SafeArea(
           bottom: false,
           child: IndexedStack(index: _selected, children: pages),
@@ -439,8 +469,10 @@ class _SearchResultTile extends StatelessWidget {
 }
 
 class _MePage extends StatefulWidget {
-  const _MePage({required this.runtime});
+  const _MePage({required this.runtime, required this.motionEnabled, required this.onMotionChanged});
   final KurotoonRuntime runtime;
+  final bool motionEnabled;
+  final ValueChanged<bool> onMotionChanged;
 
   @override
   State<_MePage> createState() => _MePageState();
@@ -448,7 +480,6 @@ class _MePage extends StatefulWidget {
 
 class _MePageState extends State<_MePage> {
   bool _mangadexEnabled = true;
-  bool _motionEnabled = true;
 
   @override
   Widget build(BuildContext context) {
@@ -483,9 +514,9 @@ class _MePageState extends State<_MePage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           secondary: const Icon(Icons.blur_on_rounded, color: _violet),
           title: const Text('Animated background'),
-          subtitle: const Text('Session control; persistent preferences are next'),
-          value: _motionEnabled,
-          onChanged: (value) => setState(() => _motionEnabled = value),
+          subtitle: const Text('Saved on this device; turn it off to reduce background animation.'),
+          value: widget.motionEnabled,
+          onChanged: widget.onMotionChanged,
         ),
         const SizedBox(height: 22),
         const _InlineNotice(
@@ -553,8 +584,9 @@ class _ComingSoonPage extends StatelessWidget {
 }
 
 class _GalaxyScaffold extends StatefulWidget {
-  const _GalaxyScaffold({required this.child});
+  const _GalaxyScaffold({required this.child, this.animated = true});
   final Widget child;
+  final bool animated;
 
   @override
   State<_GalaxyScaffold> createState() => _GalaxyScaffoldState();
@@ -564,7 +596,25 @@ class _GalaxyScaffoldState extends State<_GalaxyScaffold> with SingleTickerProvi
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 42),
-  )..repeat();
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animated) _controller.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GalaxyScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animated == widget.animated) return;
+    if (widget.animated) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
 
   @override
   void dispose() {
@@ -576,7 +626,7 @@ class _GalaxyScaffoldState extends State<_GalaxyScaffold> with SingleTickerProvi
   Widget build(BuildContext context) => AnimatedBuilder(
         animation: _controller,
         builder: (context, child) => CustomPaint(
-          painter: _GalaxyPainter(progress: _controller.value),
+          painter: _GalaxyPainter(progress: widget.animated ? _controller.value : 0),
           child: child,
         ),
         child: widget.child,
