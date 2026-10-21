@@ -273,6 +273,17 @@ class _CollectibleDialog extends StatefulWidget {
 }
 
 class _CollectibleDialogState extends State<_CollectibleDialog> with SingleTickerProviderStateMixin {
+  bool _working = false;
+  Future<void> _runAction(Future<bool> Function() action) async {
+    if (_working) return;
+    setState(() => _working = true);
+    try {
+      final succeeded = await action();
+      if (succeeded && mounted) Navigator.of(context).pop();
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
   late final AnimationController _controller=AnimationController(vsync:this,duration:Duration(milliseconds:widget.item.animation==CollectibleAnimation.tears?850:1350))..repeat(reverse:true);
   @override void dispose(){_controller.dispose();super.dispose();}
   @override Widget build(BuildContext context){
@@ -292,7 +303,7 @@ class _CollectibleDialogState extends State<_CollectibleDialog> with SingleTicke
       Wrap(spacing:7,runSpacing:7,alignment:WrapAlignment.center,children:[_tag(item.rarity,item.accent),_tag(collectibleTierLabel(item.tier),item.tier==CollectibleTier.legendary?const Color(0xFFFFD166):item.tier==CollectibleTier.premium?_shopPink:item.tier==CollectibleTier.topTen?_shopViolet:_shopCyan),_tag(collectibleCategoryLabel(item.category),_shopCyan),if(item.eventOnly)_tag('LIMITED EVENT',_shopPink)]),
       if(item.unlockRule!=null) ...[const SizedBox(height:12),Container(width:double.infinity,padding:const EdgeInsets.all(12),decoration:BoxDecoration(color:item.tier==CollectibleTier.legendary?const Color(0x22FFD166):Colors.white.withValues(alpha:.05),borderRadius:BorderRadius.circular(12),border:Border.all(color:item.accent.withValues(alpha:.25))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(item.currency==CollectibleCurrency.achievement?'SPECIAL UNLOCK':'UNLOCK DETAILS',style:TextStyle(color:item.accent,fontSize:10,fontWeight:FontWeight.w900,letterSpacing:1)),const SizedBox(height:5),Text(item.unlockRule!,style:const TextStyle(color:Colors.white70,fontSize:12,height:1.4))]))],
       const SizedBox(height:18),
-      SizedBox(width:double.infinity,child:widget.owned?FilledButton.icon(onPressed:widget.equipped?null:()=>widget.onEquip(),icon:Icon(widget.equipped?Icons.check_circle:Icons.checkroom_rounded),label:Text(widget.equipped?'Equipped':'Equip collectible')):FilledButton.icon(onPressed:item.currency==CollectibleCurrency.achievement?null:()=>widget.onPurchase(),icon:Icon(item.currency==CollectibleCurrency.gold?Icons.paid_rounded:item.currency==CollectibleCurrency.achievement?Icons.lock_rounded:Icons.shopping_bag_rounded),label:Text(item.currency==CollectibleCurrency.achievement?'Achievement unlock only':'Unlock · ${item.price} ${item.currency==CollectibleCurrency.gold?'gold':'silver'} coins'))),
+      SizedBox(width:double.infinity,child:widget.owned?FilledButton.icon(onPressed:widget.equipped||_working?null:()=>_runAction(widget.onEquip),icon:Icon(widget.equipped?Icons.check_circle:Icons.checkroom_rounded),label:Text(_working?'Saving…':widget.equipped?'Equipped':'Equip collectible')):FilledButton.icon(onPressed:item.currency==CollectibleCurrency.achievement||_working?null:()=>_runAction(widget.onPurchase),icon:Icon(item.currency==CollectibleCurrency.gold?Icons.paid_rounded:item.currency==CollectibleCurrency.achievement?Icons.lock_rounded:Icons.shopping_bag_rounded),label:Text(_working?'Please wait…':item.currency==CollectibleCurrency.achievement?'Achievement unlock only':'Unlock · ${item.price} ${item.currency==CollectibleCurrency.gold?'gold':'silver'} coins'))),
       const SizedBox(height:6),
       Text('Unique ID: ${item.id}',style:const TextStyle(color:Colors.white30,fontSize:9)),
     ])));
