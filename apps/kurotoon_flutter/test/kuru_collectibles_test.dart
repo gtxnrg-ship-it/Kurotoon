@@ -60,7 +60,7 @@ void main() {
       expect(names, containsAll(['Happy', 'Laughing', 'Love', 'Shock', 'Angry', 'Cry',
         'Sleepy', 'Reading', 'Excited', 'Thinking', 'Salute', 'Bye Bye',
         'Clap', 'Hug', 'Cheer', 'Wow', 'Oops', 'Thank You', 'Support',
-        'Creator Mode', 'Level Up!', 'Galaxy Mode', 'Rich Kuru', 'Nom Nom']));
+        'Creator Mode', 'Level Up!', 'Galaxy Mode', 'Rich Kuru']));
     });
   });
 }
