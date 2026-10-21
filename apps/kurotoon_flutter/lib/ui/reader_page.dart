@@ -155,7 +155,7 @@ class _ReaderPageState extends State<ReaderPage> {
     final controller = _controller;
     if (count > 0 && controller != null && controller.hasClients) {
       // Keep the same logical chapter page while changing which edge is the start.
-      controller.jumpToPage(_page.clamp(0, count - 1));
+      controller.jumpToPage(_page.clamp(0, count - 1).toInt());
     }
   }
 
