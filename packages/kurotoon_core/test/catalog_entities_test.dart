@@ -22,6 +22,65 @@ void main() {
         ],
       );
 
+  ChapterUnit release({
+    required String id,
+    required String editionId,
+    required String providerId,
+    required String language,
+    required double number,
+    String title = 'Chapter',
+  }) => ChapterUnit(
+        id: id,
+        editionId: editionId,
+        kind: ChapterKind.regular,
+        chapterNumber: number,
+        title: title,
+        listings: [
+          ChapterListing(
+            providerId: providerId,
+            externalId: id,
+            url: Uri.parse('https://$providerId.example.org/$id'),
+            languageCode: language,
+          ),
+        ],
+      );
+
+  test('unified chapter grouping keeps source editions separate for reading', () {
+    final first = release(
+      id: 'a-1', editionId: 'edition-a', providerId: 'source-a',
+      language: 'en', number: 1, title: 'The Beginning',
+    );
+    final second = release(
+      id: 'b-1', editionId: 'edition-b', providerId: 'source-b',
+      language: 'en', number: 1, title: 'The Start',
+    );
+    final groups = const UnifiedChapterGrouping().group([first, second]);
+
+    expect(groups, hasLength(1));
+    expect(groups.single.chapters, hasLength(2));
+    expect(groups.single.chapters.map((chapter) => chapter.editionId),
+        containsAll(['edition-a', 'edition-b']));
+    expect(groups.single.chapters.map((chapter) => chapter.listings.single.providerId),
+        containsAll(['source-a', 'source-b']));
+  });
+
+  test('unified chapter grouping does not combine different languages or numbers', () {
+    final english = release(
+      id: 'en-1', editionId: 'en-edition', providerId: 'source-a',
+      language: 'en', number: 1,
+    );
+    final spanish = release(
+      id: 'es-1', editionId: 'es-edition', providerId: 'source-b',
+      language: 'es', number: 1,
+    );
+    final next = release(
+      id: 'en-2', editionId: 'en-edition', providerId: 'source-a',
+      language: 'en', number: 2,
+    );
+
+    expect(const UnifiedChapterGrouping().group([english, spanish, next]), hasLength(3));
+  });
+
   test('shows a grouped mini-chapter count rather than six full chapters', () {
     const grouping = ChapterGrouping();
     final groups = grouping.group([
