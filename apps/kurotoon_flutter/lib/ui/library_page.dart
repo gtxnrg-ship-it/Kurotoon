@@ -264,6 +264,27 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
+  Future<void> _removeFromCollection(LibraryBook book, LibraryCollection collection) async {
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local database unavailable');
+      final removed = await database.removeLibraryEntryFromCollection(
+        collectionId: collection.id,
+        workId: book.record.workId,
+        editionId: book.record.editionId,
+      );
+      if (!mounted) return;
+      await _reload();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(removed ? 'Removed from "' + collection.name + '". The story stays in your library.' : 'This story was no longer in that collection.'),
+      ));
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update this collection. Your saved story was kept.')),
+      );
+    }
+  }
+
   Future<void> _setStatus(LibraryBook book, LibraryStatus status) async {
     try {
       final service = widget.runtime.readingJourney;
@@ -523,24 +544,38 @@ class _LibraryPageState extends State<LibraryPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             PopupMenuButton<String>(
-              tooltip: 'Add to collection',
+              tooltip: 'Organize collections',
               enabled: _collections.isNotEmpty,
               icon: const Icon(Icons.folder_special_outlined, color: _violet),
-              onSelected: (id) {
+              onSelected: (value) {
+                final removing = value.startsWith('remove:');
+                final id = value.substring(value.indexOf(':') + 1);
                 final matches = _collections.where((item) => item.id == id);
-                if (matches.isNotEmpty) _addToCollection(book, matches.first);
+                if (matches.isEmpty) return;
+                if (removing) {
+                  _removeFromCollection(book, matches.first);
+                } else {
+                  _addToCollection(book, matches.first);
+                }
               },
-              itemBuilder: (context) => _collections.map((collection) => PopupMenuItem<String>(
-                value: collection.id,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 230),
-                  child: Row(children: [
-                    const Icon(Icons.folder_outlined, size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(collection.name, overflow: TextOverflow.ellipsis)),
-                  ]),
-                ),
-              )).toList(growable: false),
+              itemBuilder: (context) => _collections.map((collection) {
+                final isCurrent = _collectionFilter == collection.id &&
+                    _collectionEditionIds.contains(book.record.editionId);
+                return PopupMenuItem<String>(
+                  value: (isCurrent ? 'remove:' : 'add:') + collection.id,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 230),
+                    child: Row(children: [
+                      Icon(isCurrent ? Icons.folder_delete_outlined : Icons.folder_outlined, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(
+                        (isCurrent ? 'Remove from ' : 'Add to ') + collection.name,
+                        overflow: TextOverflow.ellipsis,
+                      )),
+                    ]),
+                  ),
+                );
+              }).toList(growable: false),
             ),
             IconButton(tooltip: 'Remove from library', onPressed: () => _remove(book), icon: const Icon(Icons.delete_outline_rounded)),
           ],
