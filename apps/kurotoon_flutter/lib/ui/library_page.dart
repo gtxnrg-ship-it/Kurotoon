@@ -362,6 +362,44 @@ class _LibraryPageState extends State<LibraryPage> {
           _chip('All', null),
           for (final status in LibraryStatus.values) ...[const SizedBox(width: 8), _chip(_label(status), status)],
         ])),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            const Expanded(child: _SectionHeading(
+              title: 'Collections',
+              subtitle: 'Create your own shelves for saved editions',
+            )),
+            IconButton.filledTonal(
+              tooltip: 'Create collection',
+              onPressed: _loading ? null : _createCollection,
+              icon: const Icon(Icons.create_new_folder_outlined),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            InputChip(
+              label: const Text('All saved stories'),
+              selected: _collectionFilter == null,
+              onSelected: (_) => _selectCollection(null),
+              selectedColor: _violet.withValues(alpha: .22),
+            ),
+            for (final collection in _collections) ...[
+              const SizedBox(width: 8),
+              InputChip(
+                avatar: const Icon(Icons.folder_special_outlined, size: 17),
+                label: Text('${collection.name} · ${collection.itemCount}', overflow: TextOverflow.ellipsis),
+                selected: _collectionFilter == collection.id,
+                onSelected: (_) => _selectCollection(_collectionFilter == collection.id ? null : collection.id),
+                onDeleted: () => _deleteCollection(collection),
+                deleteTooltip: 'Delete collection',
+                selectedColor: _violet.withValues(alpha: .22),
+              ),
+            ],
+          ]),
+        ),
         const SizedBox(height: 14),
         TextField(
           controller: _searchController,
@@ -403,9 +441,11 @@ class _LibraryPageState extends State<LibraryPage> {
         else if (_books.isEmpty) _notice(Icons.auto_stories_rounded, _filter == null ? 'Your collection starts here' : 'No ' + _label(_filter!).toLowerCase() + ' stories yet',
           _filter == null ? 'Browse a story and save it to your library. Your collection stays on this device.' : 'Choose another status or save a story from Browser.')
         else if (_visibleBooks.isEmpty) _notice(
-          Icons.search_off_rounded,
-          'No saved stories match',
-          'Try a shorter title, a creator name, or clear the search to see your full collection.',
+          _collectionFilter != null ? Icons.folder_open_rounded : Icons.search_off_rounded,
+          _collectionFilter != null && _query.trim().isEmpty ? 'This collection is empty' : 'No saved stories match',
+          _collectionFilter != null && _query.trim().isEmpty
+              ? 'Use the folder menu on a saved story to add it here. Deleting this collection will not delete your saved stories.'
+              : 'Try a shorter title, a creator name, or clear the search to see your full collection.',
           TextButton.icon(
             onPressed: () => setState(() { _searchController.clear(); _query = ''; }),
             icon: const Icon(Icons.close_rounded),
@@ -471,7 +511,32 @@ class _LibraryPageState extends State<LibraryPage> {
             onChanged: (s) { if (s != null && s != book.record.status) _setStatus(book, s); },
           ),
         ])),
-        IconButton(tooltip: 'Remove from library', onPressed: () => _remove(book), icon: const Icon(Icons.delete_outline_rounded)),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PopupMenuButton<String>(
+              tooltip: 'Add to collection',
+              enabled: _collections.isNotEmpty,
+              icon: const Icon(Icons.folder_special_outlined, color: _violet),
+              onSelected: (id) {
+                final matches = _collections.where((item) => item.id == id);
+                if (matches.isNotEmpty) _addToCollection(book, matches.first);
+              },
+              itemBuilder: (context) => _collections.map((collection) => PopupMenuItem<String>(
+                value: collection.id,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 230),
+                  child: Row(children: [
+                    const Icon(Icons.folder_outlined, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(collection.name, overflow: TextOverflow.ellipsis)),
+                  ]),
+                ),
+              )).toList(growable: false),
+            ),
+            IconButton(tooltip: 'Remove from library', onPressed: () => _remove(book), icon: const Icon(Icons.delete_outline_rounded)),
+          ],
+        ),
       ]),
     );
   }
