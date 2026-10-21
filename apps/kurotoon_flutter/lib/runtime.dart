@@ -148,6 +148,19 @@ class KurotoonRuntime {
     final service = extensionRepositories;
     if (store == null || service == null) return;
     extensionLoadErrors.clear();
+    try {
+      // Recover interrupted manifest/SQLite commits before any declarative
+      // provider can be loaded from an installed-extension row.
+      final recovery = await service.recoverInterruptedOperations();
+      if (!recovery.complete) {
+        extensionLoadErrors['extension-recovery'] =
+            'Some interrupted extension operations remain unresolved; unsafe paths were preserved.';
+      }
+    } on Object catch (error) {
+      // Storage diagnostics must not prevent built-in sources from loading.
+      extensionLoadErrors['extension-recovery'] =
+          'Extension recovery could not finish: ${error.runtimeType}.';
+    }
     final rows = await store.loadInstalledExtensions();
     for (final row in rows) {
       final id = row['extension_id'] as String;
