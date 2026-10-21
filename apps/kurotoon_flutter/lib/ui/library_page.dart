@@ -56,16 +56,20 @@ class _LibraryPageState extends State<LibraryPage> {
     switch (_sort) {
       case _LibrarySort.recentActivity:
         sorted.sort((a, b) => _activityTime(b).compareTo(_activityTime(a)));
+        break;
       case _LibrarySort.recentlyAdded:
         sorted.sort((a, b) => b.record.addedAt.compareTo(a.record.addedAt));
+        break;
       case _LibrarySort.titleAscending:
         sorted.sort((a, b) => (a.catalogEntry?.work.title ?? 'Saved story')
             .toLowerCase()
             .compareTo((b.catalogEntry?.work.title ?? 'Saved story').toLowerCase()));
+        break;
       case _LibrarySort.titleDescending:
         sorted.sort((a, b) => (b.catalogEntry?.work.title ?? 'Saved story')
             .toLowerCase()
             .compareTo((a.catalogEntry?.work.title ?? 'Saved story').toLowerCase()));
+        break;
     }
     return sorted;
   }
