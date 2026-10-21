@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
 
 import '../runtime.dart';
+import 'reader_display_preferences.dart';
 
 /// Bounds the decoded width of remote comic pages to the useful display
 /// resolution. The source bytes may still be large, but decoding them at an
@@ -43,6 +44,7 @@ class _ReaderPageState extends State<ReaderPage> {
   bool _dataSaver = false;
   bool _verticalMode = false;
   bool _rightToLeft = false;
+  ReaderDisplayPreferences _displayPreferences = const ReaderDisplayPreferences();
   String? _error;
   String? _selectedProviderId;
   int _page = 0;
@@ -71,6 +73,14 @@ class _ReaderPageState extends State<ReaderPage> {
       if (mounted && savedDataSaver != null) _dataSaver = savedDataSaver;
     } on Object {
       // A corrupt/missing data-saver preference falls back to full-quality loading.
+    }
+    try {
+      final savedDisplay = await widget.runtime.database?.getSetting<Object?>('reader.display_preferences');
+      if (mounted && savedDisplay != null) {
+        _displayPreferences = ReaderDisplayPreferences.fromStored(savedDisplay);
+      }
+    } on Object {
+      // Invalid optional display settings must not block ordinary reading.
     }
     if (mounted) await _load();
   }
@@ -162,6 +172,55 @@ class _ReaderPageState extends State<ReaderPage> {
     if (page == null || page == _page) return;
     setState(() => _page = page);
     _save(page, count);
+  }
+
+  Future<void> _showDisplaySettings() async {
+    if (_loading || _preferenceSaving) return;
+    final database = widget.runtime.database;
+    if (database == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Local settings are unavailable.')),
+      );
+      return;
+    }
+    final next = await showReaderDisplayPreferences(context, _displayPreferences);
+    if (next == null || !mounted) return;
+    setState(() => _preferenceSaving = true);
+    try {
+      await database.setSetting('reader.display_preferences', next.toMap());
+    } on Object {
+      if (!mounted) return;
+      setState(() => _preferenceSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Display preferences could not be saved. The previous settings were kept.')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _displayPreferences = next;
+      _preferenceSaving = false;
+    });
+  }
+
+  Widget _buildPageImage(Uri url) {
+    final preferences = _displayPreferences;
+    return ClipRect(
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          _ReaderImage(url: url, fit: preferences.imageFit),
+          if (preferences.dimming > 0)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: preferences.dimming),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _toggleDataSaver() async {
@@ -331,6 +390,11 @@ class _ReaderPageState extends State<ReaderPage> {
             onPressed: _loading || _preferenceSaving ? null : _toggleDataSaver,
             icon: Icon(_dataSaver ? Icons.data_saver_on_rounded : Icons.data_saver_off_rounded),
           ),
+          IconButton(
+            tooltip: 'Reader display settings',
+            onPressed: _loading || _preferenceSaving ? null : _showDisplaySettings,
+            icon: const Icon(Icons.tune_rounded),
+          ),
         ],
       ),
       body: Column(children: [
@@ -368,8 +432,8 @@ class _ReaderPageState extends State<ReaderPage> {
                         padding: EdgeInsets.zero,
                         itemBuilder: (context, index) => Padding(
                           key: _stripItemKeys[index],
-                          padding: const EdgeInsets.only(bottom: 2),
-                          child: _ReaderImage(url: urls[index], fitWidth: true),
+                          padding: EdgeInsets.only(bottom: _displayPreferences.pageGap),
+                          child: _buildPageImage(urls[index]),
                         ),
                       ),
                     )
@@ -380,7 +444,12 @@ class _ReaderPageState extends State<ReaderPage> {
                       onPageChanged: (page) { setState(() => _page = page); _save(page, urls.length); },
                       itemBuilder: (context, index) => InteractiveViewer(
                         minScale: 1, maxScale: 3,
-                        child: Center(child: _ReaderImage(url: urls[index])),
+                        child: Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(_displayPreferences.pageGap / 2),
+                            child: _buildPageImage(urls[index]),
+                          ),
+                        ),
                       ),
                     )),
         Padding(padding: const EdgeInsets.all(12), child: Row(children: [
@@ -399,9 +468,9 @@ class _ReaderPageState extends State<ReaderPage> {
 
 
 class _ReaderImage extends StatefulWidget {
-  const _ReaderImage({required this.url, this.fitWidth = false});
+  const _ReaderImage({required this.url, this.fit = BoxFit.contain});
   final Uri url;
-  final bool fitWidth;
+  final BoxFit fit;
 
   @override
   State<_ReaderImage> createState() => _ReaderImageState();
@@ -437,7 +506,7 @@ class _ReaderImageState extends State<_ReaderImage> {
       widget.url.toString(),
       key: ValueKey(_attempt),
       cacheWidth: decodeWidth,
-      fit: widget.fitWidth ? BoxFit.fitWidth : BoxFit.contain,
+      fit: widget.fit,
       loadingBuilder: (context, child, progress) => progress == null
           ? child
           : const Center(child: CircularProgressIndicator()),

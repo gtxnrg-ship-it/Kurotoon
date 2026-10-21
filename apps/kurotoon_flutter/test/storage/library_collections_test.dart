@@ -111,6 +111,11 @@ void main() {
     await original.setSetting('reader.long_strip', true);
     await original.setSetting('reader.right_to_left', true);
     await original.setSetting('reader.data_saver', true);
+    await original.setSetting('reader.display_preferences', {
+      'fitMode': 'width',
+      'dimming': 0.35,
+      'pageGap': 12.0,
+    });
     await original.close();
 
     final reopened = await KurotoonDatabase.open(
@@ -124,6 +129,11 @@ void main() {
     expect(await reopened.getSetting<bool>('reader.long_strip'), isTrue);
     expect(await reopened.getSetting<bool>('reader.right_to_left'), isTrue);
     expect(await reopened.getSetting<bool>('reader.data_saver'), isTrue);
+    expect(await reopened.getSetting<Map<String, dynamic>>('reader.display_preferences'), {
+      'fitMode': 'width',
+      'dimming': 0.35,
+      'pageGap': 12.0,
+    });
   });
 
   test('schema version 6 upgrades to collections without deleting saved membership', () async {

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
 
 import 'runtime.dart';
@@ -8,6 +9,8 @@ import 'services/catalog_workflow_service.dart';
 import 'services/reading_journey_service.dart';
 import 'ui/library_page.dart';
 import 'ui/reader_page.dart';
+import 'ui/reader_display_preferences.dart';
+import 'ui/galaxy_motion_policy.dart';
 import 'ui/provider_diagnostics_page.dart';
 import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
@@ -139,14 +142,26 @@ class _KuroToonShell extends StatefulWidget {
   State<_KuroToonShell> createState() => _KuroToonShellState();
 }
 
-class _KuroToonShellState extends State<_KuroToonShell> {
+class _KuroToonShellState extends State<_KuroToonShell> with WidgetsBindingObserver {
   int _selected = 0;
   bool _motionEnabled = true;
+  bool _motionSaving = false;
+  bool _appResumed = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _appResumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     _restoreMotionPreference();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (_appResumed == resumed) return;
+    setState(() => _appResumed = resumed);
   }
 
   Future<void> _restoreMotionPreference() async {
@@ -159,26 +174,41 @@ class _KuroToonShellState extends State<_KuroToonShell> {
   }
 
   Future<void> _setMotionEnabled(bool enabled) async {
-    setState(() => _motionEnabled = enabled);
+    if (_motionSaving || enabled == _motionEnabled) return;
+    setState(() => _motionSaving = true);
     try {
-      await widget.runtime.database?.setSetting('ui.motion_enabled', enabled);
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      await database.setSetting('ui.motion_enabled', enabled);
     } on Object {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Motion changed for this session, but the preference could not be saved.')),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _motionSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Motion preference could not be saved. The previous setting was kept.')),
+      );
+      return;
     }
+    if (!mounted) return;
+    setState(() {
+      _motionEnabled = enabled;
+      _motionSaving = false;
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.runtime.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final animateGalaxy = shouldAnimateGalaxy(
+      userEnabled: _motionEnabled,
+      systemReducedMotion: MediaQuery.of(context).disableAnimations,
+      appResumed: _appResumed,
+    );
     final pages = [
       _HomePage(
         runtime: widget.runtime,
@@ -189,12 +219,17 @@ class _KuroToonShellState extends State<_KuroToonShell> {
       _BrowserPage(runtime: widget.runtime),
       const ShopPage(),
       LibraryPage(runtime: widget.runtime),
-      _MePage(runtime: widget.runtime, motionEnabled: _motionEnabled, onMotionChanged: _setMotionEnabled),
+      _MePage(
+        runtime: widget.runtime,
+        motionEnabled: _motionEnabled,
+        motionSaving: _motionSaving,
+        onMotionChanged: _setMotionEnabled,
+      ),
     ];
     return Scaffold(
       extendBody: true,
       body: _GalaxyScaffold(
-        animated: _motionEnabled,
+        animated: animateGalaxy,
         child: SafeArea(
           bottom: false,
           child: IndexedStack(index: _selected, children: pages),
@@ -537,7 +572,7 @@ class _HomePageState extends State<_HomePage> {
           const _FeatureTile(
             icon: Icons.auto_awesome_rounded,
             title: 'A living Galaxy',
-            subtitle: 'Ambient galaxy effects, with a reduced-motion option in Me.',
+            subtitle: 'Adaptive galaxy effects that respect system motion preferences and slow frames.',
             tint: _violet,
           ),
           const SizedBox(height: 10),
@@ -1304,9 +1339,15 @@ class _SearchResultTile extends StatelessWidget {
 }
 
 class _MePage extends StatefulWidget {
-  const _MePage({required this.runtime, required this.motionEnabled, required this.onMotionChanged});
+  const _MePage({
+    required this.runtime,
+    required this.motionEnabled,
+    required this.motionSaving,
+    required this.onMotionChanged,
+  });
   final KurotoonRuntime runtime;
   final bool motionEnabled;
+  final bool motionSaving;
   final ValueChanged<bool> onMotionChanged;
 
   @override
@@ -1320,6 +1361,7 @@ class _MePageState extends State<_MePage> {
   bool _longStripDefault = false;
   bool _dataSaverDefault = false;
   bool _readerPreferenceSaving = false;
+  ReaderDisplayPreferences _readerDisplayPreferences = const ReaderDisplayPreferences();
 
   @override
   void initState() {
@@ -1334,11 +1376,13 @@ class _MePageState extends State<_MePage> {
       final rightToLeft = await database?.getSetting<bool>('reader.right_to_left');
       final longStrip = await database?.getSetting<bool>('reader.long_strip');
       final dataSaver = await database?.getSetting<bool>('reader.data_saver');
+      final display = await database?.getSetting<Object?>('reader.display_preferences');
       if (!mounted) return;
       setState(() {
         _rightToLeftDefault = rightToLeft ?? false;
         _longStripDefault = longStrip ?? false;
         _dataSaverDefault = dataSaver ?? false;
+        _readerDisplayPreferences = ReaderDisplayPreferences.fromStored(display);
       });
     } on Object {
       // Optional reader defaults should never prevent the rest of Me from opening.
@@ -1369,6 +1413,30 @@ class _MePageState extends State<_MePage> {
     if (!mounted) return;
     update(value);
     setState(() => _readerPreferenceSaving = false);
+  }
+
+  Future<void> _editReaderDisplayPreferences() async {
+    if (_readerPreferenceSaving) return;
+    final next = await showReaderDisplayPreferences(context, _readerDisplayPreferences);
+    if (next == null || !mounted) return;
+    setState(() => _readerPreferenceSaving = true);
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      await database.setSetting('reader.display_preferences', next.toMap());
+    } on Object {
+      if (!mounted) return;
+      setState(() => _readerPreferenceSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reader display settings could not be saved. Your previous settings were kept.')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _readerDisplayPreferences = next;
+      _readerPreferenceSaving = false;
+    });
   }
 
   Future<void> _setMangaDexEnabled(bool value) async {
@@ -1515,6 +1583,20 @@ class _MePageState extends State<_MePage> {
                 update: (next) => setState(() => _rightToLeftDefault = next),
               ),
             ),
+            const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
+            _settingsTile(
+              icon: Icons.tune_rounded,
+              tint: _violet,
+              title: 'Display, dimming & spacing',
+              subtitle: (_readerDisplayPreferences.fitMode == 'width'
+                      ? 'Fit to width'
+                      : _readerDisplayPreferences.fitMode == 'height'
+                          ? 'Fit to height'
+                          : 'Fit entire page') +
+                  ' · Dimming ' + (_readerDisplayPreferences.dimming * 100).round().toString() +
+                  '% · Gap ' + _readerDisplayPreferences.pageGap.round().toString() + ' px',
+              onTap: _editReaderDisplayPreferences,
+            ),
           ]),
           const SizedBox(height: 22),
           const _SectionHeading(title: 'Sources', subtitle: 'Choose which live providers can be queried'),
@@ -1575,9 +1657,11 @@ class _MePageState extends State<_MePage> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 16),
               secondary: const Icon(Icons.blur_on_rounded, color: _violet),
               title: const Text('Animated background'),
-              subtitle: const Text('Turn off ambient animation to reduce visual motion and background work'),
+              subtitle: Text(widget.motionSaving
+                  ? 'Saving motion preference…'
+                  : 'Follows system reduced-motion settings, pauses in the background, and adapts quality to frame pacing'),
               value: widget.motionEnabled,
-              onChanged: widget.onMotionChanged,
+              onChanged: widget.motionSaving ? null : widget.onMotionChanged,
             ),
           ]),
           const SizedBox(height: 22),
@@ -1603,17 +1687,55 @@ class _GalaxyScaffoldState extends State<_GalaxyScaffold> with SingleTickerProvi
     vsync: this,
     duration: const Duration(seconds: 42),
   );
+  int _quality = 2;
+  int _slowFrameStreak = 0;
+  int _fastFrameStreak = 0;
 
   @override
   void initState() {
     super.initState();
+    SchedulerBinding.instance.addTimingsCallback(_observeFrameTimings);
     if (widget.animated) _controller.repeat();
+  }
+
+  void _observeFrameTimings(List<FrameTiming> timings) {
+    if (!mounted || !widget.animated) return;
+    var quality = _quality;
+    var slowFrames = _slowFrameStreak;
+    var fastFrames = _fastFrameStreak;
+    for (final timing in timings) {
+      if (timing.totalSpan > const Duration(milliseconds: 20)) {
+        slowFrames++;
+        fastFrames = 0;
+      } else if (timing.totalSpan < const Duration(milliseconds: 14)) {
+        fastFrames++;
+        slowFrames = 0;
+      } else {
+        slowFrames = 0;
+        fastFrames = 0;
+      }
+      final nextQuality = nextGalaxyEffectQuality(
+        currentQuality: quality,
+        consecutiveSlowFrames: slowFrames,
+        consecutiveFastFrames: fastFrames,
+      );
+      if (nextQuality != quality) {
+        quality = nextQuality;
+        slowFrames = 0;
+        fastFrames = 0;
+      }
+    }
+    _slowFrameStreak = slowFrames;
+    _fastFrameStreak = fastFrames;
+    if (quality != _quality) setState(() => _quality = quality);
   }
 
   @override
   void didUpdateWidget(covariant _GalaxyScaffold oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.animated == widget.animated) return;
+    _slowFrameStreak = 0;
+    _fastFrameStreak = 0;
     if (widget.animated) {
       _controller.repeat();
     } else {
@@ -1624,6 +1746,7 @@ class _GalaxyScaffoldState extends State<_GalaxyScaffold> with SingleTickerProvi
 
   @override
   void dispose() {
+    SchedulerBinding.instance.removeTimingsCallback(_observeFrameTimings);
     _controller.dispose();
     super.dispose();
   }
@@ -1632,7 +1755,10 @@ class _GalaxyScaffoldState extends State<_GalaxyScaffold> with SingleTickerProvi
   Widget build(BuildContext context) => AnimatedBuilder(
         animation: _controller,
         builder: (context, child) => CustomPaint(
-          painter: _GalaxyPainter(progress: widget.animated ? _controller.value : 0),
+          painter: _GalaxyPainter(
+            progress: widget.animated ? _controller.value : 0,
+            quality: _quality,
+          ),
           child: child,
         ),
         child: widget.child,
@@ -1640,23 +1766,42 @@ class _GalaxyScaffoldState extends State<_GalaxyScaffold> with SingleTickerProvi
 }
 
 class _GalaxyPainter extends CustomPainter {
-  const _GalaxyPainter({required this.progress});
+  const _GalaxyPainter({required this.progress, this.quality = 2});
   final double progress;
+  final int quality;
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = _ink);
-    final glow = Paint()..maskFilter = const MaskFilter.blur(BlurStyle.normal, 55);
+    final blurSigma = quality == 0 ? 18.0 : quality == 1 ? 34.0 : 55.0;
+    final glow = Paint()..maskFilter = MaskFilter.blur(BlurStyle.normal, blurSigma);
     final phase = progress * math.pi * 2;
     glow.color = const Color(0xFF30246F).withValues(alpha: 0.34);
-    canvas.drawCircle(Offset(size.width * (0.16 + 0.09 * math.sin(phase)), size.height * 0.18), size.width * 0.34, glow);
-    glow.color = const Color(0xFF075B70).withValues(alpha: 0.24);
-    canvas.drawCircle(Offset(size.width * (0.88 + 0.06 * math.cos(phase * 0.7)), size.height * 0.58), size.width * 0.32, glow);
-    glow.color = const Color(0xFF34224F).withValues(alpha: 0.22);
-    canvas.drawCircle(Offset(size.width * 0.48, size.height * (0.86 + 0.04 * math.sin(phase * 0.5))), size.width * 0.38, glow);
+    canvas.drawCircle(
+      Offset(size.width * (0.16 + 0.09 * math.sin(phase)), size.height * 0.18),
+      size.width * 0.34,
+      glow,
+    );
+    if (quality >= 1) {
+      glow.color = const Color(0xFF075B70).withValues(alpha: 0.24);
+      canvas.drawCircle(
+        Offset(size.width * (0.88 + 0.06 * math.cos(phase * 0.7)), size.height * 0.58),
+        size.width * 0.32,
+        glow,
+      );
+    }
+    if (quality >= 2) {
+      glow.color = const Color(0xFF34224F).withValues(alpha: 0.22);
+      canvas.drawCircle(
+        Offset(size.width * 0.48, size.height * (0.86 + 0.04 * math.sin(phase * 0.5))),
+        size.width * 0.38,
+        glow,
+      );
+    }
 
     final stars = Paint()..style = PaintingStyle.fill;
-    for (var i = 0; i < 100; i++) {
+    final starCount = quality == 0 ? 24 : quality == 1 ? 60 : 100;
+    for (var i = 0; i < starCount; i++) {
       final seed = i * 73.37 + 19.0;
       final x = ((math.sin(seed * 12.9898) * 43758.5453) % 1).abs() * size.width;
       final baseY = ((math.sin(seed * 78.233) * 12345.678) % 1).abs() * size.height;
@@ -1665,25 +1810,28 @@ class _GalaxyPainter extends CustomPainter {
       stars.color = (i % 7 == 0 ? _cyan : Colors.white).withValues(alpha: twinkle);
       canvas.drawCircle(Offset(x, y), i % 11 == 0 ? 1.45 : 0.7 + (i % 3) * 0.22, stars);
     }
-    final filament = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = _violet.withValues(alpha: 0.09);
-    final path = Path()
-      ..moveTo(size.width * 0.08, size.height * 0.36)
-      ..cubicTo(
-        size.width * (0.2 + 0.02 * math.sin(phase)),
-        size.height * 0.28,
-        size.width * (0.72 + 0.04 * math.cos(phase)),
-        size.height * 0.47,
-        size.width * 0.95,
-        size.height * 0.31,
-      );
-    canvas.drawPath(path, filament);
+    if (quality > 0) {
+      final filament = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = _violet.withValues(alpha: 0.09);
+      final path = Path()
+        ..moveTo(size.width * 0.08, size.height * 0.36)
+        ..cubicTo(
+          size.width * (0.2 + 0.02 * math.sin(phase)),
+          size.height * 0.28,
+          size.width * (0.72 + 0.04 * math.cos(phase)),
+          size.height * 0.47,
+          size.width * 0.95,
+          size.height * 0.31,
+        );
+      canvas.drawPath(path, filament);
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _GalaxyPainter oldDelegate) => oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _GalaxyPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.quality != quality;
 }
 
 class _BrandMark extends StatelessWidget {
