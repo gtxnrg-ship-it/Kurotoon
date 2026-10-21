@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'models.dart';
+import 'identity_matcher.dart';
 
 enum ChapterKind { regular, special, miniChapter, oneShot, volumeExtra }
 enum CreatorRole { author, artist, translator, editor, letterer, other }
@@ -122,6 +123,80 @@ class ChapterUnit {
     if (next.publishedAt == null) return false;
     if (prior.publishedAt == null) return true;
     return next.publishedAt!.isAfter(prior.publishedAt!);
+  }
+}
+
+/// A display-only grouping of equivalent chapter observations from different
+/// source editions. The underlying ChapterUnit records remain separate so each
+/// tap preserves its own edition, source ID, reading progress, and navigation.
+class UnifiedChapterGroup {
+  UnifiedChapterGroup({required this.id, required List<ChapterUnit> chapters})
+      : chapters = List.unmodifiable(chapters) {
+    if (chapters.isEmpty) throw ArgumentError('A unified chapter group cannot be empty.');
+  }
+
+  final String id;
+  final List<ChapterUnit> chapters;
+
+  ChapterUnit get representative => chapters.first;
+  List<String> get providerIds => List.unmodifiable(
+        chapters.expand((chapter) => chapter.listings.map((listing) => listing.providerId)).toSet(),
+      );
+}
+
+/// Groups source-specific chapter rows for presentation only. It deliberately
+/// never creates a synthetic ChapterUnit or crosses editions when opening a
+/// chapter; the UI must let the reader open one of the original variants.
+class UnifiedChapterGrouping {
+  const UnifiedChapterGrouping();
+
+  List<UnifiedChapterGroup> group(Iterable<ChapterUnit> chapters) {
+    final buckets = LinkedHashMap<String, List<ChapterUnit>>();
+    for (final chapter in chapters) {
+      final listing = chapter.listings.isEmpty ? null : chapter.listings.first;
+      final language = listing?.languageCode?.trim().toLowerCase();
+      // Unknown-language rows are not safe to merge across providers.
+      final languageKey = language == null || language.isEmpty
+          ? 'und:${listing?.providerId ?? chapter.id}'
+          : language;
+      final volume = chapter.volumeNumber?.toString() ?? '-';
+      final number = chapter.chapterNumber;
+      final mini = chapter.kind == ChapterKind.miniChapter
+          ? ':mini:${chapter.miniIndex ?? 0}'
+          : '';
+      final String identity;
+      if (number != null) {
+        identity = '$languageKey:${chapter.kind}:vol:$volume:num:$number$mini';
+      } else {
+        final title = WorkIdentityMatcher.normalizeTitle(chapter.title ?? '');
+        if (title.isEmpty) {
+          identity = 'distinct:${chapter.id}';
+        } else {
+          identity = '$languageKey:${chapter.kind}:vol:$volume:title:$title$mini';
+        }
+      }
+      (buckets[identity] ??= <ChapterUnit>[]).add(chapter);
+    }
+
+    final groups = buckets.entries.map((entry) {
+      final variants = entry.value.toList()
+        ..sort((left, right) {
+          final a = left.listings.isEmpty ? '' : left.listings.first.providerId;
+          final b = right.listings.isEmpty ? '' : right.listings.first.providerId;
+          return a.compareTo(b);
+        });
+      return UnifiedChapterGroup(id: entry.key, chapters: variants);
+    }).toList();
+
+    groups.sort((left, right) {
+      final a = left.representative.chapterNumber;
+      final b = right.representative.chapterNumber;
+      if (a == null && b != null) return 1;
+      if (a != null && b == null) return -1;
+      if (a != null && b != null && a != b) return b.compareTo(a);
+      return left.id.compareTo(right.id);
+    });
+    return List.unmodifiable(groups);
   }
 }
 
