@@ -11,7 +11,7 @@ A live-first manga, manhwa, manhua and webtoon reader set inside a living, evolv
 ## 🚦 Project dashboard
 
 **Last roadmap checkpoint:** 21 October 2026  
-**Overall product estimate:** **~49%**  
+**Overall product estimate:** **~53% (weighted estimate: 53.4%)**  
 **Backend foundation estimate:** **~71%**
 
 These are engineering estimates based on the roadmap and implementation evidence—not code-line counts, automated coverage, or a claim that the product is almost finished. Backend models and safety policies count as foundation work; a feature is not considered complete until its real app flow is integrated and tested.
@@ -32,6 +32,24 @@ These are engineering estimates based on the roadmap and implementation evidence
 **How to read this:** the foundation is ahead of the end-user experience. A green CI run proves that the tested code builds and its automated tests pass; it does not prove real-source reliability, phone performance, or complete feature wiring.
 
 For the detailed acceptance checklist, see the [Roadmap](docs/ROADMAP.md).
+
+### How the headline estimate is calculated
+
+This is a weighted engineering estimate—not code-line count or automated test coverage. End-user workflows carry more weight than foundation classes. The same weights should be used for future checkpoints so progress cannot be inflated by adding files without completing user flows.
+
+| Workstream | Weight | Estimate | Weighted points |
+|---|---:|---:|---:|
+| Native build and release delivery | 5% | 90% | 4.50 |
+| Dart domain and policy core | 10% | 70% | 7.00 |
+| Provider runtime and integration | 10% | 65% | 6.50 |
+| Persistence and repository/extension safety | 10% | 71% | 7.10 |
+| Cross-source catalog integration | 15% | 48% | 7.20 |
+| Reader and library end-to-end | 30% | 55% | 16.50 |
+| Galaxy polish and accessibility | 10% | 28% | 2.80 |
+| Voice/music/haptics/particle runtime | 10% | 18% | 1.80 |
+| **Total** | **100%** | — | **53.40%** |
+
+The other-platform row remains separately visible in the dashboard and is not credited as a delivered host app in this weighted score. The headline is therefore a reproducible scope estimate, not a release-readiness score; physical-device testing and live-source validation remain open.
 
 ## 🎯 Product direction
 
