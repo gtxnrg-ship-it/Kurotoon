@@ -13,7 +13,7 @@ void main() {
   late Directory temp;
   late KurotoonDatabase database;
   late CacheStorageService cache;
-  const budget = StorageBudget(maxBytes: 100);
+  final budget = StorageBudget(maxBytes: 100);
 
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('kurotoon-cache-recovery-test-');
