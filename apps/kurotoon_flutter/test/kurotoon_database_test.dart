@@ -404,4 +404,45 @@ void main() {
   });
 
 
+
+  test('shop purchase atomically charges currency and grants one collectible', () async {
+    await database.setSetting('shop.wallet.silver.v1', 250);
+    await database.setSetting('shop.collection.owned.v1', <String>['kuru_happy']);
+    final result = await database.purchaseShopCollectible(
+      itemId: 'kuru_love',
+      price: 100,
+      useGold: false,
+    );
+    expect(result, ShopPurchaseStatus.purchased);
+    expect(await database.getSetting<int>('shop.wallet.silver.v1'), 150);
+    expect(await database.getSetting<List<dynamic>>('shop.collection.owned.v1'),
+        containsAll(['kuru_happy', 'kuru_love']));
+  });
+
+  test('shop purchase cannot charge twice for an already-owned collectible', () async {
+    await database.setSetting('shop.wallet.silver.v1', 250);
+    await database.setSetting('shop.collection.owned.v1', <String>['kuru_love']);
+    final result = await database.purchaseShopCollectible(
+      itemId: 'kuru_love',
+      price: 100,
+      useGold: false,
+    );
+    expect(result, ShopPurchaseStatus.alreadyOwned);
+    expect(await database.getSetting<int>('shop.wallet.silver.v1'), 250);
+  });
+
+  test('shop purchase with insufficient funds changes neither wallet nor ownership', () async {
+    await database.setSetting('shop.wallet.gold.v1', 2);
+    await database.setSetting('shop.collection.owned.v1', <String>['kuru_happy']);
+    final result = await database.purchaseShopCollectible(
+      itemId: 'kuru_legendary',
+      price: 10,
+      useGold: true,
+    );
+    expect(result, ShopPurchaseStatus.insufficientFunds);
+    expect(await database.getSetting<int>('shop.wallet.gold.v1'), 2);
+    expect(await database.getSetting<List<dynamic>>('shop.collection.owned.v1'),
+        ['kuru_happy']);
+  });
+
 }
