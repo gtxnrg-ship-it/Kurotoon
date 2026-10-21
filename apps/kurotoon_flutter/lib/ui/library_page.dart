@@ -30,6 +30,9 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _loading = true;
   String? _error;
   List<LibraryBook> _books = const [];
+  List<LibraryCollection> _collections = const [];
+  String? _collectionFilter;
+  Set<String> _collectionEditionIds = const {};
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
 
@@ -58,9 +61,10 @@ class _LibraryPageState extends State<LibraryPage> {
 
   List<LibraryBook> get _visibleBooks {
     final query = _query.trim().toLowerCase();
-    if (query.isEmpty) return _books;
-    // This is a local-only search; it never triggers a provider request.
+    // Collection filtering and metadata search compose; both are local-only.
     return List.unmodifiable(_books.where((book) {
+      if (_collectionFilter != null && !_collectionEditionIds.contains(book.record.editionId)) return false;
+      if (query.isEmpty) return true;
       final work = book.catalogEntry?.work;
       final fields = <String>[
         work?.title ?? 'Saved story',
@@ -121,14 +125,27 @@ class _LibraryPageState extends State<LibraryPage> {
     setState(() { _loading = true; _error = null; });
     try {
       final service = widget.runtime.readingJourney;
-      if (service == null) throw StateError('Persistent storage unavailable');
-      final books = await service.loadLibrary(status: _filter);
+      final database = widget.runtime.database;
+      if (service == null || database == null) throw StateError('Persistent storage unavailable');
+      final results = await Future.wait<Object>([
+        service.loadLibrary(status: _filter),
+        database.loadLibraryCollections(),
+      ]);
+      final books = results[0] as List<LibraryBook>;
+      final collections = results[1] as List<LibraryCollection>;
+      final activeCollectionId = collections.any((item) => item.id == _collectionFilter) ? _collectionFilter : null;
+      final members = activeCollectionId == null ? <String>{} : await database.loadLibraryCollectionEditionIds(activeCollectionId);
       if (!mounted) return;
-      final sorted = _sortBooks(books);
-      setState(() { _books = sorted; _loading = false; });
+      setState(() {
+        _books = _sortBooks(books);
+        _collections = collections;
+        _collectionFilter = activeCollectionId;
+        _collectionEditionIds = members;
+        _loading = false;
+      });
     } on Object {
       if (!mounted) return;
-      setState(() { _error = 'Your library could not be loaded. Your saved data has not been changed.'; _loading = false; });
+      setState(() { _error = 'Your library or collections could not be loaded. Your saved data has not been changed.'; _loading = false; });
     }
   }
 
