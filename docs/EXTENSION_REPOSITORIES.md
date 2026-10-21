@@ -6,6 +6,12 @@ A repository is a catalogue URL, not a bulk download. The user adds one HTTPS in
 
 The app must never download or execute every entry merely because a repository was added.
 
+## Paste a repository URL or README
+
+The repository manager accepts a direct `index.json` URL, a public GitHub repository URL, or a public `README.md` URL. For a repository/README URL, KuroToon reads bounded Markdown and discovers linked JSON files, prioritizing `index.json` and `index.min.json`. Each discovered candidate is then fetched and validated using the same HTTPS, public-host, size, digest, and schema rules as a directly entered index. The selected index URL—not the README URL—is stored after the user reviews and confirms its identity.
+
+This is **index discovery**, not a claim of universal extension compatibility. A repository must publish KuroToon schema-version 1 indexes and declarative JSON manifests whose endpoints support the capabilities they advertise. Mihon/Tachiyomi protobuf indexes can describe extension metadata, but their APK/JAR code is not executed by KuroToon; a listed APK does not automatically become a searchable or readable KuroToon source. Metadata-only extensions cannot provide chapter pages.
+
 ## Add-repository links
 
 The app link format is:
