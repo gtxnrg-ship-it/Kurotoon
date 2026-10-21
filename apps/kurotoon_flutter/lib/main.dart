@@ -283,11 +283,11 @@ class _HomePage extends StatelessWidget {
           const _FeatureTile(
             icon: Icons.offline_pin_rounded,
             title: 'Your data stays yours',
-            subtitle: 'A local database and bounded cache foundation—offline UI is still being connected.',
+            subtitle: 'Your library and reading progress stay local; disposable cache is bounded and managed from the Shop.',
             tint: Color(0xFFFFC58A),
           ),
           const SizedBox(height: 24),
-          Text('Early build · some sections are not connected yet',
+          Text('Live discovery needs an internet connection. Your library and saved reading positions remain on this device.',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.42), fontSize: 11)),
         ],
       );
