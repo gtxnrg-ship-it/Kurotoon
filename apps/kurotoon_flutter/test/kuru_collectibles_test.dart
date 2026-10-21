@@ -52,7 +52,24 @@ void main() {
       expect(kuruCollectibles.every((item) => item.accent.toARGB32() != 0), isTrue);
     });
 
-    test('the reference sticker set includes the key expressions', () {
+
+    test('premium character entries and all achievement items have explicit metadata', () {
+      expect(kuruCollectibles.map((item) => item.id), containsAll([
+        'character_akira',
+        'character_mini_gojo',
+      ]));
+      for (final item in kuruCollectibles.where(
+        (item) => item.currency == CollectibleCurrency.achievement,
+      )) {
+        expect(
+          item.unlockRule?.trim(),
+          isNotEmpty,
+          reason: '${item.id} needs a visible unlock condition',
+        );
+      }
+    });
+
+    test('the catalog includes the key sticker expression entries', () {
       final names = kuruCollectibles
           .where((item) => item.category == CollectibleCategory.sticker)
           .map((item) => item.name)
