@@ -441,6 +441,11 @@ class _LibraryPageState extends State<LibraryPage> {
         const SizedBox(height: 18),
         if (_loading) const LinearProgressIndicator(minHeight: 2)
         else if (_error != null) _notice(Icons.storage_rounded, 'Library unavailable', _error!, TextButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')))
+        else if (_books.isEmpty && _collectionFilter != null && _collectionEditionIds.isEmpty && _query.trim().isEmpty) _notice(
+          Icons.folder_open_rounded,
+          'This collection is empty',
+          'Use the folder menu on a saved story to add it here. Deleting this collection will not delete your saved stories.',
+        )
         else if (_books.isEmpty) _notice(Icons.auto_stories_rounded, _filter == null ? 'Your collection starts here' : 'No ' + _label(_filter!).toLowerCase() + ' stories yet',
           _filter == null ? 'Browse a story and save it to your library. Your collection stays on this device.' : 'Choose another status or save a story from Browser.')
         else if (_visibleBooks.isEmpty) _notice(
