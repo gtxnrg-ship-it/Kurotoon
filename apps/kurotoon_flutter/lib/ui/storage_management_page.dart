@@ -148,7 +148,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
       setState(() => _budgetPreview = plan);
     } on Object catch (error) {
       if (!mounted) return;
-      setState(() => _budgetPreviewError = 'Budget preview failed: \${error.runtimeType}.');
+      setState(() => _budgetPreviewError = 'Budget preview failed: ${error.runtimeType}.');
     } finally {
       if (mounted) setState(() => _previewingBudget = false);
     }
@@ -194,12 +194,12 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
             children: [
               Expanded(
                 child: Text(
-                  '\${_bytes(_totalBytes)} used',
+                  '${_bytes(_totalBytes)} used',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
                 ),
               ),
               Text(
-                '\${_bytes(budgetBytes)} budget',
+                '${_bytes(budgetBytes)} budget',
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
             ],
@@ -218,7 +218,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
           ),
           const SizedBox(height: 5),
           Text(
-            '\$usedPercent% of the cache budget used · \${_bytes((budgetBytes - _totalBytes).clamp(0, budgetBytes))} headroom',
+            '\$usedPercent% of the cache budget used · ${_bytes((budgetBytes - _totalBytes).clamp(0, budgetBytes))} headroom',
             style: TextStyle(
               color: _totalBytes > budgetBytes ? Colors.orangeAccent : Colors.white54,
               fontSize: 11,
@@ -305,7 +305,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  '\${_budgetPreview!.filesToEvict.length} unpinned cache item(s) would be evicted; projected cache size \${_bytes(plan.projectedBytes)}.',
+                  '${_budgetPreview!.filesToEvict.length} unpinned cache item(s) would be evicted; projected cache size ${_bytes(plan.projectedBytes)}.',
                   style: const TextStyle(color: Colors.white60, fontSize: 11),
                 ),
               )
@@ -313,7 +313,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'No eviction required; projected cache size \${_bytes(plan.projectedBytes)}.',
+                  'No eviction required; projected cache size ${_bytes(plan.projectedBytes)}.',
                   style: const TextStyle(color: Colors.white60, fontSize: 11),
                 ),
               ),
