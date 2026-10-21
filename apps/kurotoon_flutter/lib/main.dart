@@ -778,7 +778,26 @@ class _BrowserPageState extends State<_BrowserPage> {
           ),
           const SizedBox(height: 18),
           if (_outcome == null && !_loading && _error == null && _recentQueries.isNotEmpty) ...[
-            const _SectionHeading(title: 'Recent searches', subtitle: 'Stored privately on this device'),
+            Row(
+              children: [
+                const Expanded(child: _SectionHeading(title: 'Recent searches', subtitle: 'Stored privately on this device')),
+                TextButton(
+                  onPressed: () async {
+                    setState(() => _recentQueries = const []);
+                    try {
+                      await widget.runtime.database?.setSetting('browser.recent_queries', const <String>[]);
+                    } on Object {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Recent searches were cleared for this session but could not be saved.')),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -794,6 +813,11 @@ class _BrowserPageState extends State<_BrowserPage> {
             ),
             const SizedBox(height: 12),
           ],
+          if (_outcome != null && _controller.text.trim() != _lastSubmittedQuery)
+            _InlineNotice(
+              icon: Icons.info_outline_rounded,
+              text: 'Showing results for “$_lastSubmittedQuery”. Submit the new title to run another search.',
+            ),
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           if (_error != null) ...[
             _InlineNotice(icon: Icons.wifi_off_rounded, text: _error!),
