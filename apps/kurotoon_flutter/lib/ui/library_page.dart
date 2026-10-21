@@ -8,6 +8,15 @@ import 'reader_page.dart';
 const _cyan = Color(0xFF6EE7F9);
 const _violet = Color(0xFF9D8CFF);
 
+enum _LibrarySort { recentActivity, recentlyAdded, titleAscending, titleDescending }
+
+String _librarySortLabel(_LibrarySort sort) => switch (sort) {
+  _LibrarySort.recentActivity => 'Recent activity',
+  _LibrarySort.recentlyAdded => 'Recently added',
+  _LibrarySort.titleAscending => 'Title (A–Z)',
+  _LibrarySort.titleDescending => 'Title (Z–A)',
+};
+
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key, required this.runtime});
   final KurotoonRuntime runtime;
@@ -17,12 +26,66 @@ class LibraryPage extends StatefulWidget {
 
 class _LibraryPageState extends State<LibraryPage> {
   LibraryStatus? _filter;
+  _LibrarySort _sort = _LibrarySort.recentActivity;
   bool _loading = true;
   String? _error;
   List<LibraryBook> _books = const [];
 
   @override
-  void initState() { super.initState(); _reload(); }
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      final stored = await widget.runtime.database?.getSetting<String>('library.sort_mode');
+      final matches = _LibrarySort.values.where((sort) => sort.name == stored).toList();
+      if (mounted && matches.isNotEmpty) setState(() => _sort = matches.single);
+    } on Object {
+      // A missing preference should not prevent access to the saved library.
+    }
+    await _reload();
+  }
+
+  DateTime _activityTime(LibraryBook book) =>
+      book.progress?.updatedAt ?? book.record.lastOpenedAt ?? book.record.addedAt;
+
+  List<LibraryBook> _sortBooks(List<LibraryBook> books) {
+    final sorted = List<LibraryBook>.of(books);
+    switch (_sort) {
+      case _LibrarySort.recentActivity:
+        sorted.sort((a, b) => _activityTime(b).compareTo(_activityTime(a)));
+      case _LibrarySort.recentlyAdded:
+        sorted.sort((a, b) => b.record.addedAt.compareTo(a.record.addedAt));
+      case _LibrarySort.titleAscending:
+        sorted.sort((a, b) => (a.catalogEntry?.work.title ?? 'Saved story')
+            .toLowerCase()
+            .compareTo((b.catalogEntry?.work.title ?? 'Saved story').toLowerCase()));
+      case _LibrarySort.titleDescending:
+        sorted.sort((a, b) => (b.catalogEntry?.work.title ?? 'Saved story')
+            .toLowerCase()
+            .compareTo((a.catalogEntry?.work.title ?? 'Saved story').toLowerCase()));
+    }
+    return sorted;
+  }
+
+  Future<void> _changeSort(_LibrarySort? next) async {
+    if (next == null || next == _sort) return;
+    setState(() {
+      _sort = next;
+      _books = _sortBooks(_books);
+    });
+    try {
+      await widget.runtime.database?.setSetting('library.sort_mode', next.name);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sort preference changed for this session, but could not be saved.')),
+        );
+      }
+    }
+  }
 
   Future<void> _reload() async {
     if (!mounted) return;
@@ -32,7 +95,8 @@ class _LibraryPageState extends State<LibraryPage> {
       if (service == null) throw StateError('Persistent storage unavailable');
       final books = await service.loadLibrary(status: _filter);
       if (!mounted) return;
-      setState(() { _books = books; _loading = false; });
+      final sorted = _sortBooks(books);
+      setState(() { _books = sorted; _loading = false; });
     } on Object {
       if (!mounted) return;
       setState(() { _error = 'Your library could not be loaded. Your saved data has not been changed.'; _loading = false; });
@@ -137,6 +201,21 @@ class _LibraryPageState extends State<LibraryPage> {
           _chip('All', null),
           for (final status in LibraryStatus.values) ...[const SizedBox(width: 8), _chip(_label(status), status)],
         ])),
+        const SizedBox(height: 14),
+        DropdownButtonFormField<_LibrarySort>(
+          initialValue: _sort,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Sort collection',
+            isDense: true,
+            prefixIcon: Icon(Icons.sort_rounded),
+          ),
+          items: _LibrarySort.values.map((sort) => DropdownMenuItem(
+            value: sort,
+            child: Text(_librarySortLabel(sort)),
+          )).toList(),
+          onChanged: _changeSort,
+        ),
         const SizedBox(height: 18),
         if (_loading) const LinearProgressIndicator(minHeight: 2)
         else if (_error != null) _notice(Icons.storage_rounded, 'Library unavailable', _error!, TextButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')))
