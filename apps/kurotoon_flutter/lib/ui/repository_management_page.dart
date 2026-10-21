@@ -125,10 +125,18 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(index.badgeLabel + ' · ' + index.extensions.length.toString() + ' extension packages · ' + index.sourceCount.toString() + ' source entries'),
+                  child: Text(index.badgeLabel + ' · ' + index.extensionCount.toString() + ' extension packages · ' + index.sourceCount.toString() + ' source entries'),
                 ),
                 const SizedBox(height: 8),
                 const Text('This saves a browsable metadata catalog. APK/JAR packages remain unavailable as executable KuroToon sources.'),
+                if (index.hasMorePreviewEntries)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 4),
+                    child: Text(
+                      'Showing ${index.extensions.length} of ${index.extensionCount} packages to keep the preview light.',
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Flexible(
                   child: ListView.builder(
@@ -380,11 +388,19 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
           ],
           if (upstream != null) ...[
             const SizedBox(height: 8),
-            Text(upstream.badgeLabel + ' · ' + upstream.extensions.length.toString() + ' packages · ' + upstream.sourceCount.toString() + ' sources', style: const TextStyle(color: _repoCyan, fontSize: 12)),
+            Text(upstream.badgeLabel + ' · ' + upstream.extensionCount.toString() + ' packages · ' + upstream.sourceCount.toString() + ' sources', style: const TextStyle(color: _repoCyan, fontSize: 12)),
             const Padding(
               padding: EdgeInsets.only(top: 4, bottom: 4),
               child: Text('Catalog only — APK/JAR extensions are not installed or executed.', style: TextStyle(color: Colors.white54, fontSize: 11)),
             ),
+            if (upstream.hasMorePreviewEntries)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 4),
+                child: Text(
+                  'Showing ${upstream.extensions.length} of ${upstream.extensionCount} packages.',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ),
             for (final extension in upstream.extensions) _upstreamPackageRow(extension),
           ],
           Align(

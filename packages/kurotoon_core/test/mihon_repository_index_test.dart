@@ -84,6 +84,38 @@ void main() {
     expect(entry.sources.single.mirrorUrls.single.host, 'mangadex.org');
   });
 
+  test('bounds catalog preview rows while preserving total counts', () {
+    final secondExtension = <int>[
+      ..._fieldString(1, 'Second Source'),
+      ..._fieldString(2, 'eu.example.second'),
+      ..._fieldVarint(5, 43),
+      ..._fieldString(6, '2.0.0'),
+      ..._fieldBytes(8, source),
+    ];
+    final twoEntryIndex = <int>[
+      ..._fieldString(1, 'Example Mihon Repository'),
+      ..._fieldString(3, 'test-signing-key'),
+      ..._fieldBytes(101, [
+        ..._fieldBytes(1, extension),
+        ..._fieldBytes(1, secondExtension),
+      ]),
+    ];
+    final full = MihonRepositoryIndex.parse(
+      twoEntryIndex,
+      indexUri: Uri.parse('https://repo.example.org/index.pb'),
+    );
+    final preview = boundedMihonRepositoryPreview(full, limit: 1);
+
+    expect(preview.extensions, hasLength(1));
+    expect(preview.extensionCount, 2);
+    expect(preview.sourceCount, 2);
+    expect(preview.hasMorePreviewEntries, isTrue);
+    expect(
+      () => boundedMihonRepositoryPreview(full, limit: 0),
+      throwsArgumentError,
+    );
+  });
+
   test('resolves an external extension-list URL against the repository index', () {
     final bytes = <int>[
       ..._fieldString(1, 'External List Repository'),
