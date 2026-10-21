@@ -535,4 +535,87 @@ void main() {
   });
 
 
+  test('extension operation journals round-trip safe recovery metadata', () async {
+    await database.beginExtensionOperationJournal(
+      id: 'install-test-1',
+      operation: 'install',
+      extensionId: 'org.example.source',
+      payload: {
+        'targetPath': '/managed/extensions/org.example.source/1.0.0/a1b2c3d4e5f6/manifest.json',
+        'temporaryPath': '/managed/extensions/org.example.source/1.0.0/a1b2c3d4e5f6/.manifest-123.tmp',
+        'targetExisted': false,
+        'previousPath': null,
+      },
+    );
+
+    final journals = await database.loadExtensionOperationJournals();
+    expect(journals, hasLength(1));
+    expect(journals.single.operation, 'install');
+    expect(journals.single.extensionId, 'org.example.source');
+    expect(journals.single.payload?['targetExisted'], isFalse);
+    expect(journals.single.payload?['previousPath'], isNull);
+
+    await database.removeExtensionOperationJournal('install-test-1');
+    expect(await database.loadExtensionOperationJournals(), isEmpty);
+  });
+
+  test('schema version 8 upgrades to extension journals without losing installs', () async {
+    final oldPath = p.join(temp.path, 'schema-v8.db');
+    final old = await databaseFactoryFfi.openDatabase(
+      oldPath,
+      options: OpenDatabaseOptions(
+        version: 8,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE extension_repositories (
+              id TEXT PRIMARY KEY NOT NULL,
+              index_url TEXT NOT NULL
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE installed_extensions (
+              extension_id TEXT PRIMARY KEY NOT NULL,
+              repository_id TEXT NOT NULL,
+              install_path TEXT
+            )
+          ''');
+          await db.insert('extension_repositories', {
+            'id': 'legacy-repository',
+            'index_url': 'https://example.org/index.json',
+          });
+          await db.insert('installed_extensions', {
+            'extension_id': 'org.example.legacy',
+            'repository_id': 'legacy-repository',
+            'install_path': '/existing/manifest.json',
+          });
+        },
+      ),
+    );
+    await old.close();
+
+    final upgraded = await KurotoonDatabase.open(
+      databasePath: oldPath,
+      factory: databaseFactoryFfi,
+    );
+    try {
+      final rows = await upgraded.rawDatabase.query('installed_extensions');
+      final journalTables = await upgraded.rawDatabase.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'extension_operation_journal'",
+      );
+      expect(rows, hasLength(1));
+      expect(rows.single['extension_id'], 'org.example.legacy');
+      expect(journalTables, hasLength(1));
+      await upgraded.beginExtensionOperationJournal(
+        id: 'migration-check',
+        operation: 'uninstall',
+        extensionId: 'org.example.legacy',
+        payload: {'manifestPath': '/existing/manifest.json'},
+      );
+      expect(await upgraded.loadExtensionOperationJournals(), hasLength(1));
+    } finally {
+      await upgraded.close();
+    }
+  });
+
+
 }
