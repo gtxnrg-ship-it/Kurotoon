@@ -296,6 +296,26 @@ class MihonRepositoryIndex {
   }
 }
 
+/// Creates an immutable UI sample while preserving full catalog counts.
+MihonRepositoryIndex boundedMihonRepositoryPreview(
+  MihonRepositoryIndex index, {
+  int limit = 50,
+}) {
+  if (limit < 1 || limit > 100) {
+    throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 100.');
+  }
+  return MihonRepositoryIndex(
+    name: index.name,
+    badgeLabel: index.badgeLabel,
+    signingKey: index.signingKey,
+    contact: index.contact,
+    extensionListUrl: index.extensionListUrl,
+    extensions: List<MihonExtensionRecord>.unmodifiable(index.extensions.take(limit)),
+    totalExtensionCount: index.extensionCount,
+    totalSourceCount: index.sourceCount,
+  );
+}
+
 List<MihonExtensionRecord> _parseExtensionList(List<int> bytes, {required int maxExtensions}) {
   final extensions = <MihonExtensionRecord>[];
   for (final field in _ProtoReader(bytes).readAll()) {
