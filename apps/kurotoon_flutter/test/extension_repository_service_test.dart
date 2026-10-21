@@ -98,7 +98,7 @@ void main() {
       ));
       await outsideManifest.parent.create(recursive: true);
       await outsideManifest.writeAsString('{}');
-      await Link(p.join(root, extensionId)).create(target: outside);
+      await Link(p.join(root, extensionId)).create(outside);
 
       final apparentManifest = p.join(
         root,
