@@ -55,6 +55,8 @@ class CatalogMatchPage {
   final bool hasMore;
 }
 
+enum ShopPurchaseStatus { purchased, alreadyOwned, insufficientFunds }
+
 class KurotoonDatabase {
   KurotoonDatabase._(this._database);
 
@@ -1143,6 +1145,46 @@ class KurotoonDatabase {
     return value is T ? value : null;
   }
 
+
+  /// Atomically updates the local collectible inventory and wallet.
+  /// Keeping all three values in one transaction prevents a failed write from
+  /// granting an item without charging its currency (or charging without ownership).
+  Future<ShopPurchaseStatus> purchaseShopCollectible({
+    required String itemId,
+    required int price,
+    required bool useGold,
+  }) async {
+    _ensureOpen();
+    if (itemId.trim().isEmpty || price <= 0) {
+      throw ArgumentError('A collectible ID and positive price are required.');
+    }
+    return _database.transaction((tx) async {
+      Future<Object?> readValue(String key) async {
+        final rows = await tx.query('app_settings', columns: ['value_json'], where: 'key = ?', whereArgs: [key], limit: 1);
+        return rows.isEmpty ? null : jsonDecode(rows.single['value_json'] as String);
+      }
+      final ownedValue = await readValue('shop.collection.owned.v1');
+      final owned = ownedValue is List ? ownedValue.whereType<String>().toSet() : <String>{'kuru_happy','kuru_cry','kuru_sleepy'};
+      if (owned.contains(itemId)) return ShopPurchaseStatus.alreadyOwned;
+      final walletKey = useGold ? 'shop.wallet.gold.v1' : 'shop.wallet.silver.v1';
+      final balanceValue = await readValue(walletKey);
+      final balance = balanceValue is int ? balanceValue : (useGold ? 12 : 800);
+      if (balance < price) return ShopPurchaseStatus.insufficientFunds;
+      owned.add(itemId);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await tx.insert('app_settings', {
+        'key': 'shop.collection.owned.v1',
+        'value_json': jsonEncode(owned.toList()..sort()),
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await tx.insert('app_settings', {
+        'key': walletKey,
+        'value_json': jsonEncode(balance - price),
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return ShopPurchaseStatus.purchased;
+    });
+  }
 
   Future<void> saveExtensionRepository(ExtensionRepository repository, {String? indexDigest}) async {
     _ensureOpen();
