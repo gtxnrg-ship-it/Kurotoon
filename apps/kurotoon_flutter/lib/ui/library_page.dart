@@ -8,9 +8,10 @@ import 'reader_page.dart';
 const _cyan = Color(0xFF6EE7F9);
 const _violet = Color(0xFF9D8CFF);
 
-enum _LibrarySort { recentActivity, recentlyAdded, titleAscending, titleDescending }
+enum _LibrarySort { manualOrder, recentActivity, recentlyAdded, titleAscending, titleDescending }
 
 String _librarySortLabel(_LibrarySort sort) => switch (sort) {
+  _LibrarySort.manualOrder => 'Manual order',
   _LibrarySort.recentActivity => 'Recent activity',
   _LibrarySort.recentlyAdded => 'Recently added',
   _LibrarySort.titleAscending => 'Title (A–Z)',
@@ -28,6 +29,7 @@ class _LibraryPageState extends State<LibraryPage> {
   LibraryStatus? _filter;
   _LibrarySort _sort = _LibrarySort.recentActivity;
   bool _loading = true;
+  bool _savingManualOrder = false;
   String? _error;
   List<LibraryBook> _books = const [];
   List<LibraryCollection> _collections = const [];
@@ -80,9 +82,22 @@ class _LibraryPageState extends State<LibraryPage> {
   DateTime _activityTime(LibraryBook book) =>
       book.progress?.updatedAt ?? book.record.lastOpenedAt ?? book.record.addedAt;
 
+  bool get _canReorderLibrary =>
+      _sort == _LibrarySort.manualOrder &&
+      _filter == null &&
+      _collectionFilter == null &&
+      _query.trim().isEmpty &&
+      _visibleBooks.length == _books.length;
+
   List<LibraryBook> _sortBooks(List<LibraryBook> books) {
     final sorted = List<LibraryBook>.of(books);
     switch (_sort) {
+      case _LibrarySort.manualOrder:
+        sorted.sort((a, b) {
+          final order = a.record.sortOrder.compareTo(b.record.sortOrder);
+          return order != 0 ? order : b.record.addedAt.compareTo(a.record.addedAt);
+        });
+        break;
       case _LibrarySort.recentActivity:
         sorted.sort((a, b) => _activityTime(b).compareTo(_activityTime(a)));
         break;
@@ -101,6 +116,43 @@ class _LibraryPageState extends State<LibraryPage> {
         break;
     }
     return sorted;
+  }
+
+  Future<void> _reorderBooks(int oldIndex, int newIndex) async {
+    if (!_canReorderLibrary || _loading || _savingManualOrder) return;
+    final ordered = List<LibraryBook>.of(_visibleBooks);
+    if (oldIndex < 0 || oldIndex >= ordered.length) return;
+    if (newIndex < 0 || newIndex >= ordered.length || newIndex == oldIndex) return;
+    final moved = ordered.removeAt(oldIndex);
+    ordered.insert(newIndex, moved);
+    setState(() {
+      _savingManualOrder = true;
+      _books = ordered;
+    });
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Library storage is unavailable.');
+      // The database validates the complete identity set again inside its transaction;
+      // a stale screen can never overwrite a different or filtered library order.
+      await database.reorderLibraryEntries(
+        ordered.map((book) => book.record).toList(growable: false),
+      );
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Manual library order saved on this device.')),
+        );
+      }
+    } on Object {
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Manual order could not be saved. The stored order was restored. Refresh and try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingManualOrder = false);
+    }
   }
 
   Future<void> _changeSort(_LibrarySort? next) async {
@@ -484,7 +536,62 @@ class _LibraryPageState extends State<LibraryPage> {
         else ...[
           Text('${_visibleBooks.length} of ${_books.length} ${_books.length == 1 ? 'edition' : 'editions'} · stored locally', style: const TextStyle(color: Colors.white54, fontSize: 12)),
           const SizedBox(height: 10),
-          for (final book in _visibleBooks) ...[_bookCard(book), const SizedBox(height: 10)],
+          if (_sort == _LibrarySort.manualOrder && !_canReorderLibrary)
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: _cyan.withValues(alpha: .07),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _cyan.withValues(alpha: .18)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded, color: _cyan, size: 18),
+                  SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'To change the saved order, show every saved edition: clear the status filter, collection selection, and search. This prevents a filtered view from moving hidden stories.',
+                      style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (_sort == _LibrarySort.manualOrder && _canReorderLibrary)
+            ReorderableListView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              onReorderItem: _reorderBooks,
+              children: [
+                for (var index = 0; index < _visibleBooks.length; index++)
+                  Padding(
+                    key: ValueKey(_visibleBooks[index].record.workId + '::' + _visibleBooks[index].record.editionId),
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _bookCard(_visibleBooks[index])),
+                        const SizedBox(width: 4),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 18),
+                          child: ReorderableDragStartListener(
+                            index: index,
+                            child: const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Icon(Icons.drag_indicator_rounded, color: _cyan),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            )
+          else
+            for (final book in _visibleBooks) ...[_bookCard(book), const SizedBox(height: 10)],
         ],
       ],
     ),
