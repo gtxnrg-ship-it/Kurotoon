@@ -1555,7 +1555,7 @@ class _MePageState extends State<_MePage> {
                           : 'Fit entire page') +
                   ' · Dimming ' + (_readerDisplayPreferences.dimming * 100).round().toString() +
                   '% · Gap ' + _readerDisplayPreferences.pageGap.round().toString() + ' px',
-              onTap: _readerPreferenceSaving ? () {} : _editReaderDisplayPreferences,
+              onTap: _editReaderDisplayPreferences,
             ),
           ]),
           const SizedBox(height: 22),
