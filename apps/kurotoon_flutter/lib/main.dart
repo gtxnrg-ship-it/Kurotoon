@@ -795,9 +795,19 @@ class _BrowserPageState extends State<_BrowserPage> {
           const SizedBox(height: 8),
           const Text('Find your next obsession.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
-          const Text('Search the sources currently connected to Kurotoon.',
+          const Text('Search current provider results or explore creators already indexed on this device.',
               style: TextStyle(color: Colors.white60, height: 1.4)),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment<bool>(value: false, label: Text('Stories'), icon: Icon(Icons.menu_book_rounded)),
+              ButtonSegment<bool>(value: true, label: Text('Creators'), icon: Icon(Icons.person_search_rounded)),
+            ],
+            selected: {_creatorMode},
+            showSelectedIcon: false,
+            onSelectionChanged: _loading ? null : (selection) => _switchBrowserMode(selection.single),
+          ),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
@@ -807,8 +817,8 @@ class _BrowserPageState extends State<_BrowserPage> {
                   onSubmitted: (_) => _search(),
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
-                    hintText: 'Title, alternate title…',
-                    prefixIcon: const Icon(Icons.search_rounded),
+                    hintText: _creatorMode ? 'Creator name or pen name…' : 'Title, alternate title…',
+                    prefixIcon: Icon(_creatorMode ? Icons.person_search_rounded : Icons.search_rounded),
                     suffixIcon: _controller.text.isEmpty
                         ? null
                         : IconButton(
@@ -822,6 +832,9 @@ class _BrowserPageState extends State<_BrowserPage> {
                               _formatFilter = null;
                               _sourceFilter = null;
                               _languageFilter = null;
+                              _creatorResults = const [];
+                              _creatorSearchPerformed = false;
+                              _lastCreatorQuery = '';
                             }),
                           ),
                   ),
@@ -833,12 +846,12 @@ class _BrowserPageState extends State<_BrowserPage> {
                 icon: _loading
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.arrow_forward_rounded),
-                tooltip: 'Search',
+                tooltip: _creatorMode ? 'Find creators' : 'Search stories',
               ),
             ],
           ),
           const SizedBox(height: 18),
-          if (_outcome == null && !_loading && _error == null && _recentQueries.isNotEmpty) ...[
+          if (!_creatorMode && _outcome == null && !_loading && _error == null && _recentQueries.isNotEmpty) ...[
             Row(
               children: [
                 const Expanded(child: _SectionHeading(title: 'Recent searches', subtitle: 'Stored privately on this device')),
@@ -881,15 +894,42 @@ class _BrowserPageState extends State<_BrowserPage> {
             ),
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           if (_error != null) ...[
-            _InlineNotice(icon: Icons.wifi_off_rounded, text: _error!),
+            _InlineNotice(icon: _creatorMode ? Icons.manage_search_rounded : Icons.wifi_off_rounded, text: _error!),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: _loading || _controller.text.trim().isEmpty ? null : _search,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Try search again'),
+                label: Text(_creatorMode ? 'Search creators again' : 'Try search again'),
               ),
             ),
+          ],
+          if (_creatorMode && _creatorResults.isNotEmpty && _controller.text.trim() != _lastCreatorQuery)
+            _InlineNotice(
+              icon: Icons.info_outline_rounded,
+              text: 'Showing creators for “$_lastCreatorQuery”. Submit the new name to search again.',
+            ),
+          if (_creatorMode && !_creatorSearchPerformed && !_loading && _error == null)
+            const _InlineNotice(
+              icon: Icons.person_search_rounded,
+              text: 'Creator search uses the catalog already indexed on this device. Search Stories first to populate the local catalog; creator lookup itself does not contact a network source.',
+            ),
+          if (_creatorMode && _creatorSearchPerformed && !_loading && _error == null) ...[
+            _SectionHeading(
+              title: '${_creatorResults.length} creator${_creatorResults.length == 1 ? '' : 's'} found',
+              subtitle: 'From locally indexed source metadata · no extra network request',
+            ),
+            const SizedBox(height: 12),
+            if (_creatorResults.isEmpty)
+              const _InlineNotice(
+                icon: Icons.person_search_rounded,
+                text: 'No indexed creators match this name. Try a shorter name, or search a title in Stories mode first.',
+              )
+            else
+              for (final creator in _creatorResults) ...[
+                _CreatorResultTile(creator: creator, onTap: () => _openCreator(creator)),
+                const SizedBox(height: 10),
+              ],
           ],
           if (_outcome != null) ...[
             _SectionHeading(
@@ -996,7 +1036,7 @@ class _BrowserPageState extends State<_BrowserPage> {
                 const SizedBox(height: 10),
               ],
           ],
-          if (!_loading && _outcome == null && _error == null)
+          if (!_creatorMode && !_loading && _outcome == null && _error == null)
             const _InlineNotice(
               icon: Icons.public_rounded,
               text: 'Search uses live provider APIs. Results depend on source availability; Kurotoon does not host comic content.',
