@@ -178,7 +178,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
     final pages = [
       _HomePage(onBrowse: () => setState(() => _selected = 1)),
       _BrowserPage(runtime: widget.runtime),
-      ShopPage(runtime: widget.runtime),
+      ShopPage(runtime: widget.runtime, active: _selected == 2),
       LibraryPage(runtime: widget.runtime),
       _MePage(runtime: widget.runtime, motionEnabled: _motionEnabled, onMotionChanged: _setMotionEnabled),
     ];
