@@ -77,12 +77,12 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   Future<RepositoryPreview> previewRepository(String rawUrl) async {
     final decision = const RepositoryPolicy().validate(rawUrl);
     if (!decision.allowed || decision.uri == null) throw FormatException(decision.reason);
-    final suppliedUri = decision.uri!;
+    const discovery = RepositoryMarkdownDiscovery();
+    final suppliedUri = discovery.normalizeGitHubFileUrl(decision.uri!);
     if (suppliedUri.path.toLowerCase().endsWith('.json')) {
       return _previewIndex(suppliedUri);
     }
 
-    const discovery = RepositoryMarkdownDiscovery();
     final readme = discovery.readmeCandidate(rawUrl);
     if (readme == null) {
       throw const FormatException(
