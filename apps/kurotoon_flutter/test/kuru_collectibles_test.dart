@@ -24,7 +24,7 @@ void main() {
       expect(kuruCollectibles.every((item) => item.assetPath == null), isTrue);
     });
 
-    test('launch catalog has the four planned tiers and exactly three legendaries', () {
+    test('launch catalog has the five planned tiers and exactly three legendaries', () {
       expect(kuruCollectibles, hasLength(60));
       expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.standard), hasLength(25));
       expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.premium), hasLength(12));
