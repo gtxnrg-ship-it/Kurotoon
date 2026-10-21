@@ -149,6 +149,121 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
+  Future<void> _selectCollection(String? collectionId) async {
+    final database = widget.runtime.database;
+    if (collectionId == null || database == null) {
+      setState(() { _collectionFilter = null; _collectionEditionIds = const {}; });
+      return;
+    }
+    try {
+      final members = await database.loadLibraryCollectionEditionIds(collectionId);
+      if (!mounted) return;
+      setState(() { _collectionFilter = collectionId; _collectionEditionIds = members; });
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open this collection. Your saved library remains unchanged.')),
+      );
+    }
+  }
+
+  Future<void> _createCollection() async {
+    final controller = TextEditingController();
+    try {
+      final name = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Create a collection'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 40,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+            decoration: const InputDecoration(
+              labelText: 'Collection name',
+              hintText: 'Favorites, Weekend reads…',
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(controller.text), child: const Text('Create')),
+          ],
+        ),
+      );
+      final normalizedName = (name ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (normalizedName.isEmpty) return;
+      final id = 'collection-' + DateTime.now().toUtc().microsecondsSinceEpoch.toString();
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local database unavailable');
+      await database.createLibraryCollection(id: id, name: normalizedName);
+      if (!mounted) return;
+      setState(() => _collectionFilter = id);
+      await _reload();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('“' + normalizedName + '” is ready. Add saved stories with the folder menu on each card.')),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = error.toString().contains('UNIQUE constraint failed')
+          ? 'A collection with that name already exists. Choose a different name.'
+          : 'The collection could not be created. Your existing library was not changed.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _deleteCollection(LibraryCollection collection) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete "' + collection.name + '"?'),
+        content: const Text('Only this collection and its organization are removed. The saved stories and reading progress stay in your library.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Keep collection')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Delete collection')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local database unavailable');
+      await database.removeLibraryCollection(collection.id);
+      if (!mounted) return;
+      if (_collectionFilter == collection.id) {
+        setState(() { _collectionFilter = null; _collectionEditionIds = const {}; });
+      }
+      await _reload();
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete this collection. Your saved stories were kept.')),
+      );
+    }
+  }
+
+  Future<void> _addToCollection(LibraryBook book, LibraryCollection collection) async {
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local database unavailable');
+      final added = await database.addLibraryEntryToCollection(
+        collectionId: collection.id,
+        workId: book.record.workId,
+        editionId: book.record.editionId,
+      );
+      if (!mounted) return;
+      await _reload();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(added ? 'Added to "' + collection.name + '".' : 'Already in "' + collection.name + '".'),
+      ));
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not organize this story. Your library and reading progress were kept.')),
+      );
+    }
+  }
+
   Future<void> _setStatus(LibraryBook book, LibraryStatus status) async {
     try {
       final service = widget.runtime.readingJourney;
