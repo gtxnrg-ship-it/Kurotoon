@@ -62,6 +62,25 @@ class CacheWritePlan {
   final List<String> filesToEvict;
 }
 
+/// Durable record for a cache filesystem operation that has not committed.
+/// The journal row is deleted in the same SQLite transaction as its metadata
+/// commit, so its presence on startup always means rollback is still required.
+class CacheOperationJournal {
+  const CacheOperationJournal({
+    required this.id,
+    required this.operation,
+    required this.key,
+    required this.payload,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String operation;
+  final String key;
+  final Map<String, Object?>? payload;
+  final DateTime createdAt;
+}
+
 /// SQLite persistence for user-owned state and normalized catalog metadata.
 /// Image/page/audio bytes live in bounded files, not database blobs.
 class CatalogMatchPage {
@@ -84,7 +103,7 @@ class KurotoonDatabase {
     return _database;
   }
 
-  static const int schemaVersion = 7;
+  static const int schemaVersion = 8;
 
   static Future<KurotoonDatabase> open({
     String? databasePath,
@@ -265,6 +284,14 @@ class KurotoonDatabase {
         last_accessed_at INTEGER NOT NULL,
         pinned INTEGER NOT NULL DEFAULT 0
       )''',
+      '''CREATE TABLE cache_operation_journal (
+        id TEXT PRIMARY KEY NOT NULL,
+        operation TEXT NOT NULL CHECK(operation IN ('write', 'remove')),
+        cache_key TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )''',
+      'CREATE INDEX cache_operation_journal_created_idx ON cache_operation_journal(created_at, id)',
       '''CREATE TABLE voice_pack_installs (
         pack_id TEXT PRIMARY KEY NOT NULL,
         version TEXT NOT NULL,
@@ -317,6 +344,7 @@ class KurotoonDatabase {
     if (oldVersion < 5 && newVersion >= 5) await _createCreatorCatalogIndexes(db);
     if (oldVersion < 6 && newVersion >= 6) await _createRecentReadingIndex(db);
     if (oldVersion < 7 && newVersion >= 7) await _createLibraryCollectionsSchema(db);
+    if (oldVersion < 8 && newVersion >= 8) await _createCacheOperationJournalSchema(db);
   }
 
   /// Versioned migration: existing library rows and reading progress are untouched.
@@ -347,6 +375,19 @@ class KurotoonDatabase {
   static Future<void> _createCreatorCatalogIndexes(DatabaseExecutor db) async {
     await db.execute('CREATE INDEX IF NOT EXISTS creator_profiles_name_idx ON creator_profiles(name COLLATE NOCASE, id)');
     await db.execute('CREATE INDEX IF NOT EXISTS creator_credits_work_idx ON creator_credits(work_id, creator_id)');
+  }
+
+  static Future<void> _createCacheOperationJournalSchema(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS cache_operation_journal (
+      id TEXT PRIMARY KEY NOT NULL,
+      operation TEXT NOT NULL CHECK(operation IN ('write', 'remove')),
+      cache_key TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS cache_operation_journal_created_idx ON cache_operation_journal(created_at, id)',
+    );
   }
 
   static Future<void> _createCatalogSearchTermsTable(DatabaseExecutor db) async {
@@ -1801,6 +1842,64 @@ class KurotoonDatabase {
     await _database.delete('voice_pack_installs', where: 'pack_id = ?', whereArgs: [packId]);
   }
 
+  Future<void> beginCacheOperationJournal({
+    required String id,
+    required String operation,
+    required String key,
+    required Map<String, Object?> payload,
+  }) async {
+    _ensureOpen();
+    if (id.trim().isEmpty || key.trim().isEmpty) {
+      throw ArgumentError('Cache operation journal requires a non-empty id and key.');
+    }
+    if (operation != 'write' && operation != 'remove') {
+      throw ArgumentError.value(operation, 'operation');
+    }
+    await _database.insert('cache_operation_journal', {
+      'id': id,
+      'operation': operation,
+      'cache_key': key,
+      'payload_json': jsonEncode(payload),
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  Future<List<CacheOperationJournal>> loadCacheOperationJournals() async {
+    _ensureOpen();
+    final rows = await _database.query(
+      'cache_operation_journal',
+      orderBy: 'created_at ASC, id ASC',
+    );
+    return List.unmodifiable(rows.map((row) {
+      Map<String, Object?>? payload;
+      try {
+        final decoded = jsonDecode(row['payload_json'] as String);
+        if (decoded is Map) {
+          payload = decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } on FormatException {
+        // The row is retained so recovery can report and retry rather than
+        // silently discarding an operation whose files may still be staged.
+      }
+      return CacheOperationJournal(
+        id: row['id'] as String,
+        operation: row['operation'] as String,
+        key: row['cache_key'] as String,
+        payload: payload,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
+      );
+    }));
+  }
+
+  Future<void> removeCacheOperationJournal(String id) async {
+    _ensureOpen();
+    await _database.delete(
+      'cache_operation_journal',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<void> saveCacheEntry(CacheEntryFile entry) async {
     _ensureOpen();
     await _database.insert(
@@ -1823,6 +1922,7 @@ class KurotoonDatabase {
   Future<void> commitCacheWrite(
     CacheEntryFile entry, {
     Iterable<String> evictedKeys = const [],
+    String? journalId,
   }) async {
     _ensureOpen();
     await _database.transaction((tx) async {
@@ -1842,6 +1942,13 @@ class KurotoonDatabase {
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
+      if (journalId != null) {
+        await tx.delete(
+          'cache_operation_journal',
+          where: 'id = ?',
+          whereArgs: [journalId],
+        );
+      }
     });
   }
 
@@ -1893,11 +2000,18 @@ class KurotoonDatabase {
   }
 
   /// Call this only after the caller has removed the corresponding files successfully.
-  Future<void> confirmCacheEviction(Iterable<String> keys) async {
+  Future<void> confirmCacheEviction(Iterable<String> keys, {String? journalId}) async {
     _ensureOpen();
     await _database.transaction((tx) async {
       for (final key in keys) {
         await tx.delete('cache_entries', where: 'cache_key = ?', whereArgs: [key]);
+      }
+      if (journalId != null) {
+        await tx.delete(
+          'cache_operation_journal',
+          where: 'id = ?',
+          whereArgs: [journalId],
+        );
       }
     });
   }
