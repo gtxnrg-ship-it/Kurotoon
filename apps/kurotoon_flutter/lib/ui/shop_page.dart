@@ -234,7 +234,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         Padding(padding:const EdgeInsets.fromLTRB(10,0,10,10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           Text(item.name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w800)),
           const SizedBox(height:4),
-          Row(children:[Icon(item.currency==CollectibleCurrency.gold?Icons.paid_rounded:Icons.circle_outlined,size:13,color:item.currency==CollectibleCurrency.gold?const Color(0xFFFFD166):const Color(0xFFD7E0F1)),const SizedBox(width:4),Expanded(child:Text(owned?(equipped?'Equipped':'Collected'):'${item.price} ${item.currency==CollectibleCurrency.gold?'gold':'silver'}',style:TextStyle(fontSize:10,color:owned?const Color(0xFF8FF0CE):Colors.white60,fontWeight:FontWeight.w700),maxLines:1,overflow:TextOverflow.ellipsis))]),
+          Row(children:[Icon(item.currency==CollectibleCurrency.gold?Icons.paid_rounded:item.currency==CollectibleCurrency.achievement?Icons.emoji_events_rounded:Icons.circle_outlined,size:13,color:item.currency==CollectibleCurrency.gold?const Color(0xFFFFD166):item.currency==CollectibleCurrency.achievement?_shopPink:const Color(0xFFD7E0F1)),const SizedBox(width:4),Expanded(child:Text(owned?(equipped?'Equipped':'Collected'):item.currency==CollectibleCurrency.achievement?'Achievement reward':'${item.price} ${item.currency==CollectibleCurrency.gold?'gold':'silver'}',style:TextStyle(fontSize:10,color:owned?const Color(0xFF8FF0CE):Colors.white60,fontWeight:FontWeight.w700),maxLines:1,overflow:TextOverflow.ellipsis))]),
         ])),
       ])),
     );
