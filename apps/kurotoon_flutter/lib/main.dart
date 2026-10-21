@@ -745,39 +745,7 @@ class _BrowserPageState extends State<_BrowserPage> {
     );
   }
 
-  WorkCandidate _candidateForEntry(CatalogEntry entry) {
-    if (entry.listings.isEmpty) throw StateError('Catalog entry has no source listings.');
-    final candidates = entry.listings.toList();
-    candidates.sort((left, right) {
-      int priority(WorkCandidate candidate) {
-        final providers = widget.runtime.providers.all.where((item) => item.descriptor.id == candidate.providerId);
-        if (providers.isEmpty) return 0;
-        final provider = providers.first;
-        final enabled = widget.runtime.providers.isEnabled(candidate.providerId);
-        final chapters = provider is ChapterFeedProvider &&
-            provider.descriptor.supports(ProviderCapability.chapters);
-        final pages = provider is ReaderPagesProvider &&
-            provider.descriptor.supports(ProviderCapability.pages);
-        return (enabled ? 4 : 0) + (chapters ? 2 : 0) + (pages ? 1 : 0);
-      }
-      return priority(right).compareTo(priority(left));
-    });
-    final source = candidates.first;
-    return WorkCandidate(
-      providerId: source.providerId,
-      externalId: source.externalId,
-      title: entry.work.title,
-      providerUrl: source.providerUrl,
-      alternateTitles: entry.work.alternateTitles,
-      creatorNames: entry.work.creatorNames,
-      year: entry.work.year,
-      format: entry.work.format,
-      language: source.language,
-      description: source.description,
-      coverUrl: source.coverUrl,
-      tags: source.tags,
-    );
-  }
+  WorkCandidate _candidateForEntry(CatalogEntry entry) => _candidateForCatalogEntry(entry, widget.runtime);
 
   Future<void> _openSeries(WorkCandidate candidate) async {
     await Navigator.of(context).push<void>(
@@ -1044,6 +1012,40 @@ class _BrowserPageState extends State<_BrowserPage> {
         ],
       );
 }
+
+WorkCandidate _candidateForCatalogEntry(CatalogEntry entry, KurotoonRuntime runtime) {
+    if (entry.listings.isEmpty) throw StateError('Catalog entry has no source listings.');
+    final candidates = entry.listings.toList();
+    candidates.sort((left, right) {
+      int priority(WorkCandidate candidate) {
+        final providers = widget.runtime.providers.all.where((item) => item.descriptor.id == candidate.providerId);
+        if (providers.isEmpty) return 0;
+        final provider = providers.first;
+        final enabled = widget.runtime.providers.isEnabled(candidate.providerId);
+        final chapters = provider is ChapterFeedProvider &&
+            provider.descriptor.supports(ProviderCapability.chapters);
+        final pages = provider is ReaderPagesProvider &&
+            provider.descriptor.supports(ProviderCapability.pages);
+        return (enabled ? 4 : 0) + (chapters ? 2 : 0) + (pages ? 1 : 0);
+      }
+      return priority(right).compareTo(priority(left));
+    });
+    final source = candidates.first;
+    return WorkCandidate(
+      providerId: source.providerId,
+      externalId: source.externalId,
+      title: entry.work.title,
+      providerUrl: source.providerUrl,
+      alternateTitles: entry.work.alternateTitles,
+      creatorNames: entry.work.creatorNames,
+      year: entry.work.year,
+      format: entry.work.format,
+      language: source.language,
+      description: source.description,
+      coverUrl: source.coverUrl,
+      tags: source.tags,
+    );
+  }
 
 class _SearchResultTile extends StatelessWidget {
   const _SearchResultTile({
