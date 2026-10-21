@@ -124,7 +124,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
             ]),
           ),
           const SizedBox(height: 22),
-          const Text('YOUR DEVICE STORAGE', style: TextStyle(color: _shopCyan, letterSpacing: 2, fontSize: 11, fontWeight: FontWeight.w900)),
+          const Text('YOUR DEVICE STORAGE', style: TextStyle(color: _storageCyan, letterSpacing: 2, fontSize: 11, fontWeight: FontWeight.w900)),
           const SizedBox(height: 10),
           if (_error != null) _notice(_error!, warning: true),
           if (_loading) const LinearProgressIndicator(),
@@ -136,7 +136,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
           const SizedBox(height: 8),
           _notice('Cache entries: ${_entries.length}. Clearing cache removes only disposable files; the SQLite library and saved reading progress are separate.'),
           const SizedBox(height: 20),
-          const Text('CACHED CONTENT', style: TextStyle(color: _shopCyan, letterSpacing: 2, fontSize: 11, fontWeight: FontWeight.w900)),
+          const Text('CACHED CONTENT', style: TextStyle(color: _storageCyan, letterSpacing: 2, fontSize: 11, fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
           if (!_loading && _entries.isEmpty) _notice('Your cache is empty. Content will appear here after features explicitly cache data.'),
           for (final item in _entries) _cacheTile(item),
@@ -151,7 +151,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
       color: Colors.white.withValues(alpha: .045),
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: Icon(entry.pinned ? Icons.push_pin_rounded : Icons.insert_drive_file_outlined, color: entry.pinned ? _storageViolet : _shopCyan),
+        leading: Icon(entry.pinned ? Icons.push_pin_rounded : Icons.insert_drive_file_outlined, color: entry.pinned ? _storageViolet : _storageCyan),
         title: Text(entry.key, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
         subtitle: Text('${entry.bucket.name} · ${_bytes(entry.bytes)} · ${entry.pinned ? 'Pinned' : 'Disposable'}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
         trailing: IconButton(
@@ -167,7 +167,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
     padding: const EdgeInsets.all(15),
     decoration: BoxDecoration(color: Colors.white.withValues(alpha: .045), borderRadius: BorderRadius.circular(17), border: Border.all(color: Colors.white.withValues(alpha: .06))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: _shopViolet),
+      Icon(icon, color: _storageViolet),
       const SizedBox(height: 10),
       Text(value, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
       const SizedBox(height: 4),
