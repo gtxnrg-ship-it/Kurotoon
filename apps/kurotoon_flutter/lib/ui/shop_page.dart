@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-const _shopInk = Color(0xFF080B18);
 const _shopCyan = Color(0xFF6EE7F9);
 const _shopViolet = Color(0xFF9D8CFF);
 
