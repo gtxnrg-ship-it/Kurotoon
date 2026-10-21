@@ -543,46 +543,6 @@ class _MePageState extends State<_MePage> {
   }
 }
 
-class _ComingSoonPage extends StatelessWidget {
-  const _ComingSoonPage({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.detail,
-  });
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.fromLTRB(24, 80, 24, 130),
-        children: [
-          Center(
-            child: Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _violet.withValues(alpha: 0.1),
-                border: Border.all(color: _violet.withValues(alpha: 0.3)),
-              ),
-              child: Icon(icon, size: 42, color: _violet),
-            ),
-          ),
-          const SizedBox(height: 28),
-          Text(title, textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          Text(subtitle, textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70, height: 1.5)),
-          const SizedBox(height: 22),
-          _InlineNotice(icon: Icons.construction_rounded, text: detail),
-        ],
-      );
-}
-
 class _GalaxyScaffold extends StatefulWidget {
   const _GalaxyScaffold({required this.child, this.animated = true});
   final Widget child;
