@@ -5,7 +5,9 @@ import 'package:kurotoon_core/kurotoon_core.dart';
 
 import 'runtime.dart';
 import 'services/catalog_workflow_service.dart';
+import 'services/reading_journey_service.dart';
 import 'ui/library_page.dart';
+import 'ui/reader_page.dart';
 import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
 import 'ui/shop_page.dart';
@@ -177,7 +179,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      _HomePage(onBrowse: () => setState(() => _selected = 1)),
+      _HomePage(runtime: widget.runtime, onBrowse: () => setState(() => _selected = 1)),
       _BrowserPage(runtime: widget.runtime),
       const ShopPage(),
       LibraryPage(runtime: widget.runtime),
@@ -207,9 +209,205 @@ class _KuroToonShellState extends State<_KuroToonShell> {
   }
 }
 
-class _HomePage extends StatelessWidget {
-  const _HomePage({required this.onBrowse});
+class _HomePage extends StatefulWidget {
+  const _HomePage({required this.runtime, required this.onBrowse});
+
+  final KurotoonRuntime runtime;
   final VoidCallback onBrowse;
+
+  @override
+  State<_HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<_HomePage> {
+  bool _loadingRecent = true;
+  String? _recentError;
+  List<RecentReadingEntry> _recent = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _reloadRecent();
+  }
+
+  Future<void> _reloadRecent() async {
+    if (!mounted) return;
+    setState(() {
+      _loadingRecent = true;
+      _recentError = null;
+    });
+    try {
+      final service = widget.runtime.readingJourney;
+      if (service == null) throw StateError('Persistent reading history is unavailable.');
+      final entries = await service.loadRecentReading(limit: 5);
+      if (!mounted) return;
+      setState(() {
+        _recent = entries;
+        _loadingRecent = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _recentError = 'Recent reading could not be loaded. Your saved progress has not been changed.';
+        _loadingRecent = false;
+      });
+    }
+  }
+
+  Future<void> _resume(RecentReadingEntry entry) async {
+    final target = entry.target;
+    final chapter = target.chapter;
+    if (!target.canResume || chapter == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This saved chapter needs a source refresh before it can be resumed.')),
+      );
+      return;
+    }
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => ReaderPage(
+            runtime: widget.runtime,
+            workId: target.progress.workId,
+            chapter: chapter,
+          ),
+        ),
+      );
+      if (mounted) await _reloadRecent();
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not resume this chapter. Your reading history remains saved.')),
+        );
+      }
+    }
+  }
+
+  Widget _continueReadingCard(RecentReadingEntry entry) {
+    final title = entry.catalogEntry?.work.title ?? 'Unknown series';
+    final chapter = entry.target.chapter;
+    final chapterNumber = chapter?.chapterNumber;
+    final chapterLabel = chapter == null
+        ? 'Chapter list needs refresh'
+        : (chapter.title ?? (chapterNumber == null ? 'Special chapter' : 'Chapter $chapterNumber'));
+    final progress = entry.target.progress.fraction.clamp(0.0, 1.0).toDouble();
+    final percent = (progress * 100).round();
+    final listings = entry.catalogEntry?.listings ?? const <WorkCandidate>[];
+    final Uri? cover = listings.isEmpty ? null : listings.first.coverUrl;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.075)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => _resume(entry),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 66,
+                height: 92,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: cover == null
+                      ? Container(
+                          color: _panel,
+                          child: const Icon(Icons.menu_book_rounded, color: _cyan, size: 28),
+                        )
+                      : Image.network(
+                          cover.toString(),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: _panel,
+                            child: const Icon(Icons.menu_book_rounded, color: _cyan, size: 28),
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      chapterLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                    const SizedBox(height: 11),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(value: progress, minHeight: 4),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.target.canResume ? '$percent% through chapter' : 'Progress saved · source refresh needed',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white54, fontSize: 10),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Icon(
+                          entry.target.canResume ? Icons.play_circle_outline_rounded : Icons.refresh_rounded,
+                          color: _violet,
+                          size: 22,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyRecentState() => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.035),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.auto_stories_rounded, color: _cyan, size: 28),
+            const SizedBox(height: 10),
+            const Text('Your next chapter starts here.', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 6),
+            const Text(
+              'Once you read a chapter, Kurotoon will keep your recent reading here—even if you later remove the series from your library.',
+              style: TextStyle(color: Colors.white60, height: 1.45, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: widget.onBrowse,
+              icon: const Icon(Icons.explore_rounded),
+              label: const Text('Find a story'),
+            ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -230,7 +428,7 @@ class _HomePage extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'Open Browser',
-                onPressed: onBrowse,
+                onPressed: widget.onBrowse,
                 icon: const Icon(Icons.search_rounded),
                 style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.07)),
               ),
@@ -258,7 +456,7 @@ class _HomePage extends StatelessWidget {
                     style: TextStyle(height: 1.45, color: Colors.white70)),
                 const SizedBox(height: 22),
                 FilledButton.icon(
-                  onPressed: onBrowse,
+                  onPressed: widget.onBrowse,
                   icon: const Icon(Icons.explore_rounded),
                   label: const Text('Explore the universe'),
                 ),
@@ -266,6 +464,30 @@ class _HomePage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 28),
+          const _SectionHeading(
+            title: 'Continue reading',
+            subtitle: 'Your most recent chapters, right where you left off',
+          ),
+          const SizedBox(height: 14),
+          if (_loadingRecent) const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          if (_recentError != null) ...[
+            _InlineNotice(icon: Icons.history_rounded, text: _recentError!),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _reloadRecent,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry history'),
+              ),
+            ),
+          ],
+          if (!_loadingRecent && _recentError == null && _recent.isEmpty) _emptyRecentState(),
+          if (!_loadingRecent && _recentError == null)
+            for (final entry in _recent) _continueReadingCard(entry),
+          const SizedBox(height: 18),
           const _SectionHeading(title: 'Built for your worlds', subtitle: 'A native-first foundation, growing feature by feature'),
           const SizedBox(height: 14),
           const _FeatureTile(
