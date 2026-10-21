@@ -97,7 +97,8 @@ class _ReaderPageState extends State<ReaderPage> {
     // then resumes exact page-level progress as soon as scrolling settles.
     final target = (page * viewport.size.height)
         .toDouble()
-        .clamp(0.0, controller.position.maxScrollExtent);
+        .clamp(0.0, controller.position.maxScrollExtent)
+        .toDouble();
     controller.jumpTo(target);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncStripPage(count);
@@ -124,9 +125,10 @@ class _ReaderPageState extends State<ReaderPage> {
         if (distance == 0) break;
       }
     }
-    if (nearest == null || nearest == _page) return;
-    setState(() => _page = nearest!);
-    _save(nearest, count);
+    final page = nearest;
+    if (page == null || page == _page) return;
+    setState(() => _page = page);
+    _save(page, count);
   }
 
   Future<void> _toggleReadingMode() async {
