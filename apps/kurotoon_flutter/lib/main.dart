@@ -1037,6 +1037,7 @@ class _MePageState extends State<_MePage> {
   bool _rightToLeftDefault = false;
   bool _longStripDefault = false;
   bool _dataSaverDefault = false;
+  bool _readerPreferenceSaving = false;
 
   @override
   void initState() {
@@ -1068,19 +1069,24 @@ class _MePageState extends State<_MePage> {
     required bool previous,
     required ValueChanged<bool> update,
   }) async {
-    update(value);
+    if (_readerPreferenceSaving || value == previous) return;
+    setState(() => _readerPreferenceSaving = true);
     try {
       final database = widget.runtime.database;
       if (database == null) throw StateError('Local settings are unavailable.');
+      // Persist first, then update the switch: what the UI shows is always durable.
       await database.setSetting(key, value);
     } on Object {
       if (!mounted) return;
-      // Revert the optimistic toggle instead of leaving the UI inconsistent with disk.
-      update(previous);
+      setState(() => _readerPreferenceSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('That reader preference could not be saved. Your previous setting was restored.')),
+        const SnackBar(content: Text('That reader preference could not be saved. Your previous setting was kept.')),
       );
+      return;
     }
+    if (!mounted) return;
+    update(value);
+    setState(() => _readerPreferenceSaving = false);
   }
 
   Future<void> _setMangaDexEnabled(bool value) async {
@@ -1192,7 +1198,7 @@ class _MePageState extends State<_MePage> {
               title: const Text('Long-strip / webtoon mode'),
               subtitle: const Text('Scroll vertically through tall pages'),
               value: _longStripDefault,
-              onChanged: (value) => _saveReaderPreference(
+              onChanged: _readerPreferenceSaving ? null : (value) => _saveReaderPreference(
                 key: 'reader.long_strip',
                 value: value,
                 previous: _longStripDefault,
@@ -1206,7 +1212,7 @@ class _MePageState extends State<_MePage> {
               title: const Text('Data saver by default'),
               subtitle: const Text('Prefer smaller source images when the provider supports them'),
               value: _dataSaverDefault,
-              onChanged: (value) => _saveReaderPreference(
+              onChanged: _readerPreferenceSaving ? null : (value) => _saveReaderPreference(
                 key: 'reader.data_saver',
                 value: value,
                 previous: _dataSaverDefault,
@@ -1220,7 +1226,7 @@ class _MePageState extends State<_MePage> {
               title: const Text('Read right to left'),
               subtitle: const Text('Use for right-to-left manga page order'),
               value: _rightToLeftDefault,
-              onChanged: (value) => _saveReaderPreference(
+              onChanged: _readerPreferenceSaving ? null : (value) => _saveReaderPreference(
                 key: 'reader.right_to_left',
                 value: value,
                 previous: _rightToLeftDefault,
