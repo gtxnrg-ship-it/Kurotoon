@@ -11,7 +11,7 @@ void main() {
       '0x7f000001',
       '0x7f.0.0.1',
       '999.1.1.1',
-      '1.2.3.4.',
+      '127.0.0.1.',
     ]) {
       expect(policy.validate('https://$host/repo.json').allowed, isFalse, reason: host);
     }
