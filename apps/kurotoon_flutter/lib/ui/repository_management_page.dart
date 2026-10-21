@@ -290,11 +290,44 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
 
   Widget _packageRow(String repositoryId, ExtensionPackageEntry entry) {
     final installed = _installed.any((row) => row['extension_id'] == entry.id);
+    final capabilities = entry.capabilities;
+    final canSearch = capabilities.contains(ExtensionCapability.search);
+    final canOpenSeries = capabilities.contains(ExtensionCapability.seriesDetails);
+    final canListChapters = capabilities.contains(ExtensionCapability.chapterFeed);
+    final canReadPages = capabilities.contains(ExtensionCapability.readerPages);
+    final readerReady = canSearch && canOpenSeries && canListChapters && canReadPages;
+    final capabilityLabel = readerReady
+        ? 'Search + series + chapters + reader'
+        : canReadPages && canListChapters
+            ? 'Chapter reading · no search'
+            : canSearch && !canListChapters
+                ? 'Metadata/search only · cannot read chapters'
+                : capabilities.map((capability) => capability.name).join(' · ');
+    final capabilityColor = readerReady ? _repoCyan : const Color(0xFFFFC978);
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.only(left: 8),
+      leading: Icon(
+        readerReady ? Icons.auto_stories_rounded : Icons.info_outline_rounded,
+        color: capabilityColor,
+      ),
       title: Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-      subtitle: Text('v${entry.version} · ${entry.capabilities.join(', ')}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('v${entry.version}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            const SizedBox(height: 3),
+            Text(capabilityLabel, style: TextStyle(color: capabilityColor, fontSize: 11, fontWeight: FontWeight.w600)),
+            if (!readerReady)
+              const Text(
+                'Installing this source does not guarantee chapter pages or a working reader.',
+                style: TextStyle(color: Colors.white54, fontSize: 10),
+              ),
+          ],
+        ),
+      ),
       trailing: TextButton(
         onPressed: _working || installed ? null : () => _install(repositoryId, entry.id),
         child: Text(installed ? 'Installed' : 'Install'),
