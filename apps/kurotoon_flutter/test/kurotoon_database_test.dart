@@ -405,6 +405,54 @@ void main() {
 
 
 
+  test('completed chapter grants local silver once and records an idempotent reward', () async {
+    await database.setSetting('shop.wallet.silver.v1', 250);
+
+    final first = await database.recordShopChapterCompletion(
+      workId: 'work/blue-star',
+      editionId: 'edition-en',
+      chapterId: 'chapter-1',
+    );
+    final duplicate = await database.recordShopChapterCompletion(
+      workId: 'work/blue-star',
+      editionId: 'edition-en',
+      chapterId: 'chapter-1',
+    );
+
+    expect(first, isTrue);
+    expect(duplicate, isFalse);
+    expect(await database.getSetting<int>('shop.wallet.silver.v1'), 270);
+    expect(
+      await database.getSetting<List<dynamic>>('shop.reading.completed.v1'),
+      hasLength(1),
+    );
+  });
+
+  test('distinct chapters grant distinct rewards and invalid completion is rejected', () async {
+    await database.setSetting('shop.wallet.silver.v1', 100);
+    await database.recordShopChapterCompletion(
+      workId: 'work/blue-star', editionId: 'edition-en', chapterId: 'chapter-1',
+    );
+    await database.recordShopChapterCompletion(
+      workId: 'work/blue-star', editionId: 'edition-en', chapterId: 'chapter-2',
+    );
+
+    expect(await database.getSetting<int>('shop.wallet.silver.v1'), 140);
+    await expectLater(
+      database.recordShopChapterCompletion(
+        workId: '', editionId: 'edition-en', chapterId: 'chapter-3',
+      ),
+      throwsArgumentError,
+    );
+    await expectLater(
+      database.recordShopChapterCompletion(
+        workId: 'work/blue-star', editionId: 'edition-en', chapterId: 'chapter-3', silverReward: 0,
+      ),
+      throwsArgumentError,
+    );
+    expect(await database.getSetting<int>('shop.wallet.silver.v1'), 140);
+  });
+
   test('shop purchase atomically charges currency and grants one collectible', () async {
     await database.setSetting('shop.wallet.silver.v1', 250);
     await database.setSetting('shop.collection.owned.v1', <String>['kuru_happy']);
