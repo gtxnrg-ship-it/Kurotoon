@@ -220,7 +220,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     final accent = item.accent;
     return GestureDetector(
       onTap:()=>_showCollectible(item),
-      child:Container(decoration:BoxDecoration(color:const Color(0xD6101221),borderRadius:BorderRadius.circular(18),border:Border.all(color:accent.withValues(alpha:owned?.46:.18)),boxShadow:[BoxShadow(color:accent.withValues(alpha:.06),blurRadius:14)]),clipBehavior:Clip.antiAlias,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      child:Container(decoration:BoxDecoration(color:const Color(0xD6101221),borderRadius:BorderRadius.circular(18),border:Border.all(color:accent.withValues(alpha:owned ? .46 : .18)),boxShadow:[BoxShadow(color:accent.withValues(alpha:.06),blurRadius:14)]),clipBehavior:Clip.antiAlias,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Expanded(child:Stack(children:[
           Positioned.fill(child:DecoratedBox(decoration:BoxDecoration(gradient:RadialGradient(colors:[accent.withValues(alpha:.23),const Color(0xFF17182B).withValues(alpha:.25),Colors.transparent],stops:const[0,.58,1])))),
           Positioned(top:8,left:8,child:Container(padding:const EdgeInsets.symmetric(horizontal:7,vertical:4),decoration:BoxDecoration(color:accent.withValues(alpha:.12),borderRadius:BorderRadius.circular(7)),child:Text(item.rarity.toUpperCase(),style:TextStyle(fontSize:8,color:accent,fontWeight:FontWeight.w900,letterSpacing:.4)))),
@@ -300,7 +300,7 @@ class _NebulaPainter extends CustomPainter {
       (x:.55,y:.90,r:.32,color:const Color(0xFF9A2D81),phase:2.4),
       (x:.92,y:.78,r:.22,color:const Color(0xFF3458B6),phase:3.4),
     ];
-    for(final b in blobs){final dx=math.sin(progress*math.pi*2+b.phase)*size.width*.06;final dy=math.cos(progress*math.pi*2+b.phase)*size.height*.07;final center=Offset(size.width*b.x+dx,size.height*b.y+dy);p.shader=RadialGradient(colors:[b.color.withValues(alpha:dense?.22:.13),b.color.withValues(alpha:.045),Colors.transparent]).createShader(Rect.fromCircle(center:center,radius:size.width*b.r));canvas.drawCircle(center,size.width*b.r,p);}
+    for(final b in blobs){final dx=math.sin(progress*math.pi*2+b.phase)*size.width*.06;final dy=math.cos(progress*math.pi*2+b.phase)*size.height*.07;final center=Offset(size.width*b.x+dx,size.height*b.y+dy);p.shader=RadialGradient(colors:[b.color.withValues(alpha:dense ? .22 : .13),b.color.withValues(alpha:.045),Colors.transparent]).createShader(Rect.fromCircle(center:center,radius:size.width*b.r));canvas.drawCircle(center,size.width*b.r,p);}
     p.shader=null;
     final count=dense?45:90;
     for(var i=0;i<count;i++){final seed=(i*7919%997)/997;final x=(seed*size.width+math.sin(progress*math.pi*2+i)*5)%size.width;final y=((i*37.7+progress*size.height*.22)%size.height);final alpha=.18+((math.sin(progress*math.pi*2+i)+1)*.18);p.color=Colors.white.withValues(alpha:alpha);canvas.drawCircle(Offset(x,y),i%13==0?1.5:.65,p);}
