@@ -1107,6 +1107,40 @@ class KurotoonDatabase {
     });
   }
 
+  /// Persists a complete manual ordering. A partial/stale list is rejected so a
+  /// filtered view cannot accidentally rewrite the order of hidden library rows.
+  Future<void> reorderLibraryEntries(List<LibraryRecord> orderedEntries) async {
+    _ensureOpen();
+    await _database.transaction((tx) async {
+      final rows = await tx.query(
+        'library_entries',
+        columns: ['work_id', 'edition_id'],
+      );
+      if (rows.length != orderedEntries.length) {
+        throw StateError('The full library must be visible before saving a manual order.');
+      }
+      String key(String workId, String editionId) => jsonEncode([workId, editionId]);
+      final existing = rows.map((row) => key(row['work_id'] as String, row['edition_id'] as String)).toSet();
+      final submitted = orderedEntries.map((record) => key(record.workId, record.editionId)).toSet();
+      if (existing.length != rows.length ||
+          submitted.length != orderedEntries.length ||
+          !existing.containsAll(submitted)) {
+        throw StateError('The library changed while its manual order was being edited. Refresh and try again.');
+      }
+      final batch = tx.batch();
+      for (var index = 0; index < orderedEntries.length; index++) {
+        final record = orderedEntries[index];
+        batch.update(
+          'library_entries',
+          {'sort_order': index},
+          where: 'work_id = ? AND edition_id = ?',
+          whereArgs: [record.workId, record.editionId],
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
   Future<List<LibraryRecord>> loadLibrary({LibraryStatus? status}) async {
     _ensureOpen();
     final rows = await _database.query(
