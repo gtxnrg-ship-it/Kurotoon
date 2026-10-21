@@ -39,6 +39,15 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 - Source diagnostics, repository management and storage management remain real routes.
 - Copy states the local-first and source-query boundaries plainly. No fake login, cloud-sync, audio or account controls are exposed.
 
+## Cache and storage recovery
+
+- Each managed cache write/removal persists an operation journal before moving existing files.
+- The journal is deleted inside the same SQLite transaction as the cache metadata commit, so a surviving journal unambiguously signals that recovery is required.
+- Cache-service startup replays pending operations, restoring staged backups and removing uncommitted targets; successful recovery cleans abandoned pending files and unindexed cache targets.
+- Recovery validates paths against the managed cache root and rejects symlinks. It only handles disposable cache bytes and cache metadata; saved stories and reading progress are not used as rollback targets.
+- Migration from schema version 7 creates the journal table without dropping existing cache entries.
+- If recovery cannot safely reconcile a file, its journal is retained for a later retry and the cache maintenance pass does not block Library/Reader access.
+
 ## Acceptance still required
 
 - Run Flutter analysis, unit/widget tests, Dart Core CI and Android packaging on the PR head.
