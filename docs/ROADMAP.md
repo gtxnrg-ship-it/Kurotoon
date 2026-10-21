@@ -23,7 +23,7 @@ Most recent fully verified main baseline before the current library-sorting chan
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter APK build, analysis, tests and release workflow pass | Real-device install, package metadata/signing strategy, smoke-test automation and other platforms |
 | Pure Dart domain and policy core | 70% | Typed work/edition/chapter models, cancellation, provider coordinator, identity matching, progress reconciliation, cache/effect/voice policies | More adversarial/property tests, manual identity corrections and end-to-end consumers |
-| Persistent state and cache safety | 70% | SQLite migrations, managed cache budget enforcement, serialized writes, pinned-content protection, rollback tests, transactional operation journals, crash recovery for interrupted cache writes/removals and durable library/progress operations | Physical-device storage behavior, recovery from interrupted extension installs/updates, cache dry-run/metrics and longer soak testing |
+| Persistent state and cache safety | 70% | SQLite migrations, managed cache budget enforcement, serialized writes, pinned-content protection, rollback tests, transactional operation journals, crash recovery for interrupted cache writes/removals, visible recovery diagnostics, and non-destructive cache budget forecasts | Physical-device storage behavior, recovery from interrupted extension installs/updates, and longer soak testing |
 | Provider integration | 65% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns, upstream `Retry-After` handling and local source diagnostics | Live flow validation, provider-specific request policies, additional source adapters and schema-drift handling |
 | Repository / extension foundation | 72% | Native Me repository manager, preview/add/refresh/remove flows, JSON index/manifest checks, bounded Mihon/Tachiyomi metadata previews and persistent declarative install records | Update/rollback recovery tests, broader conformance fixtures, and compiled-extension compatibility proof |
 | Cross-source catalog and chapter merge | 45% | Identity matcher, catalog index, provenance models, candidate grouping, mini-chapter/edition concepts, and bounded local creator pages over source-scoped creator credits | End-to-end persisted merge pipeline, manual corrections/undo, source-evidence UI and real multi-source fixtures |
@@ -61,14 +61,15 @@ Most recent fully verified main baseline before the current library-sorting chan
 - [ ] Test provider cancellation under real HTTP read/write stalls and ensure socket/resource disposal.
 - [x] Track provider failure streaks and cooldowns, honor upstream `Retry-After`, and persist validated health snapshots without raw provider error text.
 - [x] Surface provider health and cooldowns in a local diagnostics screen under Me without issuing diagnostic network requests or displaying raw errors.
-- [ ] Define provider-specific request policies and a redacted diagnostic export.
+- [ ] Define provider-specific request policies for each external adapter, including source-specific retry/timeout and payload constraints.
 - [ ] Exercise every SQLite migration from a real previous-version database fixture.
 - [ ] Test app kill/crash during extension install/update/uninstall and recover orphan temp files safely.
-- [ ] Add a structured diagnostic export that redacts credentials, tokens and private user data.
+- [x] Add a structured provider-health export with an explicit preview/copy confirmation, field allowlist, and credential/URL redaction tests.
 - [x] Enforce storage budget on managed cache writes with serialized operations, pinned-content protection and staged rollback if SQLite metadata commit fails.
 - [x] Journal managed cache writes/removals in SQLite and recover staged files at cache startup; orphan cleanup is constrained to managed cache paths.
 - [x] Show cache recovery status/counters in Storage management and allow users to rerun the safe managed-cache repair pass.
-- [ ] Add cache-budget dry-run/forecast metrics and long-session storage telemetry.
+- [x] Add non-destructive cache-budget utilization and eviction forecast metrics in Storage management.
+- [ ] Add long-session storage telemetry and real-device storage-pressure profiling.
 - [ ] Add backup/export only with versioned schema, preview, validation and explicit user confirmation.
 
 **Exit gate:** interrupted network, source failure, app restart and storage failure never corrupt user-owned data or masquerade as a successful empty response.
