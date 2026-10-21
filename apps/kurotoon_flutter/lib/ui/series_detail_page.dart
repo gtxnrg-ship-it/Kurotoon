@@ -196,7 +196,12 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
     if (workId == null || service == null || _saving) return;
     setState(() => _saving = true);
     try {
-      await service.addToLibrary(workId: workId, providerId: widget.candidate.providerId, languageCode: 'en', status: LibraryStatus.planned);
+      await service.addToLibrary(
+        workId: workId,
+        providerId: widget.candidate.providerId,
+        languageCode: preferredSeriesLanguageCode(widget.candidate.language),
+        status: LibraryStatus.planned,
+      );
       if (!mounted) return;
       setState(() { _saved = true; _saving = false; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to your library · Plan to read')));
