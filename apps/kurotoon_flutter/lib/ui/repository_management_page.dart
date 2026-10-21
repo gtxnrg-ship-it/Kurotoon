@@ -95,7 +95,7 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
       await _reload();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Repository added after identity and digest verification.')));
     } on Object catch (error) {
-      if (mounted) setState(() => _error = 'Could not add repository: ${error is FormatException ? error.message : error.runtimeType}. Check the HTTPS index URL and retry.');
+      if (mounted) setState(() => _error = 'Could not add repository: ${error is FormatException ? error.message : error.runtimeType}. Try a public GitHub repository, README.md, or direct HTTPS index.json URL.');
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -215,14 +215,14 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
           const SizedBox(height: 8),
           const Text('Choose what powers your worlds.', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
-          const Text('Repositories are reviewed before saving. KuroToon installs declarative JSON manifests only; it does not execute third-party extension APKs.', style: TextStyle(color: Colors.white60, height: 1.45)),
+          const Text('Paste a public repository URL or README and KuroToon will look for a compatible JSON index. KuroToon installs declarative JSON manifests only; it does not execute third-party extension APKs.', style: TextStyle(color: Colors.white60, height: 1.45)),
           const SizedBox(height: 18),
           TextField(
             controller: _urlController,
             keyboardType: TextInputType.url,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _addRepository(),
-            decoration: const InputDecoration(labelText: 'HTTPS repository index URL', hintText: 'https://example.org/index.json', prefixIcon: Icon(Icons.link_rounded)),
+            decoration: const InputDecoration(labelText: 'Repository or index URL', hintText: 'https://github.com/owner/repository', prefixIcon: Icon(Icons.link_rounded)),
           ),
           const SizedBox(height: 8),
           FilledButton.icon(
