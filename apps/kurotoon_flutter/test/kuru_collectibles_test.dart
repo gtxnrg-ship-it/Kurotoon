@@ -24,7 +24,7 @@ void main() {
     test('premium currency and event collectibles are explicitly tagged', () {
       expect(kuruCollectibles.where((item) => item.currency == CollectibleCurrency.gold), isNotEmpty);
       expect(kuruCollectibles.where((item) => item.eventOnly), isNotEmpty);
-      expect(kuruCollectibles.every((item) => item.accent.alpha > 0), isTrue);
+      expect(kuruCollectibles.every((item) => item.accent.toARGB32() != 0), isTrue);
     });
 
     test('the reference sticker set includes the key expressions', () {
