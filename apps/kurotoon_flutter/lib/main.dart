@@ -535,7 +535,9 @@ class _BrowserPageState extends State<_BrowserPage> {
               }),
               const SizedBox(height: 12),
             ],
-            if (_visibleEntries.isEmpty)
+            if (_outcome!.entries.isEmpty)
+              const _InlineNotice(icon: Icons.search_off_rounded, text: 'No results returned. Try another title or check the source connection.')
+            else if (_visibleEntries.isEmpty)
               const _InlineNotice(icon: Icons.filter_alt_off_rounded, text: 'No results match these filters. Clear a filter or try another title.')
             else
               for (final entry in _visibleEntries) ...[
