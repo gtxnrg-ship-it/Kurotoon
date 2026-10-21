@@ -80,10 +80,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   Future<bool> _purchase(KuruCollectible item) async {
-    if (_working || _owned.contains(item.id)) return;
+    if (_working || _owned.contains(item.id)) return false;
     if (item.currency == CollectibleCurrency.achievement) {
       _showMessage('This collectible is earned through achievements, not purchased.');
-      return;
+      return false;
     }
     setState(() => _working = true);
     try {
@@ -97,17 +97,19 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       if (!mounted) return;
       if (result == ShopPurchaseStatus.insufficientFunds) {
         _showMessage('Not enough ${item.currency == CollectibleCurrency.gold ? 'gold' : 'silver'} coins yet. Keep exploring to earn more!');
-        return;
+        return false;
       }
       if (result == ShopPurchaseStatus.alreadyOwned) {
         await _reload();
         _showMessage('You already own ${item.name}.');
-        return;
+        return true;
       }
       await _reload();
       if (mounted) _showMessage('${item.name} added to your collection ✨');
+      return true;
     } on Object catch (error) {
       if (mounted) _showMessage('Purchase was not saved: ${error.runtimeType}.');
+      return false;
     } finally {
       if (mounted) setState(() => _working = false);
     }
