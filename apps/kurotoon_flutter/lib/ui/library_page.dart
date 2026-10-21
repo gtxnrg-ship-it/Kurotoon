@@ -122,7 +122,6 @@ class _LibraryPageState extends State<LibraryPage> {
     if (!_canReorderLibrary || _loading || _savingManualOrder) return;
     final ordered = List<LibraryBook>.of(_visibleBooks);
     if (oldIndex < 0 || oldIndex >= ordered.length) return;
-    if (newIndex > oldIndex) newIndex -= 1;
     if (newIndex < 0 || newIndex >= ordered.length || newIndex == oldIndex) return;
     final moved = ordered.removeAt(oldIndex);
     ordered.insert(newIndex, moved);
@@ -565,7 +564,7 @@ class _LibraryPageState extends State<LibraryPage> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               buildDefaultDragHandles: false,
-              onReorder: _reorderBooks,
+              onReorderItem: _reorderBooks,
               children: [
                 for (var index = 0; index < _visibleBooks.length; index++)
                   Padding(
