@@ -19,6 +19,7 @@ class _ReaderPageState extends State<ReaderPage> {
   bool _loading = true;
   bool _dataSaver = false;
   String? _error;
+  String? _selectedProviderId;
   int _page = 0;
 
   @override
@@ -32,7 +33,11 @@ class _ReaderPageState extends State<ReaderPage> {
     try {
       final service = widget.runtime.readingJourney;
       if (service == null) throw StateError('Reading service unavailable');
-      final manifest = await service.loadReaderPages(widget.chapter, dataSaver: _dataSaver);
+      final manifest = await service.loadReaderPages(
+        widget.chapter,
+        providerId: _selectedProviderId,
+        dataSaver: _dataSaver,
+      );
       final urls = manifest.urls(dataSaver: _dataSaver);
       final resume = await service.loadResumeTarget(workId: widget.workId, editionId: widget.chapter.editionId);
       var page = resume != null && resume.chapter?.id == widget.chapter.id
@@ -87,20 +92,51 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  List<MapEntry<String, String>> _availableReaderSources() {
+    final names = <String, String>{};
+    for (final listing in widget.chapter.listings) {
+      final matches = widget.runtime.providers.all.where((provider) => provider.descriptor.id == listing.providerId);
+      if (matches.isEmpty) continue;
+      final provider = matches.first;
+      if (!widget.runtime.providers.isEnabled(listing.providerId) ||
+          provider is! ReaderPagesProvider ||
+          !provider.descriptor.supports(ProviderCapability.pages)) continue;
+      names.putIfAbsent(listing.providerId, () => provider.descriptor.name);
+    }
+    return names.entries.toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final urls = _manifest?.urls(dataSaver: _dataSaver) ?? const <Uri>[];
+    final readerSources = _availableReaderSources();
     final n = widget.chapter.chapterNumber;
     final title = widget.chapter.title ?? (n == null ? 'Special chapter' : 'Chapter ' + n.toString());
     return Scaffold(
       backgroundColor: const Color(0xFF080B18),
       appBar: AppBar(
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        actions: [IconButton(
-          tooltip: 'Toggle data saver',
-          onPressed: _loading ? null : () { setState(() => _dataSaver = !_dataSaver); _load(); },
-          icon: Icon(_dataSaver ? Icons.data_saver_on_rounded : Icons.data_saver_off_rounded),
-        )],
+        actions: [
+          if (readerSources.length > 1)
+            PopupMenuButton<String>(
+              tooltip: 'Choose chapter source',
+              initialValue: _selectedProviderId,
+              onSelected: (providerId) {
+                setState(() => _selectedProviderId = providerId);
+                _load();
+              },
+              itemBuilder: (_) => [
+                for (final source in readerSources)
+                  PopupMenuItem<String>(value: source.key, child: Text(source.value)),
+              ],
+              icon: const Icon(Icons.public_rounded),
+            ),
+          IconButton(
+            tooltip: 'Toggle data saver',
+            onPressed: _loading ? null : () { setState(() => _dataSaver = !_dataSaver); _load(); },
+            icon: Icon(_dataSaver ? Icons.data_saver_on_rounded : Icons.data_saver_off_rounded),
+          ),
+        ],
       ),
       body: Column(children: [
         Expanded(child: _loading
