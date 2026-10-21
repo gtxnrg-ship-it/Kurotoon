@@ -442,7 +442,6 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     if (row == null || row['install_path'] is! String) return;
 
     final root = await getApplicationSupportDirectory();
-    final extensionsRoot = path.join(root.path, 'extensions');
     final manifestPath = row['install_path'] as String;
     if (!await isSafeInstalledManifestPath(
       extensionId: extensionId,
