@@ -19,7 +19,9 @@ class CatalogSearchOutcome {
     final unique = <String, CatalogEntry>{};
     for (final result in catalogResults) {
       final entry = result.entry;
-      if (entry != null) unique.putIfAbsent(entry.work.id, () => entry);
+      // A later result may have linked another provider listing to the same work.
+      // Keep the newest aggregate so the universal-search card sees every source.
+      if (entry != null) unique[entry.work.id] = entry;
     }
     return List.unmodifiable(unique.values);
   }
