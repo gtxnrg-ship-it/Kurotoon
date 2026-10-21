@@ -72,6 +72,27 @@ class ExtensionInstallPathPolicy {
   }
 }
 
+class ExtensionRecoveryReport {
+  const ExtensionRecoveryReport({
+    this.operationsRecovered = 0,
+    this.installRecordsCompleted = 0,
+    this.uninstallRecordsCompleted = 0,
+    this.temporaryFilesRemoved = 0,
+    this.orphanManifestsRemoved = 0,
+    this.failures = 0,
+  });
+
+  final int operationsRecovered;
+  final int installRecordsCompleted;
+  final int uninstallRecordsCompleted;
+  final int temporaryFilesRemoved;
+  final int orphanManifestsRemoved;
+  final int failures;
+
+  bool get complete => failures == 0;
+  bool get changed => operationsRecovered + installRecordsCompleted + uninstallRecordsCompleted + temporaryFilesRemoved + orphanManifestsRemoved > 0;
+}
+
 class RepositoryPreview {
   const RepositoryPreview({
     required this.indexUri,
@@ -91,7 +112,9 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     this.requestTimeout = const Duration(seconds: 12),
     this.maxIndexBytes = 2 * 1024 * 1024,
     this.maxManifestBytes = 2 * 1024 * 1024,
-  }) : _client = client ?? HttpClient() {
+    Future<Directory> Function()? supportDirectoryProvider,
+  }) : _client = client ?? HttpClient(),
+       _supportDirectoryProvider = supportDirectoryProvider {
     _client.connectionTimeout = requestTimeout;
     _client.idleTimeout = const Duration(seconds: 15);
     _client.maxConnectionsPerHost = 4;
@@ -102,6 +125,13 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   final Duration requestTimeout;
   final int maxIndexBytes;
   final int maxManifestBytes;
+  final Future<Directory> Function()? _supportDirectoryProvider;
+  ExtensionRecoveryReport _lastRecoveryReport = const ExtensionRecoveryReport();
+
+  ExtensionRecoveryReport get lastRecoveryReport => _lastRecoveryReport;
+
+  Future<Directory> _supportDirectory() async =>
+      await _supportDirectoryProvider?.call() ?? getApplicationSupportDirectory();
 
   /// Inspects a Mihon/Tachiyomi index without installing or executing packages.
   /// Supports protobuf index.pb and legacy index.json/index.min.json catalogs.
