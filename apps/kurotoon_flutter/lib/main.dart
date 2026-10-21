@@ -179,7 +179,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      _HomePage(runtime: widget.runtime, onBrowse: () => setState(() => _selected = 1)),
+      _HomePage(runtime: widget.runtime, isActive: _selected == 0, onBrowse: () => setState(() => _selected = 1)),
       _BrowserPage(runtime: widget.runtime),
       const ShopPage(),
       LibraryPage(runtime: widget.runtime),
@@ -210,9 +210,10 @@ class _KuroToonShellState extends State<_KuroToonShell> {
 }
 
 class _HomePage extends StatefulWidget {
-  const _HomePage({required this.runtime, required this.onBrowse});
+  const _HomePage({required this.runtime, required this.isActive, required this.onBrowse});
 
   final KurotoonRuntime runtime;
+  final bool isActive;
   final VoidCallback onBrowse;
 
   @override
@@ -228,6 +229,15 @@ class _HomePageState extends State<_HomePage> {
   void initState() {
     super.initState();
     _reloadRecent();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // IndexedStack keeps Home mounted while the user reads from Browser or
+    // Library. Refresh when Home becomes visible again so "Continue reading"
+    // never shows the previous chapter after a reading session.
+    if (!oldWidget.isActive && widget.isActive) _reloadRecent();
   }
 
   Future<void> _reloadRecent() async {
