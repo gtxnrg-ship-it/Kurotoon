@@ -37,8 +37,9 @@ double _collectibleScale(CollectibleAnimation animation, double t) => switch (an
 };
 
 class ShopPage extends StatefulWidget {
-  const ShopPage({super.key, required this.runtime});
+  const ShopPage({super.key, required this.runtime, this.active = true});
   final KurotoonRuntime runtime;
+  final bool active;
 
   @override
   State<ShopPage> createState() => _ShopPageState();
@@ -62,6 +63,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   @override
   void initState() { super.initState(); _reload(); }
+
+  @override
+  void didUpdateWidget(covariant ShopPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.active && widget.active) _reload();
+  }
 
   @override
   void dispose() { _ambient.dispose(); _sparkle.dispose(); super.dispose(); }
