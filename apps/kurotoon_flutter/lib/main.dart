@@ -199,7 +199,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
           NavigationDestination(icon: Icon(Icons.travel_explore_rounded), label: 'Browser'),
           NavigationDestination(icon: Icon(Icons.storefront_rounded), label: 'Shop'),
           NavigationDestination(icon: Icon(Icons.bookmarks_rounded), label: 'Library'),
-          NavigationDestination(icon: Icon(Icons.person_rounded), label: 'Me'),
+          NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Settings'),
         ],
       ),
     );
@@ -542,11 +542,11 @@ class _MePageState extends State<_MePage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 130),
       children: [
-        const Text('YOUR SPACE', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 13, color: _violet)),
+        const Text('SETTINGS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 13, color: _violet)),
         const SizedBox(height: 8),
-        const Text('Make it yours.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
+        const Text('Tune your reading universe.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
         const SizedBox(height: 20),
-        const _SectionHeading(title: 'Sources', subtitle: 'Connected providers'),
+        const _SectionHeading(title: 'Reading', subtitle: 'Sources, extensions, and reader preferences'),
         SwitchListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 14),
           tileColor: Colors.white.withValues(alpha: 0.05),
@@ -560,22 +560,11 @@ class _MePageState extends State<_MePage> {
             if (mounted) setState(() => _mangadexEnabled = value);
           },
         ),
-        const SizedBox(height: 22),
-        const _SectionHeading(title: 'Galaxy', subtitle: 'Motion preferences'),
-        SwitchListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-          tileColor: Colors.white.withValues(alpha: 0.05),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          secondary: const Icon(Icons.blur_on_rounded, color: _violet),
-          title: const Text('Animated background'),
-          subtitle: const Text('Saved on this device; turn it off to reduce background animation.'),
-          value: widget.motionEnabled,
-          onChanged: widget.onMotionChanged,
-        ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 18),
+        const _SectionHeading(title: 'Extensions & repositories', subtitle: 'Add catalogs and manage supported sources'),
         const _InlineNotice(
           icon: Icons.extension_rounded,
-          text: 'Review repositories, browse verified declarative extensions, and manage installed sources. Compiled extension APKs are not executed.',
+          text: 'Browse catalogs and manage compatible declarative extensions. Compiled extension APKs are not executed.',
         ),
         const SizedBox(height: 10),
         FilledButton.icon(
@@ -592,6 +581,19 @@ class _MePageState extends State<_MePage> {
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
+        const SizedBox(height: 22),
+        const _SectionHeading(title: 'Galaxy', subtitle: 'Motion preferences'),
+        SwitchListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          tileColor: Colors.white.withValues(alpha: 0.05),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          secondary: const Icon(Icons.blur_on_rounded, color: _violet),
+          title: const Text('Animated background'),
+          subtitle: const Text('Saved on this device; turn it off to reduce background animation.'),
+          value: widget.motionEnabled,
+          onChanged: widget.onMotionChanged,
+        ),
+        const SizedBox(height: 22),
       ],
     );
   }
