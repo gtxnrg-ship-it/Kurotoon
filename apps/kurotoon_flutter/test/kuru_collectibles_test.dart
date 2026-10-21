@@ -15,6 +15,22 @@ void main() {
       }
     });
 
+
+    test('the six core expression stickers use isolated reference artwork assets', () {
+      final expected = <String, String>{
+        'kuru_happy': 'assets/shop/stickers/happy.jpg',
+        'kuru_laughing': 'assets/shop/stickers/laughing.jpg',
+        'kuru_love': 'assets/shop/stickers/love.jpg',
+        'kuru_shock': 'assets/shop/stickers/shock.jpg',
+        'kuru_angry': 'assets/shop/stickers/angry.jpg',
+        'kuru_cry': 'assets/shop/stickers/cry.jpg',
+      };
+      for (final entry in expected.entries) {
+        final item = kuruCollectibles.singleWhere((item) => item.id == entry.key);
+        expect(item.assetPath, entry.value, reason: '${item.name} should use its own reference crop');
+      }
+    });
+
     test('all catalog categories have a user-facing label', () {
       for (final category in CollectibleCategory.values) {
         expect(collectibleCategoryLabel(category).trim(), isNotEmpty);
