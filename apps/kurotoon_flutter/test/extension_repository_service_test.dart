@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kurotoon_flutter/services/extension_repository_service.dart';
+import 'package:kurotoon_flutter/storage/kurotoon_database.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   group('ExtensionInstallPathPolicy', () {
@@ -135,6 +139,195 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+
+
+  group('Extension operation crash recovery', () {
+    late Directory temp;
+    late Directory support;
+    late KurotoonDatabase database;
+    late ExtensionRepositoryService service;
+
+    const extensionId = 'org.example.source';
+    const repositoryId = 'test.repository';
+
+    setUpAll(sqfliteFfiInit);
+
+    setUp(() async {
+      temp = await Directory.systemTemp.createTemp('kurotoon-extension-recovery-');
+      support = Directory(p.join(temp.path, 'support'));
+      await support.create(recursive: true);
+      database = await KurotoonDatabase.open(
+        databasePath: p.join(temp.path, 'test.db'),
+        factory: databaseFactoryFfi,
+      );
+      service = ExtensionRepositoryService(
+        database: database,
+        supportDirectoryProvider: () async => support,
+      );
+    });
+
+    tearDown(() async {
+      service.dispose();
+      await database.close();
+      await temp.delete(recursive: true);
+    });
+
+    String manifestPath(String digest12) => p.join(
+          support.path,
+          'extensions',
+          extensionId,
+          '1.0.0',
+          digest12,
+          'manifest.json',
+        );
+
+    Future<void> seedRepository() async {
+      await database.rawDatabase.insert('extension_repositories', {
+        'id': repositoryId,
+        'name': 'Test repository',
+        'index_url': 'https://example.org/index.json',
+        'description': null,
+        'website_url': null,
+        'icon_url': null,
+        'trust': 'community',
+        'added_at': 1,
+        'last_checked_at': 1,
+        'last_index_digest': null,
+      });
+    }
+
+    Future<void> seedInstalled(String path) async {
+      await seedRepository();
+      await database.rawDatabase.insert('installed_extensions', {
+        'extension_id': extensionId,
+        'repository_id': repositoryId,
+        'name': 'Test source',
+        'version': '1.0.0',
+        'manifest_url': 'https://example.org/manifest.json',
+        'sha256': sha256.convert(utf8.encode('{}')).toString(),
+        'size_bytes': 2,
+        'enabled': 1,
+        'install_path': path,
+        'installed_at': 1,
+      });
+    }
+
+    test('rolls back a manifest file left before install metadata commits', () async {
+      const digest12 = '0123456789ab';
+      final targetPath = manifestPath(digest12);
+      final temporaryPath = p.join(p.dirname(targetPath), '.manifest-123.tmp');
+      await Directory(p.dirname(targetPath)).create(recursive: true);
+      await File(targetPath).writeAsString('uncommitted manifest');
+      await File(temporaryPath).writeAsString('partial manifest');
+      await database.beginExtensionOperationJournal(
+        id: 'install-crash-before-commit',
+        operation: 'install',
+        extensionId: extensionId,
+        payload: {
+          'targetPath': targetPath,
+          'temporaryPath': temporaryPath,
+          'targetExisted': false,
+          'expectedSha256': sha256.convert(utf8.encode('{}')).toString(),
+          'previousPath': null,
+        },
+      );
+
+      final report = await service.recoverInterruptedOperations();
+
+      expect(await File(targetPath).exists(), isFalse);
+      expect(await File(temporaryPath).exists(), isFalse);
+      expect(await database.loadInstalledExtensions(), isEmpty);
+      expect(await database.loadExtensionOperationJournals(), isEmpty);
+      expect(report.operationsRecovered, 1);
+      expect(report.orphanManifestsRemoved, 1);
+      expect(report.complete, isTrue);
+    });
+
+    test('finishes an install committed to SQLite before old-file cleanup', () async {
+      const digest12 = 'abcdef012345';
+      final targetPath = manifestPath(digest12);
+      final temporaryPath = p.join(p.dirname(targetPath), '.manifest-321.tmp');
+      final targetBytes = utf8.encode('{}');
+      await Directory(p.dirname(targetPath)).create(recursive: true);
+      await File(targetPath).writeAsBytes(targetBytes);
+      await File(temporaryPath).writeAsString('stale temp');
+      final previousPath = manifestPath('fedcba987654');
+      await Directory(p.dirname(previousPath)).create(recursive: true);
+      await File(previousPath).writeAsString('{}');
+      await seedInstalled(targetPath);
+      await database.beginExtensionOperationJournal(
+        id: 'install-crash-after-commit',
+        operation: 'install',
+        extensionId: extensionId,
+        payload: {
+          'targetPath': targetPath,
+          'temporaryPath': temporaryPath,
+          'targetExisted': false,
+          'expectedSha256': sha256.convert(targetBytes).toString(),
+          'previousPath': previousPath,
+        },
+      );
+
+      final report = await service.recoverInterruptedOperations();
+
+      expect(await File(targetPath).readAsString(), '{}');
+      expect(await File(temporaryPath).exists(), isFalse);
+      expect(await File(previousPath).exists(), isFalse);
+      expect((await database.loadInstalledExtensions()).single['install_path'], targetPath);
+      expect(await database.loadExtensionOperationJournals(), isEmpty);
+      expect(report.installRecordsCompleted, 1);
+      expect(report.temporaryFilesRemoved, 1);
+      expect(report.orphanManifestsRemoved, 1);
+      expect(report.complete, isTrue);
+    });
+
+    test('cancels an uninstall journal if the installed row still exists', () async {
+      const digest12 = '0123abcdef45';
+      final targetPath = manifestPath(digest12);
+      await Directory(p.dirname(targetPath)).create(recursive: true);
+      await File(targetPath).writeAsString('{}');
+      await seedInstalled(targetPath);
+      await database.beginExtensionOperationJournal(
+        id: 'uninstall-crash-before-delete',
+        operation: 'uninstall',
+        extensionId: extensionId,
+        payload: {'manifestPath': targetPath},
+      );
+
+      final report = await service.recoverInterruptedOperations();
+
+      expect(await File(targetPath).readAsString(), '{}');
+      expect(await database.loadInstalledExtensions(), hasLength(1));
+      expect(await database.loadExtensionOperationJournals(), isEmpty);
+      expect(report.uninstallRecordsCompleted, 0);
+      expect(report.complete, isTrue);
+    });
+
+    test('finishes an uninstall after the database row was removed', () async {
+      const digest12 = '89abcdef0123';
+      final targetPath = manifestPath(digest12);
+      await Directory(p.dirname(targetPath)).create(recursive: true);
+      await File(targetPath).writeAsString('{}');
+      await seedInstalled(targetPath);
+      await database.beginExtensionOperationJournal(
+        id: 'uninstall-crash-after-delete',
+        operation: 'uninstall',
+        extensionId: extensionId,
+        payload: {'manifestPath': targetPath},
+      );
+      await database.removeInstalledExtension(extensionId);
+
+      final report = await service.recoverInterruptedOperations();
+
+      expect(await File(targetPath).exists(), isFalse);
+      expect(await database.loadInstalledExtensions(), isEmpty);
+      expect(await database.loadExtensionOperationJournals(), isEmpty);
+      expect(report.uninstallRecordsCompleted, 1);
+      expect(report.orphanManifestsRemoved, 1);
+      expect(report.complete, isTrue);
     });
   });
 
