@@ -41,3 +41,14 @@ Do not mark an item as artwork-complete because it has an icon or placeholder. E
 The Shop must remain useful without a backend, a self-hosted server, a payment method, or a subscription. The current local wallet and ownership database are prototype/local-device state, not secure online entitlements. Keep catalog browsing and local collection features functional offline. Do not advertise cross-device sync, secure achievements, online purchase validation, or server-verified administrator grants until a trusted backend is deployed and tested.
 
 A hosted free tier may be considered only after confirming that signup and continued use do not require billing activation or payment details, and documenting quotas, pause/expiry behavior, and failure handling. If no acceptable service meets those constraints, leave online-only features deferred instead of introducing a paid dependency or insecure client-side workaround.
+
+
+## First local earning loop
+
+The first offline reward loop is intentionally small and transparent:
+
+- A reader may claim **20 silver once per work + edition + chapter** using the completion checkmark shown on the final page.
+- The completion ledger and wallet update are written in one local database transaction, so repeated taps do not duplicate the reward.
+- The Shop explicitly explains the local-only nature of the reward and offers refresh when returning from the reader.
+- This is a convenience feature, not anti-cheat protection: local data can be modified by a device owner. Do not use it as proof for online achievements, contributor rewards, or administrator grants.
+- The reward amount is a starter economy value and should be balanced with actual catalog prices and reading behavior before any production economy is announced.
