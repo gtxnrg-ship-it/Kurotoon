@@ -74,6 +74,38 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   final int maxIndexBytes;
   final int maxManifestBytes;
 
+  /// Inspects a Mihon/Tachiyomi index without installing or executing packages.
+  /// Supports protobuf index.pb and legacy index.json/index.min.json catalogs.
+  Future<MihonRepositoryIndex> previewMihonCatalog(String rawUrl) async {
+    final decision = const RepositoryPolicy().validate(rawUrl);
+    if (!decision.allowed || decision.uri == null) throw FormatException(decision.reason);
+    final uri = RepositoryMarkdownDiscovery().normalizeGitHubFileUrl(decision.uri!);
+    final lowerPath = uri.path.toLowerCase();
+    final bytes = await _getBytes(uri, maxBytes: 4 * 1024 * 1024);
+    MihonRepositoryIndex index;
+    if (lowerPath.endsWith('.pb')) {
+      index = MihonRepositoryIndex.parse(bytes, indexUri: uri, maxBytes: 4 * 1024 * 1024);
+    } else if (lowerPath.endsWith('.json')) {
+      index = MihonRepositoryIndex.parseJson(bytes, indexUri: uri, maxBytes: 4 * 1024 * 1024);
+    } else {
+      throw const FormatException('Use a direct index.pb, index.json, or index.min.json URL.');
+    }
+    final listUri = index.extensionListUrl;
+    if (listUri == null) return index;
+    if (listUri.host.toLowerCase() != uri.host.toLowerCase()) {
+      throw const FormatException('External Mihon extension lists must stay on the same host as the repository index.');
+    }
+    final listBytes = await _getBytes(listUri, maxBytes: 16 * 1024 * 1024);
+    return MihonRepositoryIndex(
+      name: index.name,
+      badgeLabel: index.badgeLabel,
+      signingKey: index.signingKey,
+      contact: index.contact,
+      extensionListUrl: listUri,
+      extensions: MihonRepositoryIndex.parseExtensionList(listBytes, maxBytes: 16 * 1024 * 1024),
+    );
+  }
+
   Future<RepositoryPreview> previewRepository(String rawUrl) async {
     final decision = const RepositoryPolicy().validate(rawUrl);
     if (!decision.allowed || decision.uri == null) throw FormatException(decision.reason);

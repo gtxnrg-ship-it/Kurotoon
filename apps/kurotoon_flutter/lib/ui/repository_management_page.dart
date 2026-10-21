@@ -101,6 +101,56 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
     }
   }
 
+  Future<void> _previewUpstreamCatalog() async {
+    final url = _urlController.text.trim();
+    if (url.isEmpty || _working) return;
+    setState(() { _working = true; _error = null; });
+    try {
+      final index = await widget.runtime.extensionRepositories!.previewMihonCatalog(url);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(index.name),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('${index.badgeLabel} · ${index.extensions.length} extension packages · ${index.sourceCount} source entries'),
+                ),
+                const SizedBox(height: 8),
+                const Text('Metadata preview only. APK/JAR packages are not installed or executed by KuroToon yet.'),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: index.extensions.length,
+                    itemBuilder: (context, i) {
+                      final extension = index.extensions[i];
+                      return ListTile(
+                        dense: true,
+                        title: Text(extension.name),
+                        subtitle: Text('${extension.versionName} · ${extension.sources.length} sources · ${extension.contentWarning.name}'),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+        ),
+      );
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = 'Could not inspect upstream catalog: ${error is FormatException ? error.message : error.runtimeType}.');
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
   Future<void> _openRepository(Map<String, Object?> repository) async {
     final id = repository['id'] as String?;
     if (id == null) return;
@@ -230,6 +280,12 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
             icon: _working ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add_link_rounded),
             label: Text(_working ? 'Working…' : 'Preview repository'),
             style: FilledButton.styleFrom(backgroundColor: _repoViolet, foregroundColor: _repoInk),
+          ),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(
+            onPressed: _working ? null : _previewUpstreamCatalog,
+            icon: const Icon(Icons.travel_explore_rounded),
+            label: const Text('Inspect Mihon / Tachiyomi catalog'),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
