@@ -37,8 +37,10 @@ void main() {
 
     test('launch catalog has the four planned tiers and exactly three legendaries', () {
       expect(kuruCollectibles, hasLength(60));
-      expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.standard), hasLength(35));
+      expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.standard), hasLength(25));
       expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.premium), hasLength(12));
+      expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.contributor), hasLength(10));
+      expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.contributor).every((item) => item.currency == CollectibleCurrency.achievement && item.price == 0 && item.unlockRule != null), isTrue);
       expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.topTen), hasLength(10));
       final legendary = kuruCollectibles.where((item) => item.tier == CollectibleTier.legendary).toList();
       expect(legendary, hasLength(3));
