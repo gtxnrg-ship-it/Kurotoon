@@ -19,6 +19,10 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
   bool _loading = true;
   bool _working = false;
   bool _recovering = false;
+  bool _previewingBudget = false;
+  int _incomingEstimateMiB = 25;
+  CacheWritePlan? _budgetPreview;
+  String? _budgetPreviewError;
   String? _error;
   String? _recoveryError;
   CacheRecoveryReport? _recoveryReport;
@@ -47,6 +51,8 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
       _loading = true;
       _error = null;
       _recoveryError = null;
+      _budgetPreview = null;
+      _budgetPreviewError = null;
     });
     try {
       final entries = await database.loadCacheEntries();
@@ -94,6 +100,8 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
       if (!mounted) return;
       setState(() {
         _entries = entries;
+        _budgetPreview = null;
+        _budgetPreviewError = null;
         _recoveryReport = report;
         _recoveryError = report.complete
             ? null
@@ -122,6 +130,201 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
         });
       }
     }
+  }
+
+  Future<void> _previewCacheBudget() async {
+    if (_previewingBudget || _loading || _working) return;
+    final database = widget.runtime.database;
+    if (database == null) {
+      setState(() => _budgetPreviewError = 'Local storage is unavailable.');
+      return;
+    }
+    setState(() {
+      _previewingBudget = true;
+      _budgetPreviewError = null;
+    });
+    try {
+      final plan = await database.planCacheWrite(
+        incomingBytes: _incomingEstimateMiB * 1024 * 1024,
+        budget: widget.runtime.storageBudget,
+      );
+      if (!mounted) return;
+      setState(() => _budgetPreview = plan);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _budgetPreviewError = 'Budget preview failed: ${error.runtimeType}.');
+    } finally {
+      if (mounted) setState(() => _previewingBudget = false);
+    }
+  }
+
+  Widget _budgetForecastCard() {
+    final budgetBytes = widget.runtime.storageBudget.maxBytes;
+    final usedRatio = (_totalBytes / budgetBytes).clamp(0.0, 1.0).toDouble();
+    final usedPercent = (_totalBytes * 100 / budgetBytes).round();
+    final plan = _budgetPreview?.storagePlan;
+    final planColor = plan == null
+        ? Colors.white70
+        : plan.accepted
+            ? _storageCyan
+            : Colors.orangeAccent;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .045),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: Colors.white.withValues(alpha: .07)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.speed_rounded, color: _storageCyan),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Cache budget & forecast',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                ),
+              ),
+              Text('READ ONLY', style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  '${_bytes(_totalBytes)} used',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(
+                '${_bytes(budgetBytes)} budget',
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: usedRatio,
+              minHeight: 8,
+              backgroundColor: Colors.white12,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                _totalBytes > budgetBytes ? Colors.orangeAccent : _storageCyan,
+              ),
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            '$usedPercent% of the cache budget used · ${_bytes((budgetBytes - _totalBytes).clamp(0, budgetBytes).toInt())} headroom',
+            style: TextStyle(
+              color: _totalBytes > budgetBytes ? Colors.orangeAccent : Colors.white54,
+              fontSize: 11,
+            ),
+          ),
+          const Divider(height: 22, color: Colors.white12),
+          const Text(
+            'Preview a hypothetical new cache item',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'This is a dry run only. Kurotoon calculates which unpinned cache items would need eviction; nothing is downloaded or deleted.',
+            style: TextStyle(color: Colors.white54, fontSize: 11, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<int>(
+                  initialValue: _incomingEstimateMiB,
+                  decoration: const InputDecoration(
+                    labelText: 'Estimated incoming size',
+                    suffixText: 'MiB',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: const [5, 25, 50, 100, 250]
+                      .map((value) => DropdownMenuItem<int>(
+                            value: value,
+                            child: Text(value.toString() + ' MiB'),
+                          ))
+                      .toList(growable: false),
+                  onChanged: _previewingBudget || _working
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          setState(() {
+                            _incomingEstimateMiB = value;
+                            _budgetPreview = null;
+                            _budgetPreviewError = null;
+                          });
+                        },
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.tonalIcon(
+                onPressed: _loading || _working || _previewingBudget ? null : _previewCacheBudget,
+                icon: _previewingBudget
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.calculate_outlined),
+                label: const Text('Preview'),
+              ),
+            ],
+          ),
+          if (_budgetPreviewError != null) ...[
+            const SizedBox(height: 10),
+            Text(_budgetPreviewError!, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+          ],
+          if (plan != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(plan.accepted ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded, color: planColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    plan.accepted ? 'Estimated write fits the cache budget' : 'Estimated write cannot be safely accommodated',
+                    style: TextStyle(color: planColor, fontWeight: FontWeight.w800, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              plan.reason,
+              style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
+            ),
+            if (plan.accepted && _budgetPreview!.filesToEvict.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '${_budgetPreview!.filesToEvict.length} unpinned cache item(s) would be evicted; projected cache size ${_bytes(plan.projectedBytes)}.',
+                  style: const TextStyle(color: Colors.white60, fontSize: 11),
+                ),
+              )
+            else if (plan.accepted)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'No eviction required; projected cache size ${_bytes(plan.projectedBytes)}.',
+                  style: const TextStyle(color: Colors.white60, fontSize: 11),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
   }
 
   Future<void> _remove(CacheEntryFile entry) async {
@@ -210,7 +413,8 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
             const SizedBox(width: 10),
             Expanded(child: _stat('Protected cache', _bytes(_pinnedBytes), Icons.lock_outline_rounded)),
           ]),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          _budgetForecastCard(),
           _notice('Cache entries: ${_entries.length}. Clearing cache removes only disposable files; the SQLite library and saved reading progress are separate.'),
           const SizedBox(height: 10),
           _recoveryCard(),

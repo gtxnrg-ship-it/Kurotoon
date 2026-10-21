@@ -54,7 +54,15 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 - Cache integrity status reports interrupted operations recovered, pending files removed, backup files reconciled, unindexed cache files removed, and unresolved errors.
 - Users can explicitly rerun the managed-cache recovery pass. It operates only on disposable cache content and corresponding cache metadata.
 - A recovery problem is shown separately from cache-index loading and never implies that saved stories or reading progress were modified.
-- Cache budget forecasting/metrics and long-session storage telemetry remain open work.
+- A read-only budget gauge compares indexed cache bytes with the configured cache ceiling. A selectable hypothetical item size runs the existing eviction policy as a dry run and reports whether the write is feasible and how many unpinned items would be removed; it does not mutate cache data.
+- Long-session storage telemetry and physical-device pressure testing remain open.
+
+## Provider diagnostics export
+
+- Source Diagnostics supports a versioned JSON export through an explicit preview-and-copy flow.
+- The export uses a strict allowlist of source identity, display label, health state/capabilities, failure counts, status timestamps and remaining cooldown.
+- The export omits raw exception/stack text, HTTP requests/responses/headers, full URLs/paths, searches, story/creator titles, library membership, progress and credentials. Suspicious URL/token-like text embedded in source labels is redacted.
+- Nothing is uploaded. The user sees the exact JSON and is told that enabled-source names and health timing remain visible before copying.
 
 ## Acceptance still required
 
