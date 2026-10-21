@@ -1247,6 +1247,22 @@ class KurotoonDatabase {
     });
   }
 
+  Future<bool> removeLibraryEntryFromCollection({
+    required String collectionId,
+    required String workId,
+    required String editionId,
+  }) async {
+    _ensureOpen();
+    return _database.transaction((tx) async {
+      final deleted = await tx.delete(
+        'library_collection_entries',
+        where: 'collection_id = ? AND work_id = ? AND edition_id = ?',
+        whereArgs: [collectionId, workId, editionId],
+      );
+      return deleted > 0;
+    });
+  }
+
   Future<void> removeLibraryCollection(String collectionId) async {
     _ensureOpen();
     await _database.transaction((tx) async {
