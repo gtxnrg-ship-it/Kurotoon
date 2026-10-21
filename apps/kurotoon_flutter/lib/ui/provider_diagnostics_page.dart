@@ -205,7 +205,7 @@ class _ProviderDiagnosticsPageState extends State<ProviderDiagnosticsPage> {
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(width: 132, child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11))),
           const SizedBox(width: 8),
-          Expanded(child: Text(value, style: const TextStyle(color: Colors.white80, fontSize: 11))),
+          Expanded(child: Text(value, style: const TextStyle(color: Color(0xFFEEEEEE), fontSize: 11))),
         ]),
       );
 
