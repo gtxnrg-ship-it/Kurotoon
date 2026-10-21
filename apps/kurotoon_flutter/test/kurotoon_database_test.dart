@@ -333,6 +333,19 @@ void main() {
       RepositoryTrust.builtIn.name,
     );
   });
+  test('adds the recent-reading index when upgrading a schema-v5 database', () async {
+    await database.rawDatabase.execute('DROP INDEX IF EXISTS reading_progress_updated_idx');
+    await database.rawDatabase.execute('PRAGMA user_version = 5');
+    final dbPath = p.join(temp.path, 'test.db');
+    await database.close();
+    database = await KurotoonDatabase.open(
+      databasePath: dbPath,
+      factory: databaseFactoryFfi,
+    );
+    final indexes = await database.rawDatabase.rawQuery("PRAGMA index_list('reading_progress')");
+    expect(indexes.map((row) => row['name']), contains('reading_progress_updated_idx'));
+  });
+
   test('keeps identity terms searchable for writes after the index is initialized', () async {
     await database.upsertCatalogEntry(entry());
     final initial = await database.loadCatalogCandidatesForMatching(WorkCandidate(
