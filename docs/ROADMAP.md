@@ -32,7 +32,7 @@ Most recent fully verified main baseline before the current library-sorting chan
 | Voice, music, haptics and particle runtime | 10% | Timeline/voice license and size/hash policies | Real native adapters, consent UI, stop/lifecycle integration, downloadable packs, music discovery/playback, haptic and particle tuning |
 | Cross-platform releases | 10% | Shared Dart core is intended to be portable | iOS/iPadOS/Windows/Linux platform adapters, platform builds, accessibility and device test matrix |
 
-**Engineering estimate of the full product: about 49% complete; backend foundations: roughly 71%.** These are scope estimates, not code-coverage statistics. The native reader, library and repository UI are now real and CI-tested, but live-source/physical-device acceptance, image-loading resource bounds, cross-source correction/undo, interrupted-operation recovery, adaptive performance, immersive audio/voice/haptics and other-platform builds are still significant work. Do not describe the product as release-ready until the remaining acceptance gates are recorded.
+**Engineering estimate of the full product: about 53% complete (53.4% weighted); backend foundations: roughly 71%.** These are scope estimates, not code-coverage statistics. The native reader, library and repository UI are now real and CI-tested, but live-source/physical-device acceptance, image-loading resource bounds, cross-source correction/undo, interrupted-operation recovery, adaptive performance, immersive audio/voice/haptics and other-platform builds are still significant work. Do not describe the product as release-ready until the remaining acceptance gates are recorded.
 
 ## Phase A — Native foundation and release hygiene
 
