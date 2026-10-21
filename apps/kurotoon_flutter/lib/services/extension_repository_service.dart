@@ -72,6 +72,27 @@ class ExtensionInstallPathPolicy {
   }
 }
 
+class ExtensionRecoveryReport {
+  const ExtensionRecoveryReport({
+    this.operationsRecovered = 0,
+    this.installRecordsCompleted = 0,
+    this.uninstallRecordsCompleted = 0,
+    this.temporaryFilesRemoved = 0,
+    this.orphanManifestsRemoved = 0,
+    this.failures = 0,
+  });
+
+  final int operationsRecovered;
+  final int installRecordsCompleted;
+  final int uninstallRecordsCompleted;
+  final int temporaryFilesRemoved;
+  final int orphanManifestsRemoved;
+  final int failures;
+
+  bool get complete => failures == 0;
+  bool get changed => operationsRecovered + installRecordsCompleted + uninstallRecordsCompleted + temporaryFilesRemoved + orphanManifestsRemoved > 0;
+}
+
 class RepositoryPreview {
   const RepositoryPreview({
     required this.indexUri,
@@ -91,7 +112,9 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     this.requestTimeout = const Duration(seconds: 12),
     this.maxIndexBytes = 2 * 1024 * 1024,
     this.maxManifestBytes = 2 * 1024 * 1024,
-  }) : _client = client ?? HttpClient() {
+    Future<Directory> Function()? supportDirectoryProvider,
+  }) : _client = client ?? HttpClient(),
+       _supportDirectoryProvider = supportDirectoryProvider {
     _client.connectionTimeout = requestTimeout;
     _client.idleTimeout = const Duration(seconds: 15);
     _client.maxConnectionsPerHost = 4;
@@ -102,6 +125,13 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   final Duration requestTimeout;
   final int maxIndexBytes;
   final int maxManifestBytes;
+  final Future<Directory> Function()? _supportDirectoryProvider;
+  ExtensionRecoveryReport _lastRecoveryReport = const ExtensionRecoveryReport();
+
+  ExtensionRecoveryReport get lastRecoveryReport => _lastRecoveryReport;
+
+  Future<Directory> _supportDirectory() async =>
+      await _supportDirectoryProvider?.call() ?? getApplicationSupportDirectory();
 
   /// Inspects a Mihon/Tachiyomi index without installing or executing packages.
   /// Supports protobuf index.pb and legacy index.json/index.min.json catalogs.
@@ -330,13 +360,14 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     String? previousPath;
     var previousEnabled = false;
     for (final row in installedRows) {
-      if (row['extension_id'] == entry.id && row['install_path'] is String) {
-        previousPath = row['install_path'] as String;
+      if (row['extension_id'] == entry.id) {
+        if (row['install_path'] is String) previousPath = row['install_path'] as String;
         previousEnabled = row['enabled'] == 1;
         break;
       }
     }
-    final root = await getApplicationSupportDirectory();
+
+    final root = await _supportDirectory();
     final extensionsRoot = path.join(root.path, 'extensions');
     final targetDirectory = Directory(path.join(
       extensionsRoot,
@@ -352,74 +383,177 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     )) {
       throw StateError('Refusing to install into an unsafe extension path.');
     }
-    await targetDirectory.create(recursive: true);
-    if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
-      extensionsRoot: extensionsRoot,
-      extensionId: manifest.id,
-      manifestPath: target.path,
-    )) {
-      throw StateError('Extension path became unsafe during directory creation.');
+    final targetExisted = await target.exists();
+    if (targetExisted &&
+        sha256.convert(await target.readAsBytes()).toString() != entry.sha256.toLowerCase()) {
+      throw const FormatException('An existing extension manifest does not match the repository digest.');
     }
+
+    final nonce = DateTime.now().microsecondsSinceEpoch;
     final temp = File(path.join(
       targetDirectory.path,
-      '.manifest-' + DateTime.now().microsecondsSinceEpoch.toString() + '.tmp',
+      '.manifest-' + nonce.toString() + '.tmp',
     ));
+    final journalId = 'install-' + entry.id + '-' + nonce.toString();
+    await database.beginExtensionOperationJournal(
+      id: journalId,
+      operation: 'install',
+      extensionId: entry.id,
+      payload: <String, Object?>{
+        'targetPath': target.path,
+        'temporaryPath': temp.path,
+        'targetExisted': targetExisted,
+        'expectedSha256': entry.sha256.toLowerCase(),
+        'previousPath': previousPath,
+      },
+    );
+
     var createdTarget = false;
+    var metadataCommitted = false;
     try {
-      if (await FileSystemEntity.type(temp.path, followLinks: false) != FileSystemEntityType.notFound) {
-        throw StateError('A temporary extension manifest path already exists.');
-      }
-      await temp.writeAsBytes(bytes, flush: true);
+      await targetDirectory.create(recursive: true);
       if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
         extensionsRoot: extensionsRoot,
         extensionId: manifest.id,
         manifestPath: target.path,
       )) {
-        throw StateError('Extension path became unsafe before manifest install.');
+        throw StateError('Extension path became unsafe during directory creation.');
       }
-      if (!await target.exists()) {
+
+      if (!targetExisted) {
+        if (await FileSystemEntity.type(temp.path, followLinks: false) != FileSystemEntityType.notFound) {
+          throw StateError('A temporary extension manifest path already exists.');
+        }
+        await temp.writeAsBytes(bytes, flush: true);
+        if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
+          extensionsRoot: extensionsRoot,
+          extensionId: manifest.id,
+          manifestPath: target.path,
+        )) {
+          throw StateError('Extension path became unsafe before manifest install.');
+        }
         await temp.rename(target.path);
         createdTarget = true;
       }
-    } finally {
-      if (await temp.exists()) await temp.delete();
-    }
 
-    try {
       await database.recordInstalledExtension(
         entry: entry,
         repositoryId: repositoryId,
         installPath: target.path,
         enabled: previousEnabled,
       );
+      metadataCommitted = true;
+
+      // Keep the journal until old-file cleanup is reconciled. If this process
+      // dies after the DB update, startup recovery sees the committed target and
+      // safely finishes this cleanup rather than guessing whether to roll back.
+      if (previousPath != null && _normalizePath(previousPath) != _normalizePath(target.path)) {
+        await _removeManifestIfSafe(entry.id, previousPath);
+      }
+      try {
+        await database.removeExtensionOperationJournal(journalId);
+      } on Object {
+        // The install is committed. Leave the journal for idempotent startup
+        // recovery instead of reporting a false installation failure.
+      }
+      return target.path;
     } catch (_) {
-      if (createdTarget && await target.exists()) await target.delete();
+      if (!metadataCommitted) {
+        var rollbackComplete = true;
+        try {
+          if (await temp.exists()) await temp.delete();
+        } on Object {
+          rollbackComplete = false;
+        }
+        // A DB write can throw after the operation's status is ambiguous; only
+        // delete a newly created file when no installed row references it.
+        try {
+          final rows = await database.loadInstalledExtensions();
+          final targetReferenced = rows.any((row) =>
+              row['install_path'] is String &&
+              _normalizePath(row['install_path'] as String) == _normalizePath(target.path));
+          if (createdTarget && !targetExisted && !targetReferenced && await target.exists()) {
+            if (await isSafeInstalledManifestPath(extensionId: entry.id, manifestPath: target.path)) {
+              await target.delete();
+            } else {
+              rollbackComplete = false;
+            }
+          }
+        } on Object {
+          rollbackComplete = false;
+        }
+        if (rollbackComplete) {
+          try {
+            await database.removeExtensionOperationJournal(journalId);
+          } on Object {
+            // A stale journal can safely rerun this rollback on next startup.
+          }
+        }
+      }
       rethrow;
     }
-    if (previousPath != null && previousPath != target.path) {
-      // A stale install path is not a filesystem capability. Leave an invalid
-      // path untouched for later diagnostics instead of deleting outside root.
-      if (await isSafeInstalledManifestPath(
-        extensionId: entry.id,
-        manifestPath: previousPath,
-      )) {
-        final previousFile = File(previousPath);
-        if (await previousFile.exists()) await previousFile.delete();
-      }
-    }
-    return target.path;
   }
 
   Future<bool> isSafeInstalledManifestPath({
     required String extensionId,
     required String manifestPath,
   }) async {
-    final root = await getApplicationSupportDirectory();
+    final root = await _supportDirectory();
     return ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
       extensionsRoot: path.join(root.path, 'extensions'),
       extensionId: extensionId,
       manifestPath: manifestPath,
     );
+  }
+
+  String _normalizePath(String value) => path.normalize(path.absolute(value));
+
+  Future<bool> _removeManifestIfSafe(String extensionId, String manifestPath) async {
+    if (!await isSafeInstalledManifestPath(
+      extensionId: extensionId,
+      manifestPath: manifestPath,
+    )) {
+      return false;
+    }
+    final file = File(manifestPath);
+    if (await file.exists()) await file.delete();
+
+    final root = path.normalize(path.absolute(path.join((await _supportDirectory()).path, 'extensions')));
+    var current = path.normalize(path.absolute(path.dirname(manifestPath)));
+    while (path.isWithin(root, current) && current != root) {
+      final directory = Directory(current);
+      if (!await directory.exists()) {
+        current = path.dirname(current);
+        continue;
+      }
+      final children = await directory.list(followLinks: false).toList();
+      if (children.isNotEmpty) break;
+      await directory.delete();
+      current = path.dirname(current);
+    }
+    return true;
+  }
+
+  Future<bool> _removeTemporaryManifestIfSafe({
+    required String extensionId,
+    required String targetPath,
+    required String temporaryPath,
+  }) async {
+    final normalizedTarget = _normalizePath(targetPath);
+    final normalizedTemporary = _normalizePath(temporaryPath);
+    if (path.dirname(normalizedTarget) != path.dirname(normalizedTemporary) ||
+        !RegExp(r'^\.manifest-[0-9]+\.tmp$').hasMatch(path.basename(normalizedTemporary)) ||
+        !await isSafeInstalledManifestPath(
+          extensionId: extensionId,
+          manifestPath: normalizedTarget,
+        )) {
+      return false;
+    }
+    final type = await FileSystemEntity.type(normalizedTemporary, followLinks: false);
+    if (type == FileSystemEntityType.link) return false;
+    final temporary = File(normalizedTemporary);
+    if (await temporary.exists()) await temporary.delete();
+    return true;
   }
 
   Future<void> uninstallExtension(String extensionId) async {
@@ -434,33 +568,193 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
         break;
       }
     }
-
-    // Remove the authoritative record first. A filesystem cleanup failure can
-    // leave an orphan to be collected later, but must never leave an installed
-    // extension record pointing at a deleted manifest.
-    await database.removeInstalledExtension(extensionId);
-    if (row == null || row['install_path'] is! String) return;
-
-    final manifestPath = row['install_path'] as String;
-    if (!await isSafeInstalledManifestPath(
-      extensionId: extensionId,
-      manifestPath: manifestPath,
-    )) {
-      // The DB record is gone, but a corrupted path is deliberately not
-      // followed. Never delete arbitrary files from a path stored in SQLite.
+    if (row == null) return;
+    final manifestPath = row['install_path'];
+    if (manifestPath is! String || manifestPath.trim().isEmpty) {
+      await database.removeInstalledExtension(extensionId);
       return;
     }
 
-    final file = File(manifestPath);
-    if (await file.exists()) await file.delete();
-    final versionDirectory = file.parent;
-    if (await versionDirectory.exists() && await versionDirectory.list().isEmpty) {
-      await versionDirectory.delete();
+    final nonce = DateTime.now().microsecondsSinceEpoch;
+    final journalId = 'uninstall-' + extensionId + '-' + nonce.toString();
+    await database.beginExtensionOperationJournal(
+      id: journalId,
+      operation: 'uninstall',
+      extensionId: extensionId,
+      payload: <String, Object?>{'manifestPath': manifestPath},
+    );
+
+    // Delete the authoritative row only after the recovery marker exists.
+    // If the process dies from here onward, startup can finish the removal.
+    await database.removeInstalledExtension(extensionId);
+    if (await isSafeInstalledManifestPath(
+      extensionId: extensionId,
+      manifestPath: manifestPath,
+    )) {
+      await _removeManifestIfSafe(extensionId, manifestPath);
     }
-    final idDirectory = versionDirectory.parent;
-    if (await idDirectory.exists() && await idDirectory.list().isEmpty) {
-      await idDirectory.delete();
+    try {
+      await database.removeExtensionOperationJournal(journalId);
+    } on Object {
+      // Removal has committed. Startup recovery can safely finish any cleanup.
     }
+  }
+
+  /// Reconciles installed-extension rows and manifests left between filesystem
+  /// and SQLite operations by process death. Unsafe paths are never followed.
+  Future<ExtensionRecoveryReport> recoverInterruptedOperations() async {
+    final journals = await database.loadExtensionOperationJournals();
+    var recovered = 0;
+    var installs = 0;
+    var uninstalls = 0;
+    var temporaryFiles = 0;
+    var orphanManifests = 0;
+    var failures = 0;
+
+    for (final journal in journals) {
+      try {
+        final outcome = await _recoverExtensionOperation(journal);
+        if (outcome == null) {
+          failures++;
+          continue;
+        }
+        await database.removeExtensionOperationJournal(journal.id);
+        recovered++;
+        installs += outcome['installRecordCompleted'] ?? 0;
+        uninstalls += outcome['uninstallRecordCompleted'] ?? 0;
+        temporaryFiles += outcome['temporaryFilesRemoved'] ?? 0;
+        orphanManifests += outcome['orphanManifestsRemoved'] ?? 0;
+      } on Object {
+        // Keep the journal for a future retry instead of guessing or deleting
+        // an untrusted file. This does not prevent the rest of startup.
+        failures++;
+      }
+    }
+
+    final report = ExtensionRecoveryReport(
+      operationsRecovered: recovered,
+      installRecordsCompleted: installs,
+      uninstallRecordsCompleted: uninstalls,
+      temporaryFilesRemoved: temporaryFiles,
+      orphanManifestsRemoved: orphanManifests,
+      failures: failures,
+    );
+    _lastRecoveryReport = report;
+    return report;
+  }
+
+  Future<Map<String, int>?> _recoverExtensionOperation(
+    ExtensionOperationJournal journal,
+  ) async {
+    final payload = journal.payload;
+    if (payload == null) return null;
+    final rows = await database.loadInstalledExtensions();
+    Map<String, Object?>? installed;
+    for (final row in rows) {
+      if (row['extension_id'] == journal.extensionId) {
+        installed = row;
+        break;
+      }
+    }
+
+    if (journal.operation == 'install') {
+      final targetPath = payload['targetPath'];
+      final temporaryPath = payload['temporaryPath'];
+      final targetExisted = payload['targetExisted'];
+      final expectedSha = payload['expectedSha256'];
+      if (targetPath is! String ||
+          temporaryPath is! String ||
+          targetExisted is! bool ||
+          expectedSha is! String ||
+          !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(expectedSha)) {
+        return null;
+      }
+      if (!await isSafeInstalledManifestPath(
+        extensionId: journal.extensionId,
+        manifestPath: targetPath,
+      )) {
+        return null;
+      }
+      final temporaryExistedBeforeRecovery = await File(temporaryPath).exists();
+      if (!await _removeTemporaryManifestIfSafe(
+        extensionId: journal.extensionId,
+        targetPath: targetPath,
+        temporaryPath: temporaryPath,
+      )) {
+        return null;
+      }
+
+      final normalizedTarget = _normalizePath(targetPath);
+      final committed = installed?['install_path'] is String &&
+          _normalizePath(installed!['install_path'] as String) == normalizedTarget;
+      final tempRemoved = temporaryExistedBeforeRecovery ? 1 : 0;
+
+      if (committed) {
+        final target = File(targetPath);
+        if (!await target.exists()) return null;
+        if (sha256.convert(await target.readAsBytes()).toString() != expectedSha.toLowerCase()) {
+          return null;
+        }
+        final previousPath = payload['previousPath'];
+        if (previousPath is String && _normalizePath(previousPath) != normalizedTarget) {
+          final previousExisted = await File(previousPath).exists();
+          final removed = await _removeManifestIfSafe(journal.extensionId, previousPath);
+          if (removed && previousExisted) {
+            return <String, int>{
+              'installRecordCompleted': 1,
+              'temporaryFilesRemoved': tempRemoved,
+              'orphanManifestsRemoved': 1,
+            };
+          }
+        }
+        return <String, int>{
+          'installRecordCompleted': 1,
+          'temporaryFilesRemoved': tempRemoved,
+        };
+      }
+
+      // The database still points at the old install (or no install). Remove a
+      // target created by this interrupted attempt only if it was not there
+      // beforehand and no installed row references its path.
+      if (!targetExisted) {
+        final targetReferenced = rows.any((row) =>
+            row['install_path'] is String &&
+            _normalizePath(row['install_path'] as String) == normalizedTarget);
+        final target = File(targetPath);
+        if (!targetReferenced && await target.exists()) {
+          await target.delete();
+          return <String, int>{
+            'temporaryFilesRemoved': tempRemoved,
+            'orphanManifestsRemoved': 1,
+          };
+        }
+      }
+      return <String, int>{'temporaryFilesRemoved': tempRemoved};
+    }
+
+    if (journal.operation == 'uninstall') {
+      final manifestPath = payload['manifestPath'];
+      if (manifestPath is! String) return null;
+      // The row still existing means the DB removal never committed. Cancel the
+      // operation and preserve the installed file exactly as it was.
+      if (installed != null) return <String, int>{};
+
+      var removed = 0;
+      if (await isSafeInstalledManifestPath(
+        extensionId: journal.extensionId,
+        manifestPath: manifestPath,
+      )) {
+        final manifestExisted = await File(manifestPath).exists();
+        final didRemove = await _removeManifestIfSafe(journal.extensionId, manifestPath);
+        if (didRemove && manifestExisted) removed = 1;
+      }
+      return <String, int>{
+        'uninstallRecordCompleted': 1,
+        'orphanManifestsRemoved': removed,
+      };
+    }
+
+    return null;
   }
 
   @override
