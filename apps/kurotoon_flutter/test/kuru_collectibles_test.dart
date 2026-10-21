@@ -11,7 +11,11 @@ void main() {
         expect(item.id, matches(RegExp(r'^[a-z0-9_]+$')));
         expect(item.name.trim(), isNotEmpty);
         expect(item.description.trim(), isNotEmpty);
-        expect(item.price, greaterThan(0));
+        if (item.currency == CollectibleCurrency.achievement) {
+          expect(item.price, 0, reason: '${item.id} is achievement-unlocked, not purchasable');
+        } else {
+          expect(item.price, greaterThan(0));
+        }
       }
     });
 
@@ -29,6 +33,20 @@ void main() {
         final item = kuruCollectibles.singleWhere((item) => item.id == entry.key);
         expect(item.assetPath, entry.value, reason: '${item.name} should use its own reference crop');
       }
+    });
+
+    test('launch catalog has the four planned tiers and exactly three legendaries', () {
+      expect(kuruCollectibles, hasLength(60));
+      expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.standard), hasLength(35));
+      expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.premium), hasLength(12));
+      expect(kuruCollectibles.where((item) => item.tier == CollectibleTier.topTen), hasLength(10));
+      final legendary = kuruCollectibles.where((item) => item.tier == CollectibleTier.legendary).toList();
+      expect(legendary, hasLength(3));
+      expect(legendary.map((item) => item.id), containsAll([
+        'legendary_progenitor', 'legendary_celestial', 'legendary_cute_kuro',
+      ]));
+      expect(legendary.every((item) => item.currency == CollectibleCurrency.achievement), isTrue);
+      expect(legendary.every((item) => item.unlockRule?.isNotEmpty == true), isTrue);
     });
 
     test('all catalog categories have a user-facing label', () {
