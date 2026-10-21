@@ -27,3 +27,18 @@ The current Shop stores balances and ownership in the local app database. That i
 - [ ] Enforce purchases and legendary unlock conditions on the backend.
 - [ ] Test regular-user denial of admin actions and all three legendary grants.
 - [ ] Test sign-out, account recovery, and cross-device restoration.
+
+
+## Zero-cost deployment decision (October 2026)
+
+The project owner cannot self-host a production backend and does not want any mandatory paid service, billing account, subscription, or usage-based surprise. Therefore:
+
+- Keep the Shop fully usable as a **local-first feature** while no acceptable hosted backend is configured.
+- Do not make Firebase, Supabase, or any other vendor a required runtime dependency for browsing the catalog, viewing collectible details, or using the local prototype wallet.
+- Do not enable cloud sync, online purchases, trusted achievement grants, or administrator powers by trusting client-side state.
+- Do not require self-hosting. The documented Supabase self-hosted stack has meaningful hardware and operations requirements, which are not assumed to be available.
+- A hosted free tier may be evaluated later only if it can be used without entering payment details or enabling billing, its quotas are documented, and the app degrades safely when quotas are reached or the service is unavailable. A free tier is not an unlimited or permanent guarantee.
+- Keep provider integration behind a small interface so a later zero-cost provider can be added without rewriting the catalog or local database. Do not add provider-specific SDKs until the actual hosted deployment constraints have been checked.
+- Before online account features ship, add server-authoritative identity/roles, wallet transactions, purchase idempotency, achievement validation, and audit logging. If no suitable no-cost hosted service is available, defer those online features rather than weakening security.
+
+This is an explicit cost and deployment constraint, not a claim that cloud account sync or secure online admin features are complete.
