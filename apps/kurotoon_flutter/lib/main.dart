@@ -8,6 +8,7 @@ import 'services/catalog_workflow_service.dart';
 import 'services/reading_journey_service.dart';
 import 'ui/library_page.dart';
 import 'ui/reader_page.dart';
+import 'ui/provider_diagnostics_page.dart';
 import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
 import 'ui/shop_page.dart';
@@ -898,6 +899,21 @@ class _MePageState extends State<_MePage> {
             await widget.runtime.setProviderEnabled('mangadex', value);
             if (mounted) setState(() => _mangadexEnabled = value);
           },
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => ProviderDiagnosticsPage(runtime: widget.runtime),
+            ),
+          ),
+          icon: const Icon(Icons.health_and_safety_rounded),
+          label: const Text('View source diagnostics'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _cyan,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            side: BorderSide(color: _cyan.withValues(alpha: 0.35)),
+          ),
         ),
         const SizedBox(height: 18),
         const _SectionHeading(title: 'Extensions & repositories', subtitle: 'Add catalogs and manage supported sources'),
