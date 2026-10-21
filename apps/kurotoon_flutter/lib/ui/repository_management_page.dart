@@ -23,6 +23,7 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
   List<Map<String, Object?>> _repositories = const [];
   List<Map<String, Object?>> _installed = const [];
   final Map<String, ExtensionRepositoryIndex> _indexes = {};
+  final Map<String, MihonRepositoryIndex> _upstreamIndexes = {};
 
   @override
   void initState() {
@@ -106,9 +107,14 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
     if (url.isEmpty || _working) return;
     setState(() { _working = true; _error = null; });
     try {
-      final index = await widget.runtime.extensionRepositories!.previewMihonCatalog(url);
+      final service = widget.runtime.extensionRepositories;
+      final database = widget.runtime.database;
+      if (service == null || database == null) {
+        throw StateError('Persistent storage is unavailable.');
+      }
+      final index = await service.previewMihonCatalog(url);
       if (!mounted) return;
-      await showDialog<void>(
+      final accepted = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: Text(index.name),
@@ -119,10 +125,10 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('${index.badgeLabel} · ${index.extensions.length} extension packages · ${index.sourceCount} source entries'),
+                  child: Text(index.badgeLabel + ' · ' + index.extensions.length.toString() + ' extension packages · ' + index.sourceCount.toString() + ' source entries'),
                 ),
                 const SizedBox(height: 8),
-                const Text('Metadata preview only. APK/JAR packages are not installed or executed by KuroToon yet.'),
+                const Text('This saves a browsable metadata catalog. APK/JAR packages remain unavailable as executable KuroToon sources.'),
                 const SizedBox(height: 8),
                 Flexible(
                   child: ListView.builder(
@@ -133,7 +139,7 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
                       return ListTile(
                         dense: true,
                         title: Text(extension.name),
-                        subtitle: Text('${extension.versionName} · ${extension.sources.length} sources · ${extension.contentWarning.name}'),
+                        subtitle: Text(extension.versionName + ' · ' + extension.sources.length.toString() + ' sources · ' + extension.contentWarning.name),
                       );
                     },
                   ),
@@ -141,11 +147,38 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
               ],
             ),
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add catalog')),
+          ],
         ),
       );
+      if (accepted != true || !mounted) return;
+      final uri = Uri.parse(url);
+      final normalized = RepositoryMarkdownDiscovery().normalizeGitHubFileUrl(uri);
+      final host = normalized.host.toLowerCase().replaceAll(RegExp(r'[^a-z0-9.-]'), '-');
+      final pathPart = normalized.pathSegments.join('-').toLowerCase().replaceAll(RegExp(r'[^a-z0-9._-]'), '-');
+      var id = 'mihon.' + host + '.' + pathPart;
+      if (id.length > 120) id = id.substring(0, 120);
+      id = id.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '-');
+      await database.saveExtensionRepository(
+        ExtensionRepository(
+          id: id,
+          name: index.name,
+          indexUri: normalized,
+          description: 'Mihon/Tachiyomi metadata catalog. Compiled APK/JAR packages are not executed by KuroToon.',
+          trust: RepositoryTrust.userAdded,
+        ),
+      );
+      _urlController.clear();
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Upstream catalog saved. Its packages are available for browsing, not installation.')),
+        );
+      }
     } on Object catch (error) {
-      if (mounted) setState(() => _error = 'Could not inspect upstream catalog: ${error is FormatException ? error.message : error.runtimeType}.');
+      if (mounted) setState(() => _error = 'Could not inspect or save upstream catalog: ' + (error is FormatException ? error.message : error.runtimeType.toString()) + '.');
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -153,14 +186,27 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
 
   Future<void> _openRepository(Map<String, Object?> repository) async {
     final id = repository['id'] as String?;
-    if (id == null) return;
+    final rawUrl = repository['index_url'] as String?;
+    if (id == null || rawUrl == null) return;
     setState(() { _working = true; _error = null; });
     try {
-      final index = await widget.runtime.loadExtensionRepositoryIndex(id);
-      if (!mounted) return;
-      setState(() => _indexes[id] = index);
+      if (id.startsWith('mihon.')) {
+        final index = await widget.runtime.extensionRepositories!.previewMihonCatalog(rawUrl);
+        if (!mounted) return;
+        setState(() {
+          _upstreamIndexes[id] = index;
+          _indexes.remove(id);
+        });
+      } else {
+        final index = await widget.runtime.loadExtensionRepositoryIndex(id);
+        if (!mounted) return;
+        setState(() {
+          _indexes[id] = index;
+          _upstreamIndexes.remove(id);
+        });
+      }
     } on Object catch (error) {
-      if (mounted) setState(() => _error = 'Could not refresh this repository: ${error is FormatException ? error.message : error.runtimeType}.');
+      if (mounted) setState(() => _error = 'Could not refresh this repository: ' + (error is FormatException ? error.message : error.runtimeType.toString()) + '.');
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -310,6 +356,7 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
   Widget _repositoryCard(Map<String, Object?> repository) {
     final id = repository['id'] as String? ?? 'unknown';
     final index = _indexes[id];
+    final upstream = _upstreamIndexes[id];
     return Card(
       color: Colors.white.withValues(alpha: .045),
       margin: const EdgeInsets.only(bottom: 10),
@@ -331,6 +378,15 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
             Text('${index.extensions.length} extensions available', style: const TextStyle(color: _repoCyan, fontSize: 12)),
             for (final extension in index.extensions) _packageRow(id, extension),
           ],
+          if (upstream != null) ...[
+            const SizedBox(height: 8),
+            Text(upstream.badgeLabel + ' · ' + upstream.extensions.length.toString() + ' packages · ' + upstream.sourceCount.toString() + ' sources', style: const TextStyle(color: _repoCyan, fontSize: 12)),
+            const Padding(
+              padding: EdgeInsets.only(top: 4, bottom: 4),
+              child: Text('Catalog only — APK/JAR extensions are not installed or executed.', style: TextStyle(color: Colors.white54, fontSize: 11)),
+            ),
+            for (final extension in upstream.extensions) _upstreamPackageRow(extension),
+          ],
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
@@ -343,6 +399,18 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
       ),
     );
   }
+
+  Widget _upstreamPackageRow(MihonExtensionRecord entry) => ListTile(
+    dense: true,
+    contentPadding: const EdgeInsets.only(left: 8),
+    leading: const Icon(Icons.inventory_2_outlined, color: _repoViolet),
+    title: Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+    subtitle: Text(
+      entry.versionName + ' · ' + entry.sources.length.toString() + ' sources · ' + entry.contentWarning.name,
+      style: const TextStyle(color: Colors.white54, fontSize: 11),
+    ),
+    trailing: const Text('Catalog', style: TextStyle(color: Colors.white54, fontSize: 10)),
+  );
 
   Widget _packageRow(String repositoryId, ExtensionPackageEntry entry) {
     final installed = _installed.any((row) => row['extension_id'] == entry.id);
