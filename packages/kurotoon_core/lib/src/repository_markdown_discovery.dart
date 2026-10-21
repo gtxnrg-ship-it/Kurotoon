@@ -42,6 +42,9 @@ class RepositoryMarkdownDiscovery {
     return null;
   }
 
+  /// Converts a GitHub /blob/ URL to the raw file URL; other URLs are unchanged.
+  Uri normalizeGitHubFileUrl(Uri uri) => _normalizeGitHubBlob(uri);
+
   /// Finds index-like JSON links in Markdown, prioritizing known index names.
   /// Links are returned in stable order and duplicates are removed.
   List<Uri> indexLinks(String markdown, {required Uri documentUri}) {
