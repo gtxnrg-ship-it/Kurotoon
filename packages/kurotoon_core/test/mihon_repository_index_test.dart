@@ -103,6 +103,37 @@ void main() {
     );
   });
 
+  test('parses legacy Mihon JSON catalogs as metadata only', () {
+    final json = utf8.encode('[{"name":"Tachiyomi: Example","pkg":"eu.kanade.tachiyomi.extension.en.example","apk":"tachiyomi-en.example-v1.2.3.apk","lang":"en","code":23,"version":"1.2.3","nsfw":0,"sources":[{"name":"Example","lang":"en","id":"123456789","baseUrl":"https://example.org"}]}]');
+    final index = MihonRepositoryIndex.parseJson(
+      json,
+      indexUri: Uri.parse('https://repo.example.org/index.min.json'),
+    );
+    expect(index.name, 'index.min.json');
+    expect(index.badgeLabel, 'JSON catalog');
+    expect(index.signingKey, 'unverified-json:repo.example.org');
+    expect(index.extensions, hasLength(1));
+    final entry = index.extensions.single;
+    expect(entry.packageName, 'eu.kanade.tachiyomi.extension.en.example');
+    expect(entry.resources.apkUrl, Uri.parse('https://repo.example.org/apk/tachiyomi-en.example-v1.2.3.apk'));
+    expect(entry.versionName, '1.2.3');
+    expect(entry.contentWarning, MihonContentWarning.safe);
+    expect(entry.sources.single.id, 123456789);
+    expect(entry.sources.single.homeUrl, Uri.parse('https://example.org'));
+  });
+
+  test('rejects malformed Mihon JSON catalogs and duplicate packages', () {
+    expect(
+      () => MihonRepositoryIndex.parseJson(utf8.encode('{"not":"an array"}'), indexUri: Uri.parse('https://repo.example.org/index.json')),
+      throwsFormatException,
+    );
+    const duplicate = '[{"name":"A","pkg":"eu.example.a","version":"1","code":1},{"name":"B","pkg":"eu.example.a","version":"1","code":2}]';
+    expect(
+      () => MihonRepositoryIndex.parseJson(utf8.encode(duplicate), indexUri: Uri.parse('https://repo.example.org/index.json')),
+      throwsFormatException,
+    );
+  });
+
   test('rejects malformed protobuf, oversized input, and missing repository metadata', () {
     expect(
       () => MihonRepositoryIndex.parse([0x0a, 0x05, 0x41], indexUri: Uri.parse('https://repo.example.org/index.pb')),
