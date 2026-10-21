@@ -131,9 +131,9 @@ Most recent fully verified main baseline before the current library-sorting chan
 
 - [x] Add an initial native Galaxy backdrop and five-tab navigation shell.
 - [ ] Define reusable tokens for surfaces, contrast, typography, spacing, focus, haptics and motion.
-- [ ] Add reduced-motion support and pause animations when hidden/backgrounded.
+- [x] Honor the user's reduced-motion preference and the OS animation setting; pause Galaxy animation while the app is backgrounded.
 - [ ] Keep the galaxy behind content, never underneath text with insufficient contrast or over manga pages by default.
-- [ ] Add adaptive particle/star counts and effects quality that degrade under frame-time pressure.
+- [x] Adapt blur, star count, and decorative filaments down after sustained slow frames and restore quality only after sustained healthy frames.
 - [ ] Avoid rebuild storms, unbounded animation controllers, per-frame allocations and excess blur over large screen areas.
 - [ ] Profile cold start, scroll frame pacing, image-heavy browsing, memory, battery and thermal behaviour on low-end and mid-range devices.
 - [ ] Verify phone/tablet/desktop breakpoints, keyboard, screen reader, large text and Android navigation modes.
