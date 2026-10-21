@@ -530,7 +530,7 @@ class _HomePageState extends State<_HomePage> {
           const _FeatureTile(
             icon: Icons.hub_rounded,
             title: 'Source-ready by design',
-            subtitle: 'MangaDex is the current live connector; compatible catalog repositories can be previewed safely.
+            subtitle: 'MangaDex is the current live connector; compatible catalog repositories can be previewed safely.',
             tint: _cyan,
           ),
           const SizedBox(height: 10),
@@ -1186,10 +1186,12 @@ class _CreatorDetailPageState extends State<_CreatorDetailPage> {
             padding: EdgeInsets.all(24),
             child: CircularProgressIndicator(),
           ))
-          else if (_error != null) _InlineNotice(
-            icon: Icons.storage_rounded,
-            text: _error!,
-            action: TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+          else if (_error != null) Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _InlineNotice(icon: Icons.storage_rounded, text: _error!),
+              TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+            ],
           )
           else if (_works.isEmpty) const _InlineNotice(
             icon: Icons.menu_book_outlined,
