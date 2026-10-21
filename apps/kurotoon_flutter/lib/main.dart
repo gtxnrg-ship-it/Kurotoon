@@ -8,6 +8,7 @@ import 'services/catalog_workflow_service.dart';
 import 'services/reading_journey_service.dart';
 import 'ui/library_page.dart';
 import 'ui/reader_page.dart';
+import 'ui/reader_display_preferences.dart';
 import 'ui/provider_diagnostics_page.dart';
 import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
@@ -1320,6 +1321,7 @@ class _MePageState extends State<_MePage> {
   bool _longStripDefault = false;
   bool _dataSaverDefault = false;
   bool _readerPreferenceSaving = false;
+  ReaderDisplayPreferences _readerDisplayPreferences = const ReaderDisplayPreferences();
 
   @override
   void initState() {
@@ -1334,11 +1336,13 @@ class _MePageState extends State<_MePage> {
       final rightToLeft = await database?.getSetting<bool>('reader.right_to_left');
       final longStrip = await database?.getSetting<bool>('reader.long_strip');
       final dataSaver = await database?.getSetting<bool>('reader.data_saver');
+      final display = await database?.getSetting<Object?>('reader.display_preferences');
       if (!mounted) return;
       setState(() {
         _rightToLeftDefault = rightToLeft ?? false;
         _longStripDefault = longStrip ?? false;
         _dataSaverDefault = dataSaver ?? false;
+        _readerDisplayPreferences = ReaderDisplayPreferences.fromStored(display);
       });
     } on Object {
       // Optional reader defaults should never prevent the rest of Me from opening.
@@ -1369,6 +1373,30 @@ class _MePageState extends State<_MePage> {
     if (!mounted) return;
     update(value);
     setState(() => _readerPreferenceSaving = false);
+  }
+
+  Future<void> _editReaderDisplayPreferences() async {
+    if (_readerPreferenceSaving) return;
+    final next = await showReaderDisplayPreferences(context, _readerDisplayPreferences);
+    if (next == null || !mounted) return;
+    setState(() => _readerPreferenceSaving = true);
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      await database.setSetting('reader.display_preferences', next.toMap());
+    } on Object {
+      if (!mounted) return;
+      setState(() => _readerPreferenceSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reader display settings could not be saved. Your previous settings were kept.')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _readerDisplayPreferences = next;
+      _readerPreferenceSaving = false;
+    });
   }
 
   Future<void> _setMangaDexEnabled(bool value) async {
@@ -1514,6 +1542,20 @@ class _MePageState extends State<_MePage> {
                 previous: _rightToLeftDefault,
                 update: (next) => setState(() => _rightToLeftDefault = next),
               ),
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
+            _settingsTile(
+              icon: Icons.tune_rounded,
+              tint: _violet,
+              title: 'Display, dimming & spacing',
+              subtitle: (_readerDisplayPreferences.fitMode == 'width'
+                      ? 'Fit to width'
+                      : _readerDisplayPreferences.fitMode == 'height'
+                          ? 'Fit to height'
+                          : 'Fit entire page') +
+                  ' · Dimming ' + (_readerDisplayPreferences.dimming * 100).round().toString() +
+                  '% · Gap ' + _readerDisplayPreferences.pageGap.round().toString() + ' px',
+              onTap: _readerPreferenceSaving ? () {} : _editReaderDisplayPreferences,
             ),
           ]),
           const SizedBox(height: 22),
