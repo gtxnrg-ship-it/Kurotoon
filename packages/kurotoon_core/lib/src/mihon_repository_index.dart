@@ -188,8 +188,93 @@ class MihonRepositoryIndex {
       final packageName = value['pkg'];
       final versionName = value['version'];
       final versionCode = value['code'];
-      if (name is! String || name.trim().isEmpty ||
-          packageName is! String || !RegExp(r'^[A-Za-z0-9_.]+
+      if (name is! String ||
+          name.trim().isEmpty ||
+          packageName is! String ||
+          !RegExp(r'^[A-Za-z0-9_.]+$').hasMatch(packageName) ||
+          versionName is! String ||
+          versionName.trim().isEmpty ||
+          versionCode is! int ||
+          versionCode < 0) {
+        throw const FormatException(
+          'Mihon JSON extension is missing valid name, package, or version metadata.',
+        );
+      }
+      if (!seenPackages.add(packageName)) {
+        throw FormatException('Duplicate Mihon extension package: ' + packageName);
+      }
+      final sourceValues = value['sources'];
+      if (sourceValues != null && sourceValues is! List) {
+        throw FormatException('Mihon extension ' + packageName + ' has an invalid sources list.');
+      }
+      final sources = <MihonSourceRecord>[];
+      for (final sourceValue in (sourceValues as List? ?? const [])) {
+        if (sourceValue is! Map) {
+          throw FormatException('Mihon extension ' + packageName + ' contains an invalid source.');
+        }
+        final source = Map<String, Object?>.from(sourceValue);
+        final sourceName = source['name'];
+        final language = source['lang'];
+        final sourceId = source['id'];
+        if (sourceName is! String || sourceName.trim().isEmpty || language is! String) {
+          throw FormatException(
+            'Mihon extension ' + packageName + ' contains a source with invalid name/language.',
+          );
+        }
+        final id = sourceId is int ? sourceId : int.tryParse(sourceId?.toString() ?? '');
+        if (id == null || id < 0) {
+          throw FormatException('Mihon source in ' + packageName + ' has an invalid ID.');
+        }
+        Uri? home;
+        final baseUrl = source['baseUrl'];
+        if (baseUrl is String && baseUrl.trim().isNotEmpty) {
+          home = Uri.tryParse(baseUrl);
+          if (home == null ||
+              !home.isAbsolute ||
+              !{'http', 'https'}.contains(home.scheme) ||
+              home.host.isEmpty ||
+              home.userInfo.isNotEmpty) {
+            throw FormatException('Mihon source in ' + packageName + ' has an invalid base URL.');
+          }
+        }
+        sources.add(
+          MihonSourceRecord(
+            id: id,
+            name: sourceName,
+            language: language,
+            homeUrl: home,
+          ),
+        );
+      }
+      final warning = switch (value['nsfw']) {
+        0 => MihonContentWarning.safe,
+        1 => MihonContentWarning.nsfw,
+        2 => MihonContentWarning.mixed,
+        _ => MihonContentWarning.unspecified,
+      };
+      entries.add(
+        MihonExtensionRecord(
+          name: name,
+          packageName: packageName,
+          resources: MihonExtensionResources(
+            apkUrl: resolveResource(value['apk'], 'APK'),
+          ),
+          versionCode: versionCode,
+          versionName: versionName,
+          contentWarning: warning,
+          sources: List.unmodifiable(sources),
+        ),
+      );
+    }
+    return MihonRepositoryIndex(
+      name: indexUri.host,
+      badgeLabel: 'JSON catalog',
+      signingKey: 'unverified-json:' + indexUri.host,
+      contact: null,
+      extensions: List.unmodifiable(entries),
+    );
+  }
+
   static List<MihonExtensionRecord> parseExtensionList(
     List<int> bytes, {
     int maxBytes = 16 * 1024 * 1024,
