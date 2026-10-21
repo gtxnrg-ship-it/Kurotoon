@@ -165,7 +165,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
   ) {
     final merged = <String, ChapterUnit>{};
     String identity(ChapterUnit chapter) {
-      final language = (chapter.listings.firstOrNull?.languageCode ?? 'und').toLowerCase();
+      final language = (chapter.listings.isEmpty ? null : chapter.listings.first.languageCode ?? 'und')!.toLowerCase();
       final number = chapter.chapterNumber;
       final volume = chapter.volumeNumber?.toString() ?? '-';
       final title = WorkIdentityMatcher.normalizeTitle(chapter.title ?? '');
