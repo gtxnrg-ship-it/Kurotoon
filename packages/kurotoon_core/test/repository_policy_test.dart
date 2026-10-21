@@ -37,6 +37,11 @@ void main() {
       'https://192.0.2.1/repo.json',
       'https://198.18.0.1/repo.json',
       'https://203.0.113.1/repo.json',
+      // Legacy URL parsers may reinterpret these as loopback/private IPv4.
+      'https://0177.0.0.1/repo.json',
+      'https://127.1/repo.json',
+      'https://0x7f000001/repo.json',
+      'https://0x7f.0.0.1/repo.json',
     ]) {
       expect(policy.validate(url).allowed, isFalse, reason: url);
     }
@@ -54,9 +59,16 @@ void main() {
       'https://[::ffff:7f00:1]/repo.json',
       'https://[2001:db8::1]/repo.json',
       'https://[2002:7f00:1::1]/repo.json',
+      'https://[2001:0::1]/repo.json',
+      'https://[2001:10::1]/repo.json',
+      'https://[2001:20::1]/repo.json',
     ]) {
       expect(policy.validate(url).allowed, isFalse, reason: url);
     }
+  });
+
+  test('continues to allow canonical public IPv4 addresses', () {
+    expect(policy.validate('https://1.2.3.4/repo.json').allowed, isTrue);
   });
 
   test('allows a public global-unicast IPv6 literal', () {
