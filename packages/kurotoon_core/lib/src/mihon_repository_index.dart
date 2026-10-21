@@ -68,17 +68,26 @@ class MihonRepositoryIndex {
     required this.contact,
     required this.extensions,
     this.extensionListUrl,
-  });
+    int? totalExtensionCount,
+    int? totalSourceCount,
+  }) : _totalExtensionCount = totalExtensionCount,
+       _totalSourceCount = totalSourceCount;
 
   final String name;
   final String badgeLabel;
   final String signingKey;
   final MihonRepositoryContact? contact;
+  /// A full list for parsed indexes, or a bounded sample for UI previews.
   final List<MihonExtensionRecord> extensions;
   final Uri? extensionListUrl;
+  final int? _totalExtensionCount;
+  final int? _totalSourceCount;
 
   bool get hasExternalExtensionList => extensionListUrl != null;
-  int get sourceCount => extensions.fold<int>(0, (sum, extension) => sum + extension.sources.length);
+  int get extensionCount => _totalExtensionCount ?? extensions.length;
+  int get sourceCount =>
+      _totalSourceCount ?? extensions.fold<int>(0, (sum, extension) => sum + extension.sources.length);
+  bool get hasMorePreviewEntries => extensions.length < extensionCount;
 
   factory MihonRepositoryIndex.parse(
     List<int> bytes, {
