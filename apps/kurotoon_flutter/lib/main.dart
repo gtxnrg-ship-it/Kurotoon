@@ -7,6 +7,7 @@ import 'runtime.dart';
 import 'ui/library_page.dart';
 import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
+import 'ui/shop_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -147,12 +148,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
     final pages = [
       _HomePage(onBrowse: () => setState(() => _selected = 1)),
       _BrowserPage(runtime: widget.runtime),
-      const _ComingSoonPage(
-        icon: Icons.auto_awesome_rounded,
-        title: 'The Galaxy Shop',
-        subtitle: 'Your future home for themes, reading experiences and optional voice packs.',
-        detail: 'The shop is not connected yet. No paid items or downloads are simulated.',
-      ),
+      ShopPage(runtime: widget.runtime),
       LibraryPage(runtime: widget.runtime),
       _MePage(runtime: widget.runtime),
     ];
