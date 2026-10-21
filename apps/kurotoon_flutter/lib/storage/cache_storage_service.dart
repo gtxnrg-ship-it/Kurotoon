@@ -109,11 +109,16 @@ class CacheStorageService {
 
       final remaining = await database.loadCacheOperationJournals();
       if (remaining.isEmpty) {
-        final cleanup = await _cleanOrphanedFiles();
-        pendingRemoved += cleanup.pendingRemoved;
-        orphanBackupsHandled += cleanup.backupsHandled;
-        orphanFilesRemoved += cleanup.orphanFilesRemoved;
-        failures += cleanup.failures;
+        try {
+          final cleanup = await _cleanOrphanedFiles();
+          pendingRemoved += cleanup.pendingRemoved;
+          orphanBackupsHandled += cleanup.backupsHandled;
+          orphanFilesRemoved += cleanup.orphanFilesRemoved;
+          failures += cleanup.failures;
+        } on Object {
+          // Cache recovery is best-effort and cannot block the primary reader.
+          failures++;
+        }
       }
 
       final report = CacheRecoveryReport(
@@ -137,12 +142,14 @@ class CacheStorageService {
       final temporaryPath = _managedPayloadPath(payload['temporaryPath']);
       final rawBackups = payload['backups'];
       if (targetPath == null || temporaryPath == null || rawBackups is! Map) return false;
+      if (!await _isManagedPath(targetPath) || !await _isManagedPath(temporaryPath)) return false;
 
       final backups = <String, String>{};
       for (final item in rawBackups.entries) {
         final original = _managedPayloadPath(item.key);
         final backup = _managedPayloadPath(item.value);
         if (original == null || backup == null) return false;
+        if (!await _isManagedPath(original) || !await _isManagedPath(backup)) return false;
         backups[original] = backup;
       }
 
@@ -174,6 +181,7 @@ class CacheStorageService {
       final originalPath = _managedPayloadPath(payload['originalPath']);
       final backupPath = _managedPayloadPath(payload['backupPath']);
       if (originalPath == null || backupPath == null) return false;
+      if (!await _isManagedPath(originalPath) || !await _isManagedPath(backupPath)) return false;
       final original = File(originalPath);
       final backup = File(backupPath);
       final currentEntry = await database.findCacheEntry(journal.key);
