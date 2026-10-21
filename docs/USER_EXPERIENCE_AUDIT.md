@@ -11,7 +11,8 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 
 ## Browser
 
-- Searches go through enabled provider adapters and return partial-source failures honestly.
+- Stories search goes through enabled provider adapters and returns partial-source failures honestly.
+- A Stories / Creators selector adds creator search over the bounded local creator index; creator pages list aliases and up to 50 credited catalog works without pretending to fetch a biography or issuing a network request.
 - Recent submitted queries are stored in the app's local settings table; the list is bounded to six, de-duplicated case-insensitively, and can be cleared.
 - Recalling a query submits it again to providers; it does not pretend cached query history is a live result.
 - Search-result ranking stays tied to the last submitted query while the input is edited.
@@ -30,7 +31,8 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 
 ## Me
 
-- Reader defaults control the existing persisted right-to-left and long-strip settings used when a chapter is opened.
+- Reader defaults control the persisted right-to-left, long-strip and data-saver preferences used by the reader.
+- Reader-toolbar preference writes are serialized and persisted before applying the visible setting, avoiding races and UI/disk divergence on failed writes.
 - A preference write failure rolls the switch back, avoiding a screen that implies an unsaved value is durable.
 - Provider toggles serialize user interaction and report failure rather than silently changing presentation state.
 - Source diagnostics, repository management and storage management remain real routes.
@@ -41,6 +43,7 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 - Run Flutter analysis, unit/widget tests, Dart Core CI and Android packaging on the PR head.
 - Test cold start, search, series opening, reading, progress restoration, filters and settings on a physical Android device.
 - Validate search history restoration across app restarts and clearing history on the device.
+- Verify local creator-index rebuild performance and creator-work aggregation on a realistic catalog.
 - Test long-strip and RTL defaults against representative chapters from real sources.
 - Verify collection schema migration, create/add/remove/delete semantics on device and after process restart (automated database tests are included with this change).
 - Keep crash recovery, backup/export, manual drag ordering, source-specific request policies, live-source reliability, adaptive performance and immersive audio/voice/haptic runtime as explicit open work until implemented and tested.
