@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
+
+import '../services/provider_diagnostic_export.dart';
 
 import '../runtime.dart';
 
@@ -39,6 +42,101 @@ class _ProviderDiagnosticsPageState extends State<ProviderDiagnosticsPage> {
         cooldown: widget.runtime.providerHealth.remainingCooldown(id),
       );
     }));
+  }
+
+  Future<void> _exportDiagnostics() async {
+    final generatedAt = DateTime.now().toUtc();
+    final payload = buildRedactedProviderDiagnosticExport(
+      generatedAt: generatedAt,
+      providers: _rows.map((row) => ProviderDiagnosticExportRecord(
+        providerId: row.id,
+        providerName: row.name,
+        enabled: row.enabled,
+        healthState: row.snapshot.state.name,
+        capabilities: row.capabilities,
+        consecutiveFailures: row.snapshot.consecutiveFailures,
+        lastStatus: row.snapshot.lastStatus?.name,
+        lastSuccessAt: row.snapshot.lastSuccessAt,
+        lastFailureAt: row.snapshot.lastFailureAt,
+        remainingCooldown: row.cooldown,
+      )),
+    );
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.privacy_tip_outlined, color: _cyan),
+            SizedBox(width: 10),
+            Expanded(child: Text('Review diagnostic export')),
+          ],
+        ),
+        content: SizedBox(
+          width: 560,
+          height: MediaQuery.sizeOf(context).height * 0.42,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This bundle includes source IDs/names, capabilities, health states, failure counts, recent success/failure times, and cooldowns. It excludes raw error text, request/response data, full URLs, search history, story titles, library data, reading progress, and credentials.',
+                style: TextStyle(height: 1.35),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'It still reveals which sources are enabled and when they last worked or failed. Review the exact JSON below before choosing to copy or share it.',
+                style: TextStyle(color: Colors.orangeAccent, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      payload,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.copy_rounded),
+            label: const Text('Copy reviewed export'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) return;
+    try {
+      await Clipboard.setData(ClipboardData(text: payload));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Redacted diagnostic bundle copied. Review it before sharing.')),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('The diagnostic bundle could not be copied. No data was sent.')),
+      );
+    }
   }
 
   Future<void> _refresh() async {
@@ -94,6 +192,11 @@ class _ProviderDiagnosticsPageState extends State<ProviderDiagnosticsPage> {
         title: const Text('Source diagnostics'),
         backgroundColor: const Color(0xFF0B1020),
         actions: [
+          IconButton(
+            tooltip: 'Export redacted diagnostics',
+            onPressed: _loading ? null : _exportDiagnostics,
+            icon: const Icon(Icons.ios_share_rounded),
+          ),
           IconButton(
             tooltip: 'Refresh local status',
             onPressed: _loading ? null : _refresh,
