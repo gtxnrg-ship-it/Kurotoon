@@ -64,6 +64,16 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 - The export omits raw exception/stack text, HTTP requests/responses/headers, full URLs/paths, searches, story/creator titles, library membership, progress and credentials. Suspicious URL/token-like text embedded in source labels is redacted.
 - Nothing is uploaded. The user sees the exact JSON and is told that enabled-source names and health timing remain visible before copying.
 
+## Extension installation and crash recovery
+
+- Installed-manifest path checks validate lexical containment and reject symlinks in the managed extension tree. The service does not recurse into its own validator, and cleanup does not treat a persisted path as permission to delete an arbitrary file.
+- Schema version 9 adds a durable operation journal for declarative installs and uninstalls.
+- An install journal is written before staging the manifest. If SQLite commits but cleanup does not, recovery verifies the installed target digest and safely finishes removing a previous manifest. If SQLite never points at the target, recovery removes only files created by the interrupted operation and preserves files that pre-dated it.
+- An uninstall journal is written before removing the installed row. If the row remains, recovery cancels the uncommitted uninstall; if it is gone, recovery safely finishes deleting the old manifest.
+- Journal paths are validated against the managed extension root and symlink-aware manifest policy. Invalid or inconsistent operations remain journaled for retry rather than being guessed away.
+- Runtime recovery runs before installed declarative providers are loaded. Recovery issues are surfaced through the runtime's extension-load diagnostics; a recovery failure does not prevent built-in providers from starting.
+- Real-device force-stop/relaunch tests and broader update/rollback conformance remain required.
+
 ## Acceptance still required
 
 - Run Flutter analysis, unit/widget tests, Dart Core CI and Android packaging on the PR head.
