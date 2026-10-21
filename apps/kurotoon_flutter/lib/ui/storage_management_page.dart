@@ -51,6 +51,8 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
       _loading = true;
       _error = null;
       _recoveryError = null;
+      _budgetPreview = null;
+      _budgetPreviewError = null;
     });
     try {
       final entries = await database.loadCacheEntries();
@@ -98,6 +100,8 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
       if (!mounted) return;
       setState(() {
         _entries = entries;
+        _budgetPreview = null;
+        _budgetPreviewError = null;
         _recoveryReport = report;
         _recoveryError = report.complete
             ? null
@@ -218,7 +222,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
           ),
           const SizedBox(height: 5),
           Text(
-            '\$usedPercent% of the cache budget used · ${_bytes((budgetBytes - _totalBytes).clamp(0, budgetBytes))} headroom',
+            '\$usedPercent% of the cache budget used · ${_bytes((budgetBytes - _totalBytes).clamp(0, budgetBytes).toInt())} headroom',
             style: TextStyle(
               color: _totalBytes > budgetBytes ? Colors.orangeAccent : Colors.white54,
               fontSize: 11,
