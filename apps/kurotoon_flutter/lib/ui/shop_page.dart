@@ -79,7 +79,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     await db.setSetting(_goldKey, _gold);
   }
 
-  Future<void> _purchase(KuruCollectible item) async {
+  Future<bool> _purchase(KuruCollectible item) async {
     if (_working || _owned.contains(item.id)) return;
     if (item.currency == CollectibleCurrency.achievement) {
       _showMessage('This collectible is earned through achievements, not purchased.');
