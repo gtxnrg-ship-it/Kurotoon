@@ -23,7 +23,7 @@ Most recent fully verified main baseline before the current library-sorting chan
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter APK build, analysis, tests and release workflow pass | Real-device install, package metadata/signing strategy, smoke-test automation and other platforms |
 | Pure Dart domain and policy core | 70% | Typed work/edition/chapter models, cancellation, provider coordinator, identity matching, progress reconciliation, cache/effect/voice policies | More adversarial/property tests, manual identity corrections and end-to-end consumers |
-| Persistent state and cache safety | 70% | SQLite schema/migrations, managed cache budget enforcement, serialized writes, pinned-content protection, rollback tests, persisted provider-health snapshots and durable library/progress operations | Broader migration fixtures, interrupted-write recovery and physical-device storage behaviour |
+| Persistent state and cache safety | 70% | SQLite migrations, managed cache budget enforcement, serialized writes, pinned-content protection, rollback tests, transactional operation journals, crash recovery for interrupted cache writes/removals and durable library/progress operations | Physical-device storage behavior, recovery from interrupted extension installs/updates, cache dry-run/metrics and longer soak testing |
 | Provider integration | 65% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns, upstream `Retry-After` handling and local source diagnostics | Live flow validation, provider-specific request policies, additional source adapters and schema-drift handling |
 | Repository / extension foundation | 72% | Native Me repository manager, preview/add/refresh/remove flows, JSON index/manifest checks, bounded Mihon/Tachiyomi metadata previews and persistent declarative install records | Update/rollback recovery tests, broader conformance fixtures, and compiled-extension compatibility proof |
 | Cross-source catalog and chapter merge | 45% | Identity matcher, catalog index, provenance models, candidate grouping, mini-chapter/edition concepts, and bounded local creator pages over source-scoped creator credits | End-to-end persisted merge pipeline, manual corrections/undo, source-evidence UI and real multi-source fixtures |
@@ -66,7 +66,8 @@ Most recent fully verified main baseline before the current library-sorting chan
 - [ ] Test app kill/crash during extension install/update/uninstall and recover orphan temp files safely.
 - [ ] Add a structured diagnostic export that redacts credentials, tokens and private user data.
 - [x] Enforce storage budget on managed cache writes with serialized operations, pinned-content protection and staged rollback if SQLite metadata commit fails.
-- [ ] Add cache dry-run/metrics surfaces and recover interrupted cache writes after process death.
+- [x] Journal managed cache writes/removals in SQLite and recover staged files at cache startup; orphan cleanup is constrained to managed cache paths.
+- [ ] Add cache dry-run/metrics surfaces and expose recovery diagnostics in Storage management.
 - [ ] Add backup/export only with versioned schema, preview, validation and explicit user confirmation.
 
 **Exit gate:** interrupted network, source failure, app restart and storage failure never corrupt user-owned data or masquerade as a successful empty response.
