@@ -22,6 +22,7 @@ class _ReaderPageState extends State<ReaderPage> {
   bool _loading = true;
   bool _dataSaver = false;
   bool _verticalMode = false;
+  bool _rightToLeft = false;
   String? _error;
   String? _selectedProviderId;
   int _page = 0;
@@ -38,6 +39,12 @@ class _ReaderPageState extends State<ReaderPage> {
       if (mounted && saved != null) _verticalMode = saved;
     } on Object {
       // The reader remains usable when an optional layout preference is unavailable.
+    }
+    try {
+      final savedDirection = await widget.runtime.database?.getSetting<bool>('reader.right_to_left');
+      if (mounted && savedDirection != null) _rightToLeft = savedDirection;
+    } on Object {
+      // Reading direction is optional; use the default direction if unavailable.
     }
     if (mounted) await _load();
   }
@@ -129,6 +136,27 @@ class _ReaderPageState extends State<ReaderPage> {
     if (page == null || page == _page) return;
     setState(() => _page = page);
     _save(page, count);
+  }
+
+  Future<void> _toggleReadingDirection() async {
+    final next = !_rightToLeft;
+    setState(() => _rightToLeft = next);
+    try {
+      await widget.runtime.database?.setSetting('reader.right_to_left', next);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reading direction changed for this session, but the preference could not be saved.')),
+        );
+      }
+    }
+    if (!mounted || _verticalMode) return;
+    final count = _manifest?.urls(dataSaver: _dataSaver).length ?? 0;
+    final controller = _controller;
+    if (count > 0 && controller != null && controller.hasClients) {
+      // Keep the same logical chapter page while changing which edge is the start.
+      controller.jumpToPage(_page.clamp(0, count - 1));
+    }
   }
 
   Future<void> _toggleReadingMode() async {
@@ -236,6 +264,11 @@ class _ReaderPageState extends State<ReaderPage> {
             icon: Icon(_verticalMode ? Icons.auto_stories_rounded : Icons.view_stream_rounded),
           ),
           IconButton(
+            tooltip: _rightToLeft ? 'Switch to left-to-right manga reading' : 'Switch to right-to-left manga reading',
+            onPressed: _loading ? null : _toggleReadingDirection,
+            icon: Icon(_rightToLeft ? Icons.format_textdirection_r_to_l_rounded : Icons.format_textdirection_l_to_r_rounded),
+          ),
+          IconButton(
             tooltip: 'Toggle data saver',
             onPressed: _loading ? null : () { setState(() => _dataSaver = !_dataSaver); _load(); },
             icon: Icon(_dataSaver ? Icons.data_saver_on_rounded : Icons.data_saver_off_rounded),
@@ -284,6 +317,7 @@ class _ReaderPageState extends State<ReaderPage> {
                     )
                   : PageView.builder(
                       controller: _controller,
+                      reverse: _rightToLeft,
                       itemCount: urls.length,
                       onPageChanged: (page) { setState(() => _page = page); _save(page, urls.length); },
                       itemBuilder: (context, index) => InteractiveViewer(
