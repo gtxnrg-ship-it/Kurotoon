@@ -180,7 +180,12 @@ class _KuroToonShellState extends State<_KuroToonShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      _HomePage(runtime: widget.runtime, isActive: _selected == 0, onBrowse: () => setState(() => _selected = 1)),
+      _HomePage(
+        runtime: widget.runtime,
+        isActive: _selected == 0,
+        onBrowse: () => setState(() => _selected = 1),
+        onLibrary: () => setState(() => _selected = 3),
+      ),
       _BrowserPage(runtime: widget.runtime),
       const ShopPage(),
       LibraryPage(runtime: widget.runtime),
@@ -211,11 +216,17 @@ class _KuroToonShellState extends State<_KuroToonShell> {
 }
 
 class _HomePage extends StatefulWidget {
-  const _HomePage({required this.runtime, required this.isActive, required this.onBrowse});
+  const _HomePage({
+    required this.runtime,
+    required this.isActive,
+    required this.onBrowse,
+    required this.onLibrary,
+  });
 
   final KurotoonRuntime runtime;
   final bool isActive;
   final VoidCallback onBrowse;
+  final VoidCallback onLibrary;
 
   @override
   State<_HomePage> createState() => _HomePageState();
@@ -466,10 +477,25 @@ class _HomePageState extends State<_HomePage> {
                 const Text('Explore stories across sources. Build a library that feels like yours.',
                     style: TextStyle(height: 1.45, color: Colors.white70)),
                 const SizedBox(height: 22),
-                FilledButton.icon(
-                  onPressed: widget.onBrowse,
-                  icon: const Icon(Icons.explore_rounded),
-                  label: const Text('Explore the universe'),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: widget.onBrowse,
+                      icon: const Icon(Icons.explore_rounded),
+                      label: const Text('Explore the universe'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: widget.onLibrary,
+                      icon: const Icon(Icons.bookmarks_rounded),
+                      label: const Text('Open my library'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -544,9 +570,39 @@ class _BrowserPageState extends State<_BrowserPage> {
   WorkFormat? _formatFilter;
   String? _sourceFilter;
   String? _languageFilter;
+  String _lastSubmittedQuery = '';
+  List<String> _recentQueries = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreRecentQueries();
+  }
+
+  Future<void> _restoreRecentQueries() async {
+    try {
+      final saved = await widget.runtime.database?.getSetting<List<dynamic>>('browser.recent_queries');
+      final seen = <String>{};
+      final cleaned = <String>[];
+      // Settings can outlive app versions; validate shape and cap before rendering.
+      for (final item in saved ?? const <dynamic>[]) {
+        if (item is! String) continue;
+        final query = item.trim();
+        if (query.isEmpty || !seen.add(query.toLowerCase())) continue;
+        cleaned.add(query);
+        if (cleaned.length == 6) break;
+      }
+      if (mounted) setState(() => _recentQueries = List.unmodifiable(cleaned));
+    } on Object {
+      // Search history is optional: corrupt/missing preferences must not block Browse.
+    }
+  }
 
   List<CatalogEntry> get _visibleEntries {
     final entries = (_outcome?.entries ?? const <CatalogEntry>[]).where((entry) {
+      // A stale/orphaned catalog row must not reach _candidateForEntry, which
+      // intentionally expects at least one source listing to open a series.
+      if (entry.listings.isEmpty) return false;
       if (_formatFilter != null && entry.work.format != _formatFilter) return false;
       if (_sourceFilter != null && !entry.providerIds.contains(_sourceFilter)) return false;
       if (_languageFilter != null &&
@@ -555,7 +611,7 @@ class _BrowserPageState extends State<_BrowserPage> {
       }
       return true;
     }).toList();
-    final query = WorkIdentityMatcher.normalizeTitle(_controller.text);
+    final query = WorkIdentityMatcher.normalizeTitle(_lastSubmittedQuery);
     entries.sort((left, right) {
       int relevance(CatalogEntry entry) {
         final title = WorkIdentityMatcher.normalizeTitle(entry.work.title);
@@ -596,11 +652,24 @@ class _BrowserPageState extends State<_BrowserPage> {
     final query = _controller.text.trim();
     if (query.isEmpty || _loading) return;
     FocusScope.of(context).unfocus();
+    final nextHistory = <String>[
+      query,
+      ..._recentQueries.where((saved) => saved.toLowerCase() != query.toLowerCase()),
+    ].take(6).toList(growable: false);
+    _lastSubmittedQuery = query;
     setState(() {
+      _recentQueries = List.unmodifiable(nextHistory);
       _loading = true;
       _error = null;
       _outcome = null;
     });
+    try {
+      // History persistence is best-effort; a settings write failure must not
+      // turn a valid network search into a failed search.
+      await widget.runtime.database?.setSetting('browser.recent_queries', nextHistory);
+    } on Object {
+      // Continue to the live search even if local history could not be saved.
+    }
     try {
       final workflow = widget.runtime.catalogWorkflow;
       if (workflow == null) throw StateError('Persistent catalog storage is unavailable.');
@@ -675,9 +744,25 @@ class _BrowserPageState extends State<_BrowserPage> {
                   controller: _controller,
                   textInputAction: TextInputAction.search,
                   onSubmitted: (_) => _search(),
-                  decoration: const InputDecoration(
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
                     hintText: 'Title, alternate title…',
-                    prefixIcon: Icon(Icons.search_rounded),
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _controller.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => setState(() {
+                              _controller.clear();
+                              _outcome = null;
+                              _error = null;
+                              _lastSubmittedQuery = '';
+                              _formatFilter = null;
+                              _sourceFilter = null;
+                              _languageFilter = null;
+                            }),
+                          ),
                   ),
                 ),
               ),
@@ -692,8 +777,35 @@ class _BrowserPageState extends State<_BrowserPage> {
             ],
           ),
           const SizedBox(height: 18),
+          if (_outcome == null && !_loading && _error == null && _recentQueries.isNotEmpty) ...[
+            const _SectionHeading(title: 'Recent searches', subtitle: 'Stored privately on this device'),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: _recentQueries.map((query) => ActionChip(
+                avatar: const Icon(Icons.history_rounded, size: 16),
+                label: Text(query, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onPressed: () {
+                  _controller.text = query;
+                  _search();
+                },
+              )).toList(growable: false),
+            ),
+            const SizedBox(height: 12),
+          ],
           if (_loading) const LinearProgressIndicator(minHeight: 2),
-          if (_error != null) _InlineNotice(icon: Icons.wifi_off_rounded, text: _error!),
+          if (_error != null) ...[
+            _InlineNotice(icon: Icons.wifi_off_rounded, text: _error!),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _loading || _controller.text.trim().isEmpty ? null : _search,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Try search again'),
+              ),
+            ),
+          ],
           if (_outcome != null) ...[
             _SectionHeading(
               title: '${_visibleEntries.length} of ${_outcome!.entries.length} unified results',
@@ -703,6 +815,19 @@ class _BrowserPageState extends State<_BrowserPage> {
             ),
             const SizedBox(height: 12),
             if (_outcome!.entries.isNotEmpty) ...[
+              if (_formatFilter != null || _sourceFilter != null || _languageFilter != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() {
+                      _formatFilter = null;
+                      _sourceFilter = null;
+                      _languageFilter = null;
+                    }),
+                    icon: const Icon(Icons.filter_alt_off_rounded, size: 17),
+                    label: const Text('Clear all filters'),
+                  ),
+                ),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(children: [
@@ -884,101 +1009,255 @@ class _MePage extends StatefulWidget {
 
 class _MePageState extends State<_MePage> {
   bool _mangadexEnabled = true;
+  bool _providerBusy = false;
+  bool _rightToLeftDefault = false;
+  bool _longStripDefault = false;
 
   @override
-  Widget build(BuildContext context) {
-    final provider = widget.runtime.providers.all.where((p) => p.descriptor.id == 'mangadex');
-    if (provider.isNotEmpty) _mangadexEnabled = widget.runtime.providers.isEnabled('mangadex');
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 130),
-      children: [
-        const Text('ME', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 13, color: _violet)),
-        const SizedBox(height: 8),
-        const Text('Your reading, your rules.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 20),
-        const _SectionHeading(title: 'Reading', subtitle: 'Sources, extensions, and reader preferences'),
-        SwitchListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-          tileColor: Colors.white.withValues(alpha: 0.05),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          secondary: const Icon(Icons.public_rounded, color: _cyan),
-          title: const Text('MangaDex'),
-          subtitle: const Text('Live API provider'),
-          value: _mangadexEnabled,
-          onChanged: (value) async {
-            await widget.runtime.setProviderEnabled('mangadex', value);
-            if (mounted) setState(() => _mangadexEnabled = value);
-          },
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => ProviderDiagnosticsPage(runtime: widget.runtime),
-            ),
-          ),
-          icon: const Icon(Icons.health_and_safety_rounded),
-          label: const Text('View source diagnostics'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _cyan,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            side: BorderSide(color: _cyan.withValues(alpha: 0.35)),
-          ),
-        ),
-        const SizedBox(height: 18),
-        const _SectionHeading(title: 'Extensions & repositories', subtitle: 'Add catalogs and manage supported sources'),
-        const _InlineNotice(
-          icon: Icons.extension_rounded,
-          text: 'Browse catalogs and manage compatible declarative extensions. Compiled extension APKs are not executed.',
-        ),
-        const SizedBox(height: 10),
-        FilledButton.icon(
-          onPressed: () => Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => RepositoryManagementPage(runtime: widget.runtime),
-            ),
-          ),
-          icon: const Icon(Icons.settings_input_component_rounded),
-          label: const Text('Manage repositories & extensions'),
-          style: FilledButton.styleFrom(
-            backgroundColor: _violet,
-            foregroundColor: const Color(0xFF080B18),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-          ),
-        ),
-        const SizedBox(height: 22),
-        const _SectionHeading(title: 'Storage & privacy', subtitle: 'Manage disposable cache without touching your saved library or progress'),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => StorageManagementPage(runtime: widget.runtime),
-            ),
-          ),
-          icon: const Icon(Icons.storage_rounded),
-          label: const Text('Manage storage & cache'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _cyan,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            side: BorderSide(color: _cyan.withValues(alpha: 0.35)),
-          ),
-        ),
-        const SizedBox(height: 22),
-        const _SectionHeading(title: 'Galaxy', subtitle: 'Motion preferences'),
-        SwitchListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-          tileColor: Colors.white.withValues(alpha: 0.05),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          secondary: const Icon(Icons.blur_on_rounded, color: _violet),
-          title: const Text('Animated background'),
-          subtitle: const Text('Saved on this device; turn it off to reduce background animation.'),
-          value: widget.motionEnabled,
-          onChanged: widget.onMotionChanged,
-        ),
-        const SizedBox(height: 22),
-      ],
-    );
+  void initState() {
+    super.initState();
+    _mangadexEnabled = widget.runtime.providers.isEnabled('mangadex');
+    _restoreReaderDefaults();
   }
+
+  Future<void> _restoreReaderDefaults() async {
+    try {
+      final database = widget.runtime.database;
+      final rightToLeft = await database?.getSetting<bool>('reader.right_to_left');
+      final longStrip = await database?.getSetting<bool>('reader.long_strip');
+      if (!mounted) return;
+      setState(() {
+        _rightToLeftDefault = rightToLeft ?? false;
+        _longStripDefault = longStrip ?? false;
+      });
+    } on Object {
+      // Optional reader defaults should never prevent the rest of Me from opening.
+    }
+  }
+
+  Future<void> _saveReaderPreference({
+    required String key,
+    required bool value,
+    required bool previous,
+    required ValueChanged<bool> update,
+  }) async {
+    update(value);
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      await database.setSetting(key, value);
+    } on Object {
+      if (!mounted) return;
+      // Revert the optimistic toggle instead of leaving the UI inconsistent with disk.
+      update(previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That reader preference could not be saved. Your previous setting was restored.')),
+      );
+    }
+  }
+
+  Future<void> _setMangaDexEnabled(bool value) async {
+    if (_providerBusy) return;
+    setState(() => _providerBusy = true);
+    try {
+      await widget.runtime.setProviderEnabled('mangadex', value);
+      if (mounted) setState(() => _mangadexEnabled = value);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The source setting could not be saved. No change was applied.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _providerBusy = false);
+    }
+  }
+
+  Widget _settingsCard(List<Widget> children) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.045),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.075)),
+        ),
+        child: Column(children: children),
+      );
+
+  Widget _settingsTile({
+    required IconData icon,
+    required Color tint,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(color: tint.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(13)),
+          child: Icon(icon, color: tint),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text(subtitle, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.35)),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+        onTap: onTap,
+      );
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 136),
+        children: [
+          Row(
+            children: [
+              const _BrandMark(size: 48),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('ME', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 12, color: _violet)),
+                    SizedBox(height: 4),
+                    Text('Your reading, your rules.', style: TextStyle(fontSize: 23, height: 1.12, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xAA273C72), Color(0xAA17162F), Color(0x88101A2B)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.shield_moon_outlined, color: _cyan, size: 25),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('A local-first reading space', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      SizedBox(height: 5),
+                      Text(
+                        'No account is required. Your library and reading progress live on this device; live searches contact the sources you enable.',
+                        style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.45),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Reader defaults', subtitle: 'Applied when you open the next chapter'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.view_stream_rounded, color: _cyan),
+              title: const Text('Long-strip / webtoon mode'),
+              subtitle: const Text('Scroll vertically through tall pages'),
+              value: _longStripDefault,
+              onChanged: (value) => _saveReaderPreference(
+                key: 'reader.long_strip',
+                value: value,
+                previous: _longStripDefault,
+                update: (next) => setState(() => _longStripDefault = next),
+              ),
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.swap_horiz_rounded, color: _violet),
+              title: const Text('Read right to left'),
+              subtitle: const Text('Use for right-to-left manga page order'),
+              value: _rightToLeftDefault,
+              onChanged: (value) => _saveReaderPreference(
+                key: 'reader.right_to_left',
+                value: value,
+                previous: _rightToLeftDefault,
+                update: (next) => setState(() => _rightToLeftDefault = next),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Sources', subtitle: 'Choose which live providers can be queried'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.public_rounded, color: _cyan),
+              title: const Text('MangaDex'),
+              subtitle: Text(_providerBusy ? 'Updating source preference…' : 'Live API provider'),
+              value: _mangadexEnabled,
+              onChanged: _providerBusy ? null : _setMangaDexEnabled,
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
+            _settingsTile(
+              icon: Icons.health_and_safety_rounded,
+              tint: _cyan,
+              title: 'Source diagnostics',
+              subtitle: 'Recent provider health and cooldown information',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(builder: (_) => ProviderDiagnosticsPage(runtime: widget.runtime)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Extensions & repositories', subtitle: 'Review catalogs and manage supported source metadata'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            _settingsTile(
+              icon: Icons.hub_rounded,
+              tint: _violet,
+              title: 'Manage repositories & extensions',
+              subtitle: 'Preview, add, refresh, and remove compatible catalogs',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(builder: (_) => RepositoryManagementPage(runtime: widget.runtime)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Storage & privacy', subtitle: 'Clean temporary files without deleting saved reading data'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            _settingsTile(
+              icon: Icons.storage_rounded,
+              tint: const Color(0xFFFFC58A),
+              title: 'Storage & cache',
+              subtitle: 'Review cached files and safely remove disposable items',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(builder: (_) => StorageManagementPage(runtime: widget.runtime)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Galaxy', subtitle: 'Keep the atmosphere comfortable for your device'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.blur_on_rounded, color: _violet),
+              title: const Text('Animated background'),
+              subtitle: const Text('Turn off ambient animation to reduce visual motion and background work'),
+              value: widget.motionEnabled,
+              onChanged: widget.onMotionChanged,
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _InlineNotice(
+            icon: Icons.info_outline_rounded,
+            text: 'Kurotoon does not host comic content. Source availability and terms are controlled by each provider. Compiled extension APKs are not executed.',
+          ),
+        ],
+      );
 }
 
 class _GalaxyScaffold extends StatefulWidget {
