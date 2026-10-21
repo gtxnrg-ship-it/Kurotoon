@@ -1113,6 +1113,21 @@ class KurotoonDatabase {
     });
   }
 
+  /// Returns recent progress across all works, including works not currently
+  /// present in the user's library. This backs the independent reading-history shelf.
+  Future<List<ReadingProgress>> loadRecentProgress({int limit = 20}) async {
+    _ensureOpen();
+    if (limit < 1 || limit > 100) {
+      throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 100.');
+    }
+    final rows = await _database.query(
+      'reading_progress',
+      orderBy: 'updated_at DESC, work_id ASC, edition_id ASC',
+      limit: limit,
+    );
+    return List<ReadingProgress>.unmodifiable(rows.map(_progressFromRow));
+  }
+
   Future<ReadingProgress?> loadProgress(String workId, String editionId) async {
     _ensureOpen();
     final rows = await _database.query(
