@@ -68,7 +68,7 @@ class KurotoonDatabase {
     return _database;
   }
 
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 6;
 
   static Future<KurotoonDatabase> open({
     String? databasePath,
@@ -190,6 +190,7 @@ class KurotoonDatabase {
         revision INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY(work_id, edition_id)
       )''',
+      'CREATE INDEX reading_progress_updated_idx ON reading_progress(updated_at DESC, work_id ASC, edition_id ASC)',
       '''CREATE TABLE app_settings (
         key TEXT PRIMARY KEY NOT NULL,
         value_json TEXT NOT NULL,
@@ -281,6 +282,11 @@ class KurotoonDatabase {
     if (oldVersion < 3 && newVersion >= 3) await _createCatalogIndexes(db);
     if (oldVersion < 4 && newVersion >= 4) await _createCatalogSearchTermsTable(db);
     if (oldVersion < 5 && newVersion >= 5) await _createCreatorCatalogIndexes(db);
+    if (oldVersion < 6 && newVersion >= 6) await _createRecentReadingIndex(db);
+  }
+
+  static Future<void> _createRecentReadingIndex(DatabaseExecutor db) async {
+    await db.execute('CREATE INDEX IF NOT EXISTS reading_progress_updated_idx ON reading_progress(updated_at DESC, work_id ASC, edition_id ASC)');
   }
 
   static Future<void> _createCreatorCatalogIndexes(DatabaseExecutor db) async {
@@ -1113,8 +1119,8 @@ class KurotoonDatabase {
     });
   }
 
-  /// Returns recent progress across all works, including works not currently
-  /// present in the user's library. This backs the independent reading-history shelf.
+  /// Returns a bounded slice of the most recent progress rows using the
+  /// dedicated recency index, independent of current library membership.
   Future<List<ReadingProgress>> loadRecentProgress({int limit = 20}) async {
     _ensureOpen();
     if (limit < 1 || limit > 100) {
