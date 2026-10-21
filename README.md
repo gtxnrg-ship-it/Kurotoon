@@ -90,6 +90,8 @@ MangaDex remains an additive, disableable provider—not the entire product. Add
 
 The target experience is repository → extension → source management, familiar to users of extension-based readers, with a KuroToon-native UI and safety model.
 
+The repository manager can discover the compatible starter index from this repository URL or README: [KuroToon Official Starter Repository](catalog/official/index.json). This starter currently provides metadata search only; it is not a chapter-reading source.
+
 Planned user flow:
 
 1. Add a repository by supported deep link or manual HTTPS URL.

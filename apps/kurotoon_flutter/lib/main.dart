@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
 
 import 'runtime.dart';
+import 'ui/library_page.dart';
+import 'ui/repository_management_page.dart';
+import 'ui/series_detail_page.dart';
+import 'ui/shop_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -132,6 +136,35 @@ class _KuroToonShell extends StatefulWidget {
 
 class _KuroToonShellState extends State<_KuroToonShell> {
   int _selected = 0;
+  bool _motionEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreMotionPreference();
+  }
+
+  Future<void> _restoreMotionPreference() async {
+    try {
+      final saved = await widget.runtime.database?.getSetting<bool>('ui.motion_enabled');
+      if (mounted && saved != null) setState(() => _motionEnabled = saved);
+    } on Object {
+      // Keep the default if the optional preference cannot be read.
+    }
+  }
+
+  Future<void> _setMotionEnabled(bool enabled) async {
+    setState(() => _motionEnabled = enabled);
+    try {
+      await widget.runtime.database?.setSetting('ui.motion_enabled', enabled);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Motion changed for this session, but the preference could not be saved.')),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -144,23 +177,14 @@ class _KuroToonShellState extends State<_KuroToonShell> {
     final pages = [
       _HomePage(onBrowse: () => setState(() => _selected = 1)),
       _BrowserPage(runtime: widget.runtime),
-      const _ComingSoonPage(
-        icon: Icons.auto_awesome_rounded,
-        title: 'The Galaxy Shop',
-        subtitle: 'Your future home for themes, reading experiences and optional voice packs.',
-        detail: 'The shop is not connected yet. No paid items or downloads are simulated.',
-      ),
-      const _ComingSoonPage(
-        icon: Icons.bookmarks_rounded,
-        title: 'Your Library',
-        subtitle: 'Your collection belongs on your device.',
-        detail: 'Library persistence is in the backend. Library browsing and editing UI are next.',
-      ),
-      _MePage(runtime: widget.runtime),
+      ShopPage(runtime: widget.runtime),
+      LibraryPage(runtime: widget.runtime),
+      _MePage(runtime: widget.runtime, motionEnabled: _motionEnabled, onMotionChanged: _setMotionEnabled),
     ];
     return Scaffold(
       extendBody: true,
       body: _GalaxyScaffold(
+        animated: _motionEnabled,
         child: SafeArea(
           bottom: false,
           child: IndexedStack(index: _selected, children: pages),
@@ -259,11 +283,11 @@ class _HomePage extends StatelessWidget {
           const _FeatureTile(
             icon: Icons.offline_pin_rounded,
             title: 'Your data stays yours',
-            subtitle: 'A local database and bounded cache foundation—offline UI is still being connected.',
+            subtitle: 'Your library and reading progress stay local; disposable cache is bounded and managed from the Shop.',
             tint: Color(0xFFFFC58A),
           ),
           const SizedBox(height: 24),
-          Text('Early build · some sections are not connected yet',
+          Text('Live discovery needs an internet connection. Your library and saved reading positions remain on this device.',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.42), fontSize: 11)),
         ],
       );
@@ -308,6 +332,14 @@ class _BrowserPageState extends State<_BrowserPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _openSeries(WorkCandidate candidate) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SeriesDetailPage(runtime: widget.runtime, candidate: candidate),
+      ),
+    );
   }
 
   @override
@@ -357,7 +389,7 @@ class _BrowserPageState extends State<_BrowserPage> {
               const _InlineNotice(icon: Icons.search_off_rounded, text: 'No results returned. Try another title or check the source connection.')
             else
               for (final candidate in _batch!.candidates) ...[
-                _SearchResultTile(candidate: candidate),
+                _SearchResultTile(candidate: candidate, onTap: () => _openSeries(candidate)),
                 const SizedBox(height: 10),
               ],
           ],
@@ -371,8 +403,9 @@ class _BrowserPageState extends State<_BrowserPage> {
 }
 
 class _SearchResultTile extends StatelessWidget {
-  const _SearchResultTile({required this.candidate});
+  const _SearchResultTile({required this.candidate, required this.onTap});
   final WorkCandidate candidate;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -422,9 +455,9 @@ class _SearchResultTile extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton.icon(
-                      onPressed: () {},
+                      onPressed: onTap,
                       icon: const Icon(Icons.open_in_new_rounded, size: 15),
-                      label: const Text('Details soon'),
+                      label: const Text('View details'),
                     ),
                   ),
                 ],
@@ -436,8 +469,10 @@ class _SearchResultTile extends StatelessWidget {
 }
 
 class _MePage extends StatefulWidget {
-  const _MePage({required this.runtime});
+  const _MePage({required this.runtime, required this.motionEnabled, required this.onMotionChanged});
   final KurotoonRuntime runtime;
+  final bool motionEnabled;
+  final ValueChanged<bool> onMotionChanged;
 
   @override
   State<_MePage> createState() => _MePageState();
@@ -445,7 +480,6 @@ class _MePage extends StatefulWidget {
 
 class _MePageState extends State<_MePage> {
   bool _mangadexEnabled = true;
-  bool _motionEnabled = true;
 
   @override
   Widget build(BuildContext context) {
@@ -480,63 +514,39 @@ class _MePageState extends State<_MePage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           secondary: const Icon(Icons.blur_on_rounded, color: _violet),
           title: const Text('Animated background'),
-          subtitle: const Text('Session control; persistent preferences are next'),
-          value: _motionEnabled,
-          onChanged: (value) => setState(() => _motionEnabled = value),
+          subtitle: const Text('Saved on this device; turn it off to reduce background animation.'),
+          value: widget.motionEnabled,
+          onChanged: widget.onMotionChanged,
         ),
         const SizedBox(height: 22),
         const _InlineNotice(
           icon: Icons.extension_rounded,
-          text: 'Repository management and individual extension installation are implemented in the backend; their settings screens are still being connected.',
+          text: 'Review repositories, browse verified declarative extensions, and manage installed sources. Compiled extension APKs are not executed.',
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => RepositoryManagementPage(runtime: widget.runtime),
+            ),
+          ),
+          icon: const Icon(Icons.settings_input_component_rounded),
+          label: const Text('Manage repositories & extensions'),
+          style: FilledButton.styleFrom(
+            backgroundColor: _violet,
+            foregroundColor: const Color(0xFF080B18),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
         ),
       ],
     );
   }
 }
 
-class _ComingSoonPage extends StatelessWidget {
-  const _ComingSoonPage({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.detail,
-  });
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.fromLTRB(24, 80, 24, 130),
-        children: [
-          Center(
-            child: Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _violet.withValues(alpha: 0.1),
-                border: Border.all(color: _violet.withValues(alpha: 0.3)),
-              ),
-              child: Icon(icon, size: 42, color: _violet),
-            ),
-          ),
-          const SizedBox(height: 28),
-          Text(title, textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          Text(subtitle, textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70, height: 1.5)),
-          const SizedBox(height: 22),
-          _InlineNotice(icon: Icons.construction_rounded, text: detail),
-        ],
-      );
-}
-
 class _GalaxyScaffold extends StatefulWidget {
-  const _GalaxyScaffold({required this.child});
+  const _GalaxyScaffold({required this.child, this.animated = true});
   final Widget child;
+  final bool animated;
 
   @override
   State<_GalaxyScaffold> createState() => _GalaxyScaffoldState();
@@ -546,7 +556,25 @@ class _GalaxyScaffoldState extends State<_GalaxyScaffold> with SingleTickerProvi
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 42),
-  )..repeat();
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animated) _controller.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GalaxyScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animated == widget.animated) return;
+    if (widget.animated) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
 
   @override
   void dispose() {
@@ -558,7 +586,7 @@ class _GalaxyScaffoldState extends State<_GalaxyScaffold> with SingleTickerProvi
   Widget build(BuildContext context) => AnimatedBuilder(
         animation: _controller,
         builder: (context, child) => CustomPaint(
-          painter: _GalaxyPainter(progress: _controller.value),
+          painter: _GalaxyPainter(progress: widget.animated ? _controller.value : 0),
           child: child,
         ),
         child: widget.child,

@@ -6,6 +6,12 @@ A repository is a catalogue URL, not a bulk download. The user adds one HTTPS in
 
 The app must never download or execute every entry merely because a repository was added.
 
+## Paste a repository URL or README
+
+The repository manager accepts a direct `index.json` URL, a public GitHub repository URL, or a public `README.md` URL. For a repository/README URL, KuroToon reads bounded Markdown and discovers linked JSON files, prioritizing `index.json` and `index.min.json`. Each discovered candidate is then fetched and validated using the same HTTPS, public-host, size, digest, and schema rules as a directly entered index. The selected index URL—not the README URL—is stored after the user reviews and confirms its identity.
+
+This is **index discovery**, not a claim of universal extension compatibility. A repository must publish KuroToon schema-version 1 indexes and declarative JSON manifests whose endpoints support the capabilities they advertise. Mihon/Tachiyomi protobuf indexes can describe extension metadata, but their APK/JAR code is not executed by KuroToon; a listed APK does not automatically become a searchable or readable KuroToon source. Metadata-only extensions cannot provide chapter pages.
+
 ## Add-repository links
 
 The app link format is:
@@ -118,3 +124,15 @@ Every endpoint is validated before use. Only declared capabilities and supported
 ## Storage and updates
 
 Only repository metadata, installed manifests, and explicit user state are persisted. The catalogue is refreshed on demand; the app does not bulk-download all source packages. Package sizes and response sizes are bounded. Source uninstall must not remove the user's saved series, editions, reading progress, or creator records.
+
+
+## Reader-readiness assessment
+
+Repository entries advertise endpoint capabilities, but metadata alone is not proof of a usable reader. KuroToon evaluates the declared capability set consistently: a complete discovery-to-reading source needs search, series details, chapter feeds, and reader pages. The repository UI shows a concise readiness label and explains the missing pieces before installation. A source can still be useful without all four capabilities, but it is not described as a complete manga reader. This is a capability declaration, not a live guarantee that a remote source is online; network health and source behavior are verified when requests run.
+
+
+## Mihon/Tachiyomi catalog metadata
+
+KuroToon has a separate metadata parser for Mihon/Tachiyomi protobuf `index.pb` and legacy JSON `index.json` / `index.min.json` catalogs. This allows the app to inspect package names, versions, languages, source IDs, content warnings, and package URLs without confusing an upstream APK/JAR package with a KuroToon declarative provider. JSON catalogs do not carry the same signing metadata as protobuf indexes and are marked unverified. Parsing a catalog is not installing an extension or enabling it as a source. Upstream extensions still require a compatible runtime adapter before they can power KuroToon search, chapter lists, and reader pages.
+
+The catalog format is shared by many community repositories and forks, so this parser is format-based rather than hard-coded to a small allowlist. Each repository URL must still pass the app's HTTPS and public-network policy. Metadata can be stale, and repository authors are not necessarily affiliated with the source websites.
