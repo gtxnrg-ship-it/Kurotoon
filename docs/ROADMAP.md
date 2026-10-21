@@ -67,7 +67,8 @@ Most recent fully verified main baseline before the current library-sorting chan
 - [ ] Add a structured diagnostic export that redacts credentials, tokens and private user data.
 - [x] Enforce storage budget on managed cache writes with serialized operations, pinned-content protection and staged rollback if SQLite metadata commit fails.
 - [x] Journal managed cache writes/removals in SQLite and recover staged files at cache startup; orphan cleanup is constrained to managed cache paths.
-- [ ] Add cache dry-run/metrics surfaces and expose recovery diagnostics in Storage management.
+- [x] Show cache recovery status/counters in Storage management and allow users to rerun the safe managed-cache repair pass.
+- [ ] Add cache-budget dry-run/forecast metrics and long-session storage telemetry.
 - [ ] Add backup/export only with versioned schema, preview, validation and explicit user confirmation.
 
 **Exit gate:** interrupted network, source failure, app restart and storage failure never corrupt user-owned data or masquerade as a successful empty response.
