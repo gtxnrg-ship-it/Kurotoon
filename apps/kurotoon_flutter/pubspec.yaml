@@ -26,3 +26,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/shop/kuru_hero_reference.jpg
+    - assets/shop/stickers/
