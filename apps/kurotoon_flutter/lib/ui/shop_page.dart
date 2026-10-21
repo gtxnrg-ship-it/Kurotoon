@@ -115,12 +115,18 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _equip(KuruCollectible item) async {
+  Future<bool> _equip(KuruCollectible item) async {
     final db = widget.runtime.database;
-    if (db == null || !_owned.contains(item.id)) return;
-    await db.setSetting(_equippedKey, item.id);
-    if (mounted) setState(() => _equipped = item.id);
-    _showMessage('${item.name} equipped.');
+    if (db == null || !_owned.contains(item.id)) return false;
+    try {
+      await db.setSetting(_equippedKey, item.id);
+      if (mounted) setState(() => _equipped = item.id);
+      _showMessage('${item.name} equipped.');
+      return true;
+    } on Object catch (error) {
+      if (mounted) _showMessage('Could not equip ${item.name}: ${error.runtimeType}.');
+      return false;
+    }
   }
 
   void _showMessage(String message) {
@@ -262,7 +268,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
 class _CollectibleDialog extends StatefulWidget {
   const _CollectibleDialog({required this.item,required this.owned,required this.equipped,required this.onPurchase,required this.onEquip});
-  final KuruCollectible item; final bool owned; final bool equipped; final Future<void> Function() onPurchase; final Future<void> Function() onEquip;
+  final KuruCollectible item; final bool owned; final bool equipped; final Future<bool> Function() onPurchase; final Future<bool> Function() onEquip;
   @override State<_CollectibleDialog> createState()=>_CollectibleDialogState();
 }
 
