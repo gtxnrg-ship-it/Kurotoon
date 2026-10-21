@@ -1047,6 +1047,183 @@ WorkCandidate _candidateForCatalogEntry(CatalogEntry entry, KurotoonRuntime runt
     );
   }
 
+class _CreatorResultTile extends StatelessWidget {
+  const _CreatorResultTile({required this.creator, required this.onTap});
+
+  final CreatorProfile creator;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final aliases = creator.aliases.where((alias) => alias.trim().isNotEmpty).take(3).toList(growable: false);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .055),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: .07)),
+      ),
+      child: ListTile(
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _violet.withValues(alpha: .14),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(Icons.person_outline_rounded, color: _violet),
+        ),
+        title: Text(creator.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text(
+          aliases.isEmpty ? 'Creator in your local catalog' : 'Also known as ' + aliases.join(' · '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Colors.white60, fontSize: 12),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _CreatorDetailPage extends StatefulWidget {
+  const _CreatorDetailPage({required this.runtime, required this.creator});
+
+  final KurotoonRuntime runtime;
+  final CreatorProfile creator;
+
+  @override
+  State<_CreatorDetailPage> createState() => _CreatorDetailPageState();
+}
+
+class _CreatorDetailPageState extends State<_CreatorDetailPage> {
+  CreatorProfile? _profile;
+  List<CatalogEntry> _works = const [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() { _loading = true; _error = null; });
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local catalog unavailable.');
+      final profile = await database.loadCreatorProfile(widget.creator.id) ?? widget.creator;
+      final works = await database.loadCreatorWorks(widget.creator.id, limit: 50);
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _works = List.unmodifiable(works.where((entry) => entry.listings.isNotEmpty));
+        _loading = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() { _error = 'This local creator profile could not be loaded. Your saved library is unaffected.'; _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final creator = _profile ?? widget.creator;
+    final aliases = creator.aliases.where((alias) => alias.trim().isNotEmpty).take(8).toList(growable: false);
+    return Scaffold(
+      backgroundColor: _ink,
+      appBar: AppBar(title: Text(creator.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 40),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xAA273C72), Color(0xAA17162F)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: .09)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const CircleAvatar(
+                  radius: 26,
+                  backgroundColor: Color(0x3329D9F5),
+                  child: Icon(Icons.person_rounded, color: _cyan, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(creator.name, style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 6),
+                    Text(
+                      aliases.isEmpty ? 'Locally indexed creator profile' : 'Also known as ' + aliases.join(' · '),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Built from available catalog metadata. This is not a complete biography or an online creator lookup.',
+                      style: TextStyle(color: Colors.white54, fontSize: 11, height: 1.45),
+                    ),
+                  ],
+                )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          _SectionHeading(
+            title: 'Works with this creator',
+            subtitle: 'Up to 50 locally indexed works, sorted by title',
+          ),
+          const SizedBox(height: 12),
+          if (_loading) const Center(child: Padding(
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(),
+          ))
+          else if (_error != null) _InlineNotice(
+            icon: Icons.storage_rounded,
+            text: _error!,
+            action: TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+          )
+          else if (_works.isEmpty) const _InlineNotice(
+            icon: Icons.menu_book_outlined,
+            text: 'No readable catalog entries are linked to this creator yet. Try searching and saving another title.',
+          )
+          else ...[
+            Text(_works.length.toString() + ' locally indexed works', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            const SizedBox(height: 10),
+            for (final entry in _works) ...[
+              Builder(builder: (context) {
+                final candidate = _candidateForCatalogEntry(entry, widget.runtime);
+                final sourceLabels = entry.providerIds.map((id) {
+                  final providers = widget.runtime.providers.all.where((provider) => provider.descriptor.id == id);
+                  return providers.isEmpty ? id : providers.first.descriptor.name;
+                }).toList(growable: false);
+                return _SearchResultTile(
+                  candidate: candidate,
+                  sourceLabels: sourceLabels,
+                  onTap: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => SeriesDetailPage(runtime: widget.runtime, candidate: candidate),
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 10),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _SearchResultTile extends StatelessWidget {
   const _SearchResultTile({
     required this.candidate,
