@@ -34,3 +34,10 @@ Do not mark an item as artwork-complete because it has an icon or placeholder. E
 - Wallet and ownership still use local storage. They are not account-synced and can be modified on-device.
 - Google sign-in, verified admin authorization, backend-owned wallets, and cross-device restoration are not implemented yet.
 - The flattened source reference board still needs a complete item-by-item crop inventory and image QA pass.
+
+
+## Deployment constraint: no mandatory paid services
+
+The Shop must remain useful without a backend, a self-hosted server, a payment method, or a subscription. The current local wallet and ownership database are prototype/local-device state, not secure online entitlements. Keep catalog browsing and local collection features functional offline. Do not advertise cross-device sync, secure achievements, online purchase validation, or server-verified administrator grants until a trusted backend is deployed and tested.
+
+A hosted free tier may be considered only after confirming that signup and continued use do not require billing activation or payment details, and documenting quotas, pause/expiry behavior, and failure handling. If no acceptable service meets those constraints, leave online-only features deferred instead of introducing a paid dependency or insecure client-side workaround.
