@@ -276,7 +276,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
             _notice(Icons.wifi_off_rounded, 'Chapter feed unavailable', _chapterError!),
             Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => _loadChapters(reset: _chapters.isEmpty), icon: const Icon(Icons.refresh), label: const Text('Retry chapters'))),
           ],
-          for (var i = 0; i < _chapters.length; i++) ...[_chapterTile(_chapters[i], i), const SizedBox(height: 8)],
+          for (final chapter in _chapters) ...[_chapterTile(chapter), const SizedBox(height: 8)],
           if (_loadingChapters) const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator())),
           if (!_loadingChapters && _nextOffset != null) OutlinedButton.icon(onPressed: () => _loadChapters(), icon: const Icon(Icons.expand_more_rounded), label: const Text('Load more chapters')),
           if (!_loadingChapters && _chapters.isNotEmpty) Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => _loadChapters(reset: true), icon: const Icon(Icons.refresh), label: const Text('Refresh chapters'))),
@@ -285,7 +285,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
     );
   }
 
-  Widget _chapterTile(ChapterUnit chapter, int index) {
+  Widget _chapterTile(ChapterUnit chapter) {
     final number = chapter.chapterNumber;
     final label = chapter.title ?? (number == null ? 'Special chapter' : 'Chapter ' + (number == number.roundToDouble() ? number.toInt().toString() : number.toString()));
     final language = chapter.listings.map((item) => item.languageCode).whereType<String>().toSet().join(', ');
