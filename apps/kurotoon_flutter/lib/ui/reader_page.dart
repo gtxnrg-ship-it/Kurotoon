@@ -16,17 +16,38 @@ class ReaderPage extends StatefulWidget {
 class _ReaderPageState extends State<ReaderPage> {
   ReaderPageManifest? _manifest;
   PageController? _controller;
+  ScrollController? _stripController;
+  final GlobalKey _stripViewportKey = GlobalKey();
+  List<GlobalKey> _stripItemKeys = const [];
   bool _loading = true;
   bool _dataSaver = false;
+  bool _verticalMode = false;
   String? _error;
   String? _selectedProviderId;
   int _page = 0;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      final saved = await widget.runtime.database?.getSetting<bool>('reader.long_strip');
+      if (mounted && saved != null) _verticalMode = saved;
+    } on Object {
+      // The reader remains usable when an optional layout preference is unavailable.
+    }
+    if (mounted) await _load();
+  }
 
   @override
-  void dispose() { _controller?.dispose(); super.dispose(); }
+  void dispose() {
+    _controller?.dispose();
+    _stripController?.dispose();
+    super.dispose();
+  }
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
@@ -52,11 +73,87 @@ class _ReaderPageState extends State<ReaderPage> {
       if (!mounted) return;
       _controller?.dispose();
       _controller = PageController(initialPage: page);
+      _stripController?.dispose();
+      _stripController = ScrollController();
+      _stripItemKeys = List<GlobalKey>.generate(urls.length, (_) => GlobalKey());
       setState(() { _manifest = manifest; _page = page; _loading = false; });
       await _save(page, urls.length);
+      if (_verticalMode && urls.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _positionStripNearPage(page, urls.length);
+        });
+      }
     } on Object {
       if (mounted) setState(() { _error = 'Could not load chapter pages. Check the connection and retry.'; _loading = false; });
     }
+  }
+
+  void _positionStripNearPage(int page, int count) {
+    final controller = _stripController;
+    final viewport = _stripViewportKey.currentContext?.findRenderObject();
+    if (controller == null || !controller.hasClients || viewport is! RenderBox || !viewport.hasSize) return;
+    // Image dimensions are supplied by the upstream source only after decoding.
+    // A viewport-based estimate gets close to the saved page; visible-item tracking
+    // then resumes exact page-level progress as soon as scrolling settles.
+    final target = (page * viewport.size.height)
+        .toDouble()
+        .clamp(0.0, controller.position.maxScrollExtent);
+    controller.jumpTo(target);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncStripPage(count);
+    });
+  }
+
+  void _syncStripPage(int count) {
+    if (count < 1) return;
+    final viewport = _stripViewportKey.currentContext?.findRenderObject();
+    if (viewport is! RenderBox || !viewport.hasSize) return;
+    final centerY = viewport.localToGlobal(Offset(0, viewport.size.height / 2)).dy;
+    int? nearest;
+    var nearestDistance = double.infinity;
+    for (var index = 0; index < _stripItemKeys.length; index++) {
+      final context = _stripItemKeys[index].currentContext;
+      final render = context?.findRenderObject();
+      if (render is! RenderBox || !render.hasSize) continue;
+      final top = render.localToGlobal(Offset.zero).dy;
+      final bottom = top + render.size.height;
+      final distance = centerY < top ? top - centerY : (centerY > bottom ? centerY - bottom : 0.0);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = index;
+        if (distance == 0) break;
+      }
+    }
+    if (nearest == null || nearest == _page) return;
+    setState(() => _page = nearest!);
+    _save(nearest, count);
+  }
+
+  Future<void> _toggleReadingMode() async {
+    final next = !_verticalMode;
+    setState(() => _verticalMode = next);
+    try {
+      await widget.runtime.database?.setSetting('reader.long_strip', next);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reading mode changed for this session, but the preference could not be saved.')),
+        );
+      }
+    }
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (next) {
+        _positionStripNearPage(_page, _manifest?.urls(dataSaver: _dataSaver).length ?? 0);
+      } else {
+        final controller = _controller;
+        final count = _manifest?.urls(dataSaver: _dataSaver).length ?? 0;
+        if (count > 0 && controller != null && controller.hasClients) {
+          controller.jumpToPage(_page.clamp(0, count - 1));
+        }
+      }
+    });
   }
 
   Future<void> _save(int page, int count) async {
@@ -132,6 +229,11 @@ class _ReaderPageState extends State<ReaderPage> {
               icon: const Icon(Icons.public_rounded),
             ),
           IconButton(
+            tooltip: _verticalMode ? 'Switch to paged reading' : 'Switch to long-strip reading',
+            onPressed: _loading ? null : _toggleReadingMode,
+            icon: Icon(_verticalMode ? Icons.auto_stories_rounded : Icons.view_stream_rounded),
+          ),
+          IconButton(
             tooltip: 'Toggle data saver',
             onPressed: _loading ? null : () { setState(() => _dataSaver = !_dataSaver); _load(); },
             icon: Icon(_dataSaver ? Icons.data_saver_on_rounded : Icons.data_saver_off_rounded),
@@ -160,14 +262,33 @@ class _ReaderPageState extends State<ReaderPage> {
                     FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('Reload chapter')),
                   ]),
                 ))
-              : PageView.builder(
-                  controller: _controller, itemCount: urls.length,
-                  onPageChanged: (page) { setState(() => _page = page); _save(page, urls.length); },
-                  itemBuilder: (context, index) => InteractiveViewer(
-                    minScale: 1, maxScale: 3,
-                    child: Center(child: _ReaderImage(url: urls[index])),
-                  ),
-                )),
+              : _verticalMode
+                  ? NotificationListener<ScrollNotification>(
+                      onNotification: (notification) {
+                        if (notification is ScrollEndNotification) _syncStripPage(urls.length);
+                        return false;
+                      },
+                      child: ListView.builder(
+                        key: _stripViewportKey,
+                        controller: _stripController,
+                        itemCount: urls.length,
+                        padding: EdgeInsets.zero,
+                        itemBuilder: (context, index) => Padding(
+                          key: _stripItemKeys[index],
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: _ReaderImage(url: urls[index], fitWidth: true),
+                        ),
+                      ),
+                    )
+                  : PageView.builder(
+                      controller: _controller,
+                      itemCount: urls.length,
+                      onPageChanged: (page) { setState(() => _page = page); _save(page, urls.length); },
+                      itemBuilder: (context, index) => InteractiveViewer(
+                        minScale: 1, maxScale: 3,
+                        child: Center(child: _ReaderImage(url: urls[index])),
+                      ),
+                    )),
         Padding(padding: const EdgeInsets.all(12), child: Row(children: [
           IconButton.filledTonal(onPressed: () => _adjacent(-1), icon: const Icon(Icons.skip_previous_rounded)),
           Expanded(child: Column(children: [
@@ -184,8 +305,9 @@ class _ReaderPageState extends State<ReaderPage> {
 
 
 class _ReaderImage extends StatefulWidget {
-  const _ReaderImage({required this.url});
+  const _ReaderImage({required this.url, this.fitWidth = false});
   final Uri url;
+  final bool fitWidth;
 
   @override
   State<_ReaderImage> createState() => _ReaderImageState();
@@ -216,7 +338,7 @@ class _ReaderImageState extends State<_ReaderImage> {
     return Image.network(
       widget.url.toString(),
       key: ValueKey(_attempt),
-      fit: BoxFit.contain,
+      fit: widget.fitWidth ? BoxFit.fitWidth : BoxFit.contain,
       loadingBuilder: (context, child, progress) => progress == null
           ? child
           : const Center(child: CircularProgressIndicator()),
