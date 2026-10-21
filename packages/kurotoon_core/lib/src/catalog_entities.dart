@@ -191,8 +191,8 @@ class UnifiedChapterGrouping {
     groups.sort((left, right) {
       final a = left.representative.chapterNumber;
       final b = right.representative.chapterNumber;
-      if (a == null && b != null) return -1;
-      if (a != null && b == null) return 1;
+      if (a == null && b != null) return 1;
+      if (a != null && b == null) return -1;
       if (a != null && b != null && a != b) return b.compareTo(a);
       return left.id.compareTo(right.id);
     });
