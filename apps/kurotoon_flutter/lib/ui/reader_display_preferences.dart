@@ -88,7 +88,7 @@ Future<ReaderDisplayPreferences?> showReaderDisplayPreferences(
                 ),
                 const SizedBox(height: 18),
                 DropdownButtonFormField<String>(
-                  value: fitMode,
+                  initialValue: fitMode,
                   decoration: const InputDecoration(
                     labelText: 'Image fit',
                     border: OutlineInputBorder(),
