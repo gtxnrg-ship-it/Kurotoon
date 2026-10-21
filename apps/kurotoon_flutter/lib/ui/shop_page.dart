@@ -14,6 +14,28 @@ const _goldKey = 'shop.wallet.gold.v1';
 const _ownedKey = 'shop.collection.owned.v1';
 const _equippedKey = 'shop.collection.equipped.v1';
 
+
+Offset _collectibleMotion(CollectibleAnimation animation, double t) => switch (animation) {
+  CollectibleAnimation.bounce => Offset(0, -10 * math.sin(t * math.pi)),
+  CollectibleAnimation.shake => Offset(math.sin(t * math.pi * 8) * 4, 0),
+  CollectibleAnimation.float => Offset(0, 7 * math.sin(t * math.pi * 2)),
+  CollectibleAnimation.orbit => Offset(5 * math.sin(t * math.pi * 2), 5 * math.cos(t * math.pi * 2)),
+  CollectibleAnimation.hearts => Offset(0, -3 - 4 * math.sin(t * math.pi * 2)),
+  CollectibleAnimation.tears => Offset(0, 2 * math.sin(t * math.pi * 2)),
+  CollectibleAnimation.sparkle => Offset(0, 2 * math.sin(t * math.pi * 4)),
+  CollectibleAnimation.confetti => Offset(2 * math.sin(t * math.pi * 4), -3 * math.sin(t * math.pi * 2)),
+  CollectibleAnimation.pulse => Offset.zero,
+};
+
+double _collectibleScale(CollectibleAnimation animation, double t) => switch (animation) {
+  CollectibleAnimation.pulse => .06 * math.sin(t * math.pi),
+  CollectibleAnimation.bounce => .035 * math.sin(t * math.pi),
+  CollectibleAnimation.sparkle => .025 * math.sin(t * math.pi * 4),
+  CollectibleAnimation.hearts => .035 * math.sin(t * math.pi * 2),
+  CollectibleAnimation.confetti => .018 * math.sin(t * math.pi * 4),
+  _ => 0,
+};
+
 class ShopPage extends StatefulWidget {
   const ShopPage({super.key, required this.runtime});
   final KurotoonRuntime runtime;
@@ -219,7 +241,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     Expanded(child:_walletPill('Gold',_gold,Icons.paid_rounded,const Color(0xFFFFD166))),
   ]);
 
-  Widget _walletPill(String label,int balance,IconData icon,Color accent)=>Container(padding:const EdgeInsets.symmetric(horizontal:14,vertical:13),decoration:BoxDecoration(color:const Color(0xCC111426),borderRadius:BorderRadius.circular(17),border:Border.all(color:accent.withValues(alpha:.26))),child:Row(children:[Container(width:35,height:35,decoration:BoxDecoration(shape:BoxShape.circle,color:accent.withValues(alpha:.13)),child:Icon(icon,color:accent,size:20)),const SizedBox(width:10),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:const TextStyle(color:Colors.white60,fontSize:11)),Text(balance.toString(),style:TextStyle(color:accent,fontWeight:FontWeight.w900,fontSize:20))])),const Icon(Icons.add_circle_outline_rounded,color:Colors.white38,size:17)]));
+  Widget _walletPill(String label,int balance,IconData icon,Color accent)=>Container(padding:const EdgeInsets.symmetric(horizontal:14,vertical:13),decoration:BoxDecoration(color:const Color(0xCC111426),borderRadius:BorderRadius.circular(17),border:Border.all(color:accent.withValues(alpha:.26))),child:Row(children:[Container(width:35,height:35,decoration:BoxDecoration(shape:BoxShape.circle,color:accent.withValues(alpha:.13)),child:Icon(icon,color:accent,size:20)),const SizedBox(width:10),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:const TextStyle(color:Colors.white60,fontSize:11)),Text(balance.toString(),style:TextStyle(color:accent,fontWeight:FontWeight.w900,fontSize:20))]))]));
 
   Widget _journeyCard()=>Container(padding:const EdgeInsets.all(15),decoration:BoxDecoration(color:const Color(0xB5121325),borderRadius:BorderRadius.circular(18),border:Border.all(color:Colors.white.withValues(alpha:.08))),child:Row(children:[Container(width:42,height:42,decoration:BoxDecoration(color:_shopViolet.withValues(alpha:.13),borderRadius:BorderRadius.circular(14)),child:const Icon(Icons.explore_rounded,color:_shopViolet)),const SizedBox(width:12),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Your journey, your rewards',style:TextStyle(fontWeight:FontWeight.w800)),SizedBox(height:4),Text('Your collection and balances are saved on this device. Achievement-based rewards can be connected to reading milestones next.',style:TextStyle(color:Colors.white60,fontSize:11,height:1.4))]))]));
 
@@ -236,7 +258,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           Positioned.fill(child:DecoratedBox(decoration:BoxDecoration(gradient:RadialGradient(colors:[accent.withValues(alpha:.23),const Color(0xFF17182B).withValues(alpha:.25),Colors.transparent],stops:const[0,.58,1])))),
           Positioned(top:8,left:8,child:Container(padding:const EdgeInsets.symmetric(horizontal:7,vertical:4),decoration:BoxDecoration(color:accent.withValues(alpha:.12),borderRadius:BorderRadius.circular(7)),child:Text(item.rarity.toUpperCase(),style:TextStyle(fontSize:8,color:accent,fontWeight:FontWeight.w900,letterSpacing:.4)))),
           if(owned) Positioned(top:7,right:7,child:Icon(equipped?Icons.check_circle_rounded:Icons.verified_rounded,color:equipped?const Color(0xFF8FF0CE):Colors.white60,size:17)),
-          Center(child:AnimatedBuilder(animation:_sparkle,builder:(context,_)=>Transform.translate(offset:Offset(0,math.sin((_sparkle.value*math.pi*2)+(item.id.hashCode%7))*(owned?3:1.5)),child:Container(width:74,height:74,decoration:BoxDecoration(shape:BoxShape.circle,color:accent.withValues(alpha:.09),border:Border.all(color:accent.withValues(alpha:.30)),boxShadow:[BoxShadow(color:accent.withValues(alpha:.14),blurRadius:20)]),child:item.assetPath==null?Icon(item.icon,size:38,color:accent):ClipRRect(borderRadius:BorderRadius.circular(14),child:Image.asset(item.assetPath!,width:66,height:66,fit:BoxFit.cover,errorBuilder:(context,error,stack)=>Icon(item.icon,size:38,color:accent))))))),
+          Center(child:AnimatedBuilder(animation:_sparkle,builder:(context,_)=>Transform.translate(offset:_collectibleMotion(item.animation,_sparkle.value),child:Transform.scale(scale:1+_collectibleScale(item.animation,_sparkle.value),child:Container(width:74,height:74,decoration:BoxDecoration(shape:BoxShape.circle,color:accent.withValues(alpha:.09),border:Border.all(color:accent.withValues(alpha:.30)),boxShadow:[BoxShadow(color:accent.withValues(alpha:.14),blurRadius:20)]),child:item.assetPath==null?Icon(item.icon,size:38,color:accent):ClipRRect(borderRadius:BorderRadius.circular(14),child:Image.asset(item.assetPath!,width:66,height:66,fit:BoxFit.cover,errorBuilder:(context,error,stack)=>Icon(item.icon,size:38,color:accent)))))))),
           if(!owned) Positioned(bottom:8,right:8,child:Icon(Icons.lock_outline_rounded,color:Colors.white.withValues(alpha:.45),size:15)),
         ])),
         Padding(padding:const EdgeInsets.fromLTRB(10,0,10,10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -292,7 +314,7 @@ class _CollectibleDialogState extends State<_CollectibleDialog> with SingleTicke
       Align(alignment:Alignment.centerRight,child:IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close_rounded))),
       SizedBox(height:190,width:220,child:Stack(alignment:Alignment.center,children:[
         AnimatedBuilder(animation:_controller,builder:(context,_)=>Transform.rotate(angle:item.animation==CollectibleAnimation.orbit?_controller.value*math.pi*2:0,child:Container(width:150,height:150,decoration:BoxDecoration(shape:BoxShape.circle,border:Border.all(color:item.accent.withValues(alpha:.35)),gradient:RadialGradient(colors:[item.accent.withValues(alpha:.22),const Color(0xFF17182B),Colors.transparent]))))),
-        AnimatedBuilder(animation:_controller,builder:(context,_)=>Transform.translate(offset:_motion(item.animation,_controller.value),child:Transform.scale(scale:1+_scale(item.animation,_controller.value),child:item.assetPath==null?Icon(item.icon,size:94,color:item.accent,shadows:[Shadow(color:item.accent.withValues(alpha:.65),blurRadius:24)]):ClipRRect(borderRadius:BorderRadius.circular(18),child:Image.asset(item.assetPath!,width:112,height:112,fit:BoxFit.cover,errorBuilder:(context,error,stack)=>Icon(item.icon,size:94,color:item.accent)))))),
+        AnimatedBuilder(animation:_controller,builder:(context,_)=>Transform.translate(offset:_collectibleMotion(item.animation,_controller.value),child:Transform.scale(scale:1+_collectibleScale(item.animation,_controller.value),child:item.assetPath==null?Icon(item.icon,size:94,color:item.accent,shadows:[Shadow(color:item.accent.withValues(alpha:.65),blurRadius:24)]):ClipRRect(borderRadius:BorderRadius.circular(18),child:Image.asset(item.assetPath!,width:112,height:112,fit:BoxFit.cover,errorBuilder:(context,error,stack)=>Icon(item.icon,size:94,color:item.accent)))))),
         if(item.animation==CollectibleAnimation.tears) ...[for(var i=0;i<2;i++)AnimatedBuilder(animation:_controller,builder:(context,_)=>Positioned(left:85+i*46,top:85+(_controller.value*35),child:Icon(Icons.water_drop_rounded,size:15,color:const Color(0xFF7BD7FF).withValues(alpha:.4+.6*_controller.value))))],
         if(item.animation==CollectibleAnimation.hearts||item.animation==CollectibleAnimation.confetti||item.animation==CollectibleAnimation.sparkle) ...[for(var i=0;i<6;i++)AnimatedBuilder(animation:_controller,builder:(context,_)=>Positioned(left:12+((i*37)%185),top:10+((i*29+(_controller.value*35).round())%150),child:Icon(item.animation==CollectibleAnimation.hearts?Icons.favorite_rounded:Icons.auto_awesome_rounded,size:10+(i%3)*4,color:item.accent.withValues(alpha:.35+.6*_controller.value))))],
       ])),
@@ -308,25 +330,6 @@ class _CollectibleDialogState extends State<_CollectibleDialog> with SingleTicke
       Text('Unique ID: ${item.id}',style:const TextStyle(color:Colors.white30,fontSize:9)),
     ])));
   }
-  Offset _motion(CollectibleAnimation animation,double t)=>switch(animation){
-    CollectibleAnimation.bounce=>Offset(0,-10*math.sin(t*math.pi)),
-    CollectibleAnimation.shake=>Offset(math.sin(t*math.pi*8)*4,0),
-    CollectibleAnimation.float=>Offset(0,7*math.sin(t*math.pi*2)),
-    CollectibleAnimation.orbit=>Offset(5*math.sin(t*math.pi*2),5*math.cos(t*math.pi*2)),
-    CollectibleAnimation.hearts=>Offset(0,-3-4*math.sin(t*math.pi*2)),
-    CollectibleAnimation.tears=>Offset(0,2*math.sin(t*math.pi*2)),
-    CollectibleAnimation.sparkle=>Offset(0,2*math.sin(t*math.pi*4)),
-    CollectibleAnimation.confetti=>Offset(2*math.sin(t*math.pi*4),-3*math.sin(t*math.pi*2)),
-    CollectibleAnimation.pulse=>Offset.zero,
-  };
-  double _scale(CollectibleAnimation animation,double t)=>switch(animation){
-    CollectibleAnimation.pulse=>.06*math.sin(t*math.pi),
-    CollectibleAnimation.bounce=>.035*math.sin(t*math.pi),
-    CollectibleAnimation.sparkle=>.025*math.sin(t*math.pi*4),
-    CollectibleAnimation.hearts=>.035*math.sin(t*math.pi*2),
-    CollectibleAnimation.confetti=>.018*math.sin(t*math.pi*4),
-    _=>0,
-  };
   Widget _tag(String text,Color color)=>Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:5),decoration:BoxDecoration(color:color.withValues(alpha:.12),borderRadius:BorderRadius.circular(99),border:Border.all(color:color.withValues(alpha:.35))),child:Text(text,style:TextStyle(color:color,fontSize:10,fontWeight:FontWeight.w800)));
 }
 
