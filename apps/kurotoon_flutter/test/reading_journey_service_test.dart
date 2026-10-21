@@ -234,6 +234,11 @@ void main() {
     expect(await journey.loadLibrary(), isEmpty);
     // Library membership and resumable progress are intentionally independent.
     expect(await journey.loadResumeTarget(workId: workId, editionId: editionId), isNotNull);
+    final recent = await journey.loadRecentReading();
+    expect(recent, hasLength(1));
+    expect(recent.single.catalogEntry!.work.id, workId);
+    expect(recent.single.target.chapter!.id, stored.first.id);
+    expect(recent.single.target.progress.fraction, 0.35);
   });
 
   test('retains the selected search result when series detail refresh fails', () async {
