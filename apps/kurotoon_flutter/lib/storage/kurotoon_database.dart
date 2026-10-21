@@ -81,6 +81,23 @@ class CacheOperationJournal {
   final DateTime createdAt;
 }
 
+/// Durable record for an interrupted declarative extension install/uninstall.
+class ExtensionOperationJournal {
+  const ExtensionOperationJournal({
+    required this.id,
+    required this.operation,
+    required this.extensionId,
+    required this.payload,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String operation;
+  final String extensionId;
+  final Map<String, Object?>? payload;
+  final DateTime createdAt;
+}
+
 /// SQLite persistence for user-owned state and normalized catalog metadata.
 /// Image/page/audio bytes live in bounded files, not database blobs.
 class CatalogMatchPage {
@@ -103,7 +120,7 @@ class KurotoonDatabase {
     return _database;
   }
 
-  static const int schemaVersion = 8;
+  static const int schemaVersion = 9;
 
   static Future<KurotoonDatabase> open({
     String? databasePath,
@@ -328,6 +345,14 @@ class KurotoonDatabase {
           ON UPDATE CASCADE ON DELETE RESTRICT
       )''',
       'CREATE INDEX installed_extensions_repo_idx ON installed_extensions(repository_id)',
+      '''CREATE TABLE extension_operation_journal (
+        id TEXT PRIMARY KEY NOT NULL,
+        operation TEXT NOT NULL CHECK(operation IN ('install', 'uninstall')),
+        extension_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )''',
+      'CREATE INDEX extension_operation_journal_created_idx ON extension_operation_journal(created_at, id)',
       'CREATE INDEX works_title_page_idx ON works(canonical_title COLLATE NOCASE, id)',
       'CREATE INDEX provider_listings_title_idx ON provider_listings(title COLLATE NOCASE, work_id)',
     ];
@@ -345,6 +370,7 @@ class KurotoonDatabase {
     if (oldVersion < 6 && newVersion >= 6) await _createRecentReadingIndex(db);
     if (oldVersion < 7 && newVersion >= 7) await _createLibraryCollectionsSchema(db);
     if (oldVersion < 8 && newVersion >= 8) await _createCacheOperationJournalSchema(db);
+    if (oldVersion < 9 && newVersion >= 9) await _createExtensionOperationJournalSchema(db);
   }
 
   /// Versioned migration: existing library rows and reading progress are untouched.
@@ -387,6 +413,19 @@ class KurotoonDatabase {
     )''');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS cache_operation_journal_created_idx ON cache_operation_journal(created_at, id)',
+    );
+  }
+
+  static Future<void> _createExtensionOperationJournalSchema(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS extension_operation_journal (
+      id TEXT PRIMARY KEY NOT NULL,
+      operation TEXT NOT NULL CHECK(operation IN ('install', 'uninstall')),
+      extension_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS extension_operation_journal_created_idx ON extension_operation_journal(created_at, id)',
     );
   }
 
@@ -1516,6 +1555,63 @@ class KurotoonDatabase {
       throw StateError('Uninstall or move this repository’s extensions before removing the repository.');
     }
     await _database.delete('extension_repositories', where: 'id = ?', whereArgs: [repositoryId]);
+  }
+
+  Future<void> beginExtensionOperationJournal({
+    required String id,
+    required String operation,
+    required String extensionId,
+    required Map<String, Object?> payload,
+  }) async {
+    _ensureOpen();
+    if (id.trim().isEmpty || extensionId.trim().isEmpty) {
+      throw ArgumentError('Extension operation journal requires a non-empty id and extension ID.');
+    }
+    if (operation != 'install' && operation != 'uninstall') {
+      throw ArgumentError.value(operation, 'operation');
+    }
+    await _database.insert('extension_operation_journal', {
+      'id': id,
+      'operation': operation,
+      'extension_id': extensionId,
+      'payload_json': jsonEncode(payload),
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  Future<List<ExtensionOperationJournal>> loadExtensionOperationJournals() async {
+    _ensureOpen();
+    final rows = await _database.query(
+      'extension_operation_journal',
+      orderBy: 'created_at ASC, id ASC',
+    );
+    return List.unmodifiable(rows.map((row) {
+      Map<String, Object?>? payload;
+      try {
+        final decoded = jsonDecode(row['payload_json'] as String);
+        if (decoded is Map) {
+          payload = decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } on FormatException {
+        // Malformed payloads remain journaled for diagnostics/manual recovery.
+      }
+      return ExtensionOperationJournal(
+        id: row['id'] as String,
+        operation: row['operation'] as String,
+        extensionId: row['extension_id'] as String,
+        payload: payload,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
+      );
+    }));
+  }
+
+  Future<void> removeExtensionOperationJournal(String id) async {
+    _ensureOpen();
+    await _database.delete(
+      'extension_operation_journal',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<void> recordInstalledExtension({
