@@ -222,7 +222,7 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
           ),
           const SizedBox(height: 5),
           Text(
-            '\$usedPercent% of the cache budget used · ${_bytes((budgetBytes - _totalBytes).clamp(0, budgetBytes).toInt())} headroom',
+            '$usedPercent% of the cache budget used · ${_bytes((budgetBytes - _totalBytes).clamp(0, budgetBytes).toInt())} headroom',
             style: TextStyle(
               color: _totalBytes > budgetBytes ? Colors.orangeAccent : Colors.white54,
               fontSize: 11,
