@@ -360,13 +360,14 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     String? previousPath;
     var previousEnabled = false;
     for (final row in installedRows) {
-      if (row['extension_id'] == entry.id && row['install_path'] is String) {
-        previousPath = row['install_path'] as String;
+      if (row['extension_id'] == entry.id) {
+        if (row['install_path'] is String) previousPath = row['install_path'] as String;
         previousEnabled = row['enabled'] == 1;
         break;
       }
     }
-    final root = await getApplicationSupportDirectory();
+
+    final root = await _supportDirectory();
     final extensionsRoot = path.join(root.path, 'extensions');
     final targetDirectory = Directory(path.join(
       extensionsRoot,
@@ -382,62 +383,115 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     )) {
       throw StateError('Refusing to install into an unsafe extension path.');
     }
-    await targetDirectory.create(recursive: true);
-    if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
-      extensionsRoot: extensionsRoot,
-      extensionId: manifest.id,
-      manifestPath: target.path,
-    )) {
-      throw StateError('Extension path became unsafe during directory creation.');
+    final targetExisted = await target.exists();
+    if (targetExisted &&
+        sha256.convert(await target.readAsBytes()).toString() != entry.sha256.toLowerCase()) {
+      throw const FormatException('An existing extension manifest does not match the repository digest.');
     }
+
+    final nonce = DateTime.now().microsecondsSinceEpoch;
     final temp = File(path.join(
       targetDirectory.path,
-      '.manifest-' + DateTime.now().microsecondsSinceEpoch.toString() + '.tmp',
+      '.manifest-' + nonce.toString() + '.tmp',
     ));
+    final journalId = 'install-' + entry.id + '-' + nonce.toString();
+    await database.beginExtensionOperationJournal(
+      id: journalId,
+      operation: 'install',
+      extensionId: entry.id,
+      payload: <String, Object?>{
+        'targetPath': target.path,
+        'temporaryPath': temp.path,
+        'targetExisted': targetExisted,
+        'expectedSha256': entry.sha256.toLowerCase(),
+        'previousPath': previousPath,
+      },
+    );
+
     var createdTarget = false;
+    var metadataCommitted = false;
     try {
-      if (await FileSystemEntity.type(temp.path, followLinks: false) != FileSystemEntityType.notFound) {
-        throw StateError('A temporary extension manifest path already exists.');
-      }
-      await temp.writeAsBytes(bytes, flush: true);
+      await targetDirectory.create(recursive: true);
       if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
         extensionsRoot: extensionsRoot,
         extensionId: manifest.id,
         manifestPath: target.path,
       )) {
-        throw StateError('Extension path became unsafe before manifest install.');
+        throw StateError('Extension path became unsafe during directory creation.');
       }
-      if (!await target.exists()) {
+
+      if (!targetExisted) {
+        if (await FileSystemEntity.type(temp.path, followLinks: false) != FileSystemEntityType.notFound) {
+          throw StateError('A temporary extension manifest path already exists.');
+        }
+        await temp.writeAsBytes(bytes, flush: true);
+        if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
+          extensionsRoot: extensionsRoot,
+          extensionId: manifest.id,
+          manifestPath: target.path,
+        )) {
+          throw StateError('Extension path became unsafe before manifest install.');
+        }
         await temp.rename(target.path);
         createdTarget = true;
       }
-    } finally {
-      if (await temp.exists()) await temp.delete();
-    }
 
-    try {
       await database.recordInstalledExtension(
         entry: entry,
         repositoryId: repositoryId,
         installPath: target.path,
         enabled: previousEnabled,
       );
+      metadataCommitted = true;
+
+      // Keep the journal until old-file cleanup is reconciled. If this process
+      // dies after the DB update, startup recovery sees the committed target and
+      // safely finishes this cleanup rather than guessing whether to roll back.
+      if (previousPath != null && _normalizePath(previousPath) != _normalizePath(target.path)) {
+        await _removeManifestIfSafe(entry.id, previousPath);
+      }
+      try {
+        await database.removeExtensionOperationJournal(journalId);
+      } on Object {
+        // The install is committed. Leave the journal for idempotent startup
+        // recovery instead of reporting a false installation failure.
+      }
+      return target.path;
     } catch (_) {
-      if (createdTarget && await target.exists()) await target.delete();
+      if (!metadataCommitted) {
+        var rollbackComplete = true;
+        try {
+          if (await temp.exists()) await temp.delete();
+        } on Object {
+          rollbackComplete = false;
+        }
+        // A DB write can throw after the operation's status is ambiguous; only
+        // delete a newly created file when no installed row references it.
+        try {
+          final rows = await database.loadInstalledExtensions();
+          final targetReferenced = rows.any((row) =>
+              row['install_path'] is String &&
+              _normalizePath(row['install_path'] as String) == _normalizePath(target.path));
+          if (createdTarget && !targetExisted && !targetReferenced && await target.exists()) {
+            if (await isSafeInstalledManifestPath(extensionId: entry.id, manifestPath: target.path)) {
+              await target.delete();
+            } else {
+              rollbackComplete = false;
+            }
+          }
+        } on Object {
+          rollbackComplete = false;
+        }
+        if (rollbackComplete) {
+          try {
+            await database.removeExtensionOperationJournal(journalId);
+          } on Object {
+            // A stale journal can safely rerun this rollback on next startup.
+          }
+        }
+      }
       rethrow;
     }
-    if (previousPath != null && previousPath != target.path) {
-      // A stale install path is not a filesystem capability. Leave an invalid
-      // path untouched for later diagnostics instead of deleting outside root.
-      if (await isSafeInstalledManifestPath(
-        extensionId: entry.id,
-        manifestPath: previousPath,
-      )) {
-        final previousFile = File(previousPath);
-        if (await previousFile.exists()) await previousFile.delete();
-      }
-    }
-    return target.path;
   }
 
   Future<bool> isSafeInstalledManifestPath({
