@@ -101,6 +101,31 @@ void main() {
     expect((await database.loadLibraryCollections()).single.itemCount, 0);
   });
 
+  test('reader defaults survive closing and reopening the local database', () async {
+    final directory = await Directory.systemTemp.createTemp('kurotoon-reader-settings-');
+    final databasePath = path.join(directory.path, 'kurotoon.db');
+    final original = await KurotoonDatabase.open(
+      databasePath: databasePath,
+      factory: databaseFactoryFfi,
+    );
+    await original.setSetting('reader.long_strip', true);
+    await original.setSetting('reader.right_to_left', true);
+    await original.setSetting('reader.data_saver', true);
+    await original.close();
+
+    final reopened = await KurotoonDatabase.open(
+      databasePath: databasePath,
+      factory: databaseFactoryFfi,
+    );
+    addTearDown(() async {
+      await reopened.close();
+      await directory.delete(recursive: true);
+    });
+    expect(await reopened.getSetting<bool>('reader.long_strip'), isTrue);
+    expect(await reopened.getSetting<bool>('reader.right_to_left'), isTrue);
+    expect(await reopened.getSetting<bool>('reader.data_saver'), isTrue);
+  });
+
   test('schema version 6 upgrades to collections without deleting saved membership', () async {
     final directory = await Directory.systemTemp.createTemp('kurotoon-collection-migration-');
     final databasePath = path.join(directory.path, 'kurotoon-v6.db');
