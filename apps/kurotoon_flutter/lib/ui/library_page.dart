@@ -30,6 +30,11 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _loading = true;
   String? _error;
   List<LibraryBook> _books = const [];
+  List<LibraryCollection> _collections = const [];
+  String? _collectionFilter;
+  Set<String> _collectionEditionIds = const {};
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -46,6 +51,30 @@ class _LibraryPageState extends State<LibraryPage> {
       // A missing preference should not prevent access to the saved library.
     }
     await _reload();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<LibraryBook> get _visibleBooks {
+    final query = _query.trim().toLowerCase();
+    // Collection filtering and metadata search compose; both are local-only.
+    return List.unmodifiable(_books.where((book) {
+      if (_collectionFilter != null && !_collectionEditionIds.contains(book.record.editionId)) return false;
+      if (query.isEmpty) return true;
+      final work = book.catalogEntry?.work;
+      final fields = <String>[
+        work?.title ?? 'Saved story',
+        if (work != null) ...work.alternateTitles,
+        if (work != null) ...work.creatorNames,
+        book.edition?.languageCode ?? '',
+        book.edition?.title ?? '',
+      ];
+      return fields.any((field) => field.toLowerCase().contains(query));
+    }));
   }
 
   DateTime _activityTime(LibraryBook book) =>
@@ -96,14 +125,163 @@ class _LibraryPageState extends State<LibraryPage> {
     setState(() { _loading = true; _error = null; });
     try {
       final service = widget.runtime.readingJourney;
-      if (service == null) throw StateError('Persistent storage unavailable');
-      final books = await service.loadLibrary(status: _filter);
+      final database = widget.runtime.database;
+      if (service == null || database == null) throw StateError('Persistent storage unavailable');
+      final results = await Future.wait<Object>([
+        service.loadLibrary(status: _filter),
+        database.loadLibraryCollections(),
+      ]);
+      final books = results[0] as List<LibraryBook>;
+      final collections = results[1] as List<LibraryCollection>;
+      final activeCollectionId = collections.any((item) => item.id == _collectionFilter) ? _collectionFilter : null;
+      final members = activeCollectionId == null ? <String>{} : await database.loadLibraryCollectionEditionIds(activeCollectionId);
       if (!mounted) return;
-      final sorted = _sortBooks(books);
-      setState(() { _books = sorted; _loading = false; });
+      setState(() {
+        _books = _sortBooks(books);
+        _collections = collections;
+        _collectionFilter = activeCollectionId;
+        _collectionEditionIds = members;
+        _loading = false;
+      });
     } on Object {
       if (!mounted) return;
-      setState(() { _error = 'Your library could not be loaded. Your saved data has not been changed.'; _loading = false; });
+      setState(() { _error = 'Your library or collections could not be loaded. Your saved data has not been changed.'; _loading = false; });
+    }
+  }
+
+  Future<void> _selectCollection(String? collectionId) async {
+    final database = widget.runtime.database;
+    if (collectionId == null || database == null) {
+      setState(() { _collectionFilter = null; _collectionEditionIds = const {}; });
+      return;
+    }
+    try {
+      final members = await database.loadLibraryCollectionEditionIds(collectionId);
+      if (!mounted) return;
+      setState(() { _collectionFilter = collectionId; _collectionEditionIds = members; });
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open this collection. Your saved library remains unchanged.')),
+      );
+    }
+  }
+
+  Future<void> _createCollection() async {
+    final controller = TextEditingController();
+    try {
+      final name = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Create a collection'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 40,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+            decoration: const InputDecoration(
+              labelText: 'Collection name',
+              hintText: 'Favorites, Weekend reads…',
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(controller.text), child: const Text('Create')),
+          ],
+        ),
+      );
+      final normalizedName = (name ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (normalizedName.isEmpty) return;
+      final id = 'collection-' + DateTime.now().toUtc().microsecondsSinceEpoch.toString();
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local database unavailable');
+      await database.createLibraryCollection(id: id, name: normalizedName);
+      if (!mounted) return;
+      setState(() => _collectionFilter = id);
+      await _reload();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('“' + normalizedName + '” is ready. Add saved stories with the folder menu on each card.')),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = error.toString().contains('UNIQUE constraint failed')
+          ? 'A collection with that name already exists. Choose a different name.'
+          : 'The collection could not be created. Your existing library was not changed.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _deleteCollection(LibraryCollection collection) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete "' + collection.name + '"?'),
+        content: const Text('Only this collection and its organization are removed. The saved stories and reading progress stay in your library.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Keep collection')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Delete collection')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local database unavailable');
+      await database.removeLibraryCollection(collection.id);
+      if (!mounted) return;
+      if (_collectionFilter == collection.id) {
+        setState(() { _collectionFilter = null; _collectionEditionIds = const {}; });
+      }
+      await _reload();
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete this collection. Your saved stories were kept.')),
+      );
+    }
+  }
+
+  Future<void> _addToCollection(LibraryBook book, LibraryCollection collection) async {
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local database unavailable');
+      final added = await database.addLibraryEntryToCollection(
+        collectionId: collection.id,
+        workId: book.record.workId,
+        editionId: book.record.editionId,
+      );
+      if (!mounted) return;
+      await _reload();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(added ? 'Added to "' + collection.name + '".' : 'Already in "' + collection.name + '".'),
+      ));
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not organize this story. Your library and reading progress were kept.')),
+      );
+    }
+  }
+
+  Future<void> _removeFromCollection(LibraryBook book, LibraryCollection collection) async {
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local database unavailable');
+      final removed = await database.removeLibraryEntryFromCollection(
+        collectionId: collection.id,
+        workId: book.record.workId,
+        editionId: book.record.editionId,
+      );
+      if (!mounted) return;
+      await _reload();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(removed ? 'Removed from "' + collection.name + '". The story stays in your library.' : 'This story was no longer in that collection.'),
+      ));
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update this collection. Your saved story was kept.')),
+      );
     }
   }
 
@@ -205,6 +383,67 @@ class _LibraryPageState extends State<LibraryPage> {
           _chip('All', null),
           for (final status in LibraryStatus.values) ...[const SizedBox(width: 8), _chip(_label(status), status)],
         ])),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            const Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Collections', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                SizedBox(height: 3),
+                Text('Create your own shelves for saved editions', style: TextStyle(color: Colors.white54, fontSize: 11)),
+              ],
+            )),
+            IconButton.filledTonal(
+              tooltip: 'Create collection',
+              onPressed: _loading ? null : _createCollection,
+              icon: const Icon(Icons.create_new_folder_outlined),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            InputChip(
+              label: const Text('All saved stories'),
+              selected: _collectionFilter == null,
+              onSelected: (_) => _selectCollection(null),
+              selectedColor: _violet.withValues(alpha: .22),
+            ),
+            for (final collection in _collections) ...[
+              const SizedBox(width: 8),
+              InputChip(
+                avatar: const Icon(Icons.folder_special_outlined, size: 17),
+                label: Text('${collection.name} · ${collection.itemCount}', overflow: TextOverflow.ellipsis),
+                selected: _collectionFilter == collection.id,
+                onSelected: (_) => _selectCollection(_collectionFilter == collection.id ? null : collection.id),
+                onDeleted: () => _deleteCollection(collection),
+                selectedColor: _violet.withValues(alpha: .22),
+              ),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _searchController,
+          textInputAction: TextInputAction.search,
+          onChanged: (value) => setState(() => _query = value),
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search_rounded),
+            hintText: 'Search saved titles, creators, or editions',
+            suffixIcon: _query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear library search',
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => setState(() {
+                      _searchController.clear();
+                      _query = '';
+                    }),
+                  ),
+          ),
+        ),
         const SizedBox(height: 14),
         DropdownButtonFormField<_LibrarySort>(
           initialValue: _sort,
@@ -223,12 +462,29 @@ class _LibraryPageState extends State<LibraryPage> {
         const SizedBox(height: 18),
         if (_loading) const LinearProgressIndicator(minHeight: 2)
         else if (_error != null) _notice(Icons.storage_rounded, 'Library unavailable', _error!, TextButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')))
+        else if (_books.isEmpty && _collectionFilter != null && _collectionEditionIds.isEmpty && _query.trim().isEmpty) _notice(
+          Icons.folder_open_rounded,
+          'This collection is empty',
+          'Use the folder menu on a saved story to add it here. Deleting this collection will not delete your saved stories.',
+        )
         else if (_books.isEmpty) _notice(Icons.auto_stories_rounded, _filter == null ? 'Your collection starts here' : 'No ' + _label(_filter!).toLowerCase() + ' stories yet',
           _filter == null ? 'Browse a story and save it to your library. Your collection stays on this device.' : 'Choose another status or save a story from Browser.')
+        else if (_visibleBooks.isEmpty) _notice(
+          _collectionFilter != null ? Icons.folder_open_rounded : Icons.search_off_rounded,
+          _collectionFilter != null && _query.trim().isEmpty ? 'This collection is empty' : 'No saved stories match',
+          _collectionFilter != null && _query.trim().isEmpty
+              ? 'Use the folder menu on a saved story to add it here. Deleting this collection will not delete your saved stories.'
+              : 'Try a shorter title, a creator name, or clear the search to see your full collection.',
+          TextButton.icon(
+            onPressed: () => setState(() { _searchController.clear(); _query = ''; }),
+            icon: const Icon(Icons.close_rounded),
+            label: const Text('Clear search'),
+          ),
+        )
         else ...[
-          Text(_books.length.toString() + (_books.length == 1 ? ' edition' : ' editions'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          Text('${_visibleBooks.length} of ${_books.length} ${_books.length == 1 ? 'edition' : 'editions'} · stored locally', style: const TextStyle(color: Colors.white54, fontSize: 12)),
           const SizedBox(height: 10),
-          for (final book in _books) ...[_bookCard(book), const SizedBox(height: 10)],
+          for (final book in _visibleBooks) ...[_bookCard(book), const SizedBox(height: 10)],
         ],
       ],
     ),
@@ -284,7 +540,46 @@ class _LibraryPageState extends State<LibraryPage> {
             onChanged: (s) { if (s != null && s != book.record.status) _setStatus(book, s); },
           ),
         ])),
-        IconButton(tooltip: 'Remove from library', onPressed: () => _remove(book), icon: const Icon(Icons.delete_outline_rounded)),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PopupMenuButton<String>(
+              tooltip: 'Organize collections',
+              enabled: _collections.isNotEmpty,
+              icon: const Icon(Icons.folder_special_outlined, color: _violet),
+              onSelected: (value) {
+                final removing = value.startsWith('remove:');
+                final id = value.substring(value.indexOf(':') + 1);
+                final matches = _collections.where((item) => item.id == id);
+                if (matches.isEmpty) return;
+                if (removing) {
+                  _removeFromCollection(book, matches.first);
+                } else {
+                  _addToCollection(book, matches.first);
+                }
+              },
+              itemBuilder: (context) => _collections.map((collection) {
+                final isCurrent = _collectionFilter == collection.id &&
+                    _collectionEditionIds.contains(book.record.editionId);
+                return PopupMenuItem<String>(
+                  value: (isCurrent ? 'remove:' : 'add:') + collection.id,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 230),
+                    child: Row(children: [
+                      Icon(isCurrent ? Icons.folder_delete_outlined : Icons.folder_outlined, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(
+                        (isCurrent ? 'Remove from ' : 'Add to ') + collection.name,
+                        overflow: TextOverflow.ellipsis,
+                      )),
+                    ]),
+                  ),
+                );
+              }).toList(growable: false),
+            ),
+            IconButton(tooltip: 'Remove from library', onPressed: () => _remove(book), icon: const Icon(Icons.delete_outline_rounded)),
+          ],
+        ),
       ]),
     );
   }

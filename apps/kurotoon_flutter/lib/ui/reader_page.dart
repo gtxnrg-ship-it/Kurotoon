@@ -39,6 +39,7 @@ class _ReaderPageState extends State<ReaderPage> {
   final GlobalKey _stripViewportKey = GlobalKey();
   List<GlobalKey> _stripItemKeys = const [];
   bool _loading = true;
+  bool _preferenceSaving = false;
   bool _dataSaver = false;
   bool _verticalMode = false;
   bool _rightToLeft = false;
@@ -64,6 +65,12 @@ class _ReaderPageState extends State<ReaderPage> {
       if (mounted && savedDirection != null) _rightToLeft = savedDirection;
     } on Object {
       // Reading direction is optional; use the default direction if unavailable.
+    }
+    try {
+      final savedDataSaver = await widget.runtime.database?.getSetting<bool>('reader.data_saver');
+      if (mounted && savedDataSaver != null) _dataSaver = savedDataSaver;
+    } on Object {
+      // A corrupt/missing data-saver preference falls back to full-quality loading.
     }
     if (mounted) await _load();
   }
@@ -157,19 +164,46 @@ class _ReaderPageState extends State<ReaderPage> {
     _save(page, count);
   }
 
-  Future<void> _toggleReadingDirection() async {
-    final next = !_rightToLeft;
-    setState(() => _rightToLeft = next);
+  Future<void> _toggleDataSaver() async {
+    if (_loading || _preferenceSaving) return;
+    final next = !_dataSaver;
+    setState(() => _preferenceSaving = true);
     try {
-      await widget.runtime.database?.setSetting('reader.right_to_left', next);
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      await database.setSetting('reader.data_saver', next);
     } on Object {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Reading direction changed for this session, but the preference could not be saved.')),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _preferenceSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Data-saver preference could not be saved. No change was applied.')),
+      );
+      return;
     }
-    if (!mounted || _verticalMode) return;
+    if (!mounted) return;
+    setState(() { _dataSaver = next; _preferenceSaving = false; });
+    await _load();
+  }
+
+  Future<void> _toggleReadingDirection() async {
+    if (_loading || _preferenceSaving) return;
+    final next = !_rightToLeft;
+    setState(() => _preferenceSaving = true);
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      await database.setSetting('reader.right_to_left', next);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _preferenceSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reading direction could not be saved. The current direction was kept.')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() { _rightToLeft = next; _preferenceSaving = false; });
+    if (_verticalMode) return;
     final count = _manifest?.urls(dataSaver: _dataSaver).length ?? 0;
     final controller = _controller;
     if (count > 0 && controller != null && controller.hasClients) {
@@ -179,18 +213,23 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _toggleReadingMode() async {
+    if (_loading || _preferenceSaving) return;
     final next = !_verticalMode;
-    setState(() => _verticalMode = next);
+    setState(() => _preferenceSaving = true);
     try {
-      await widget.runtime.database?.setSetting('reader.long_strip', next);
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      await database.setSetting('reader.long_strip', next);
     } on Object {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Reading mode changed for this session, but the preference could not be saved.')),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _preferenceSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reading mode could not be saved. The current mode was kept.')),
+      );
+      return;
     }
     if (!mounted) return;
+    setState(() { _verticalMode = next; _preferenceSaving = false; });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (next) {
@@ -279,17 +318,17 @@ class _ReaderPageState extends State<ReaderPage> {
             ),
           IconButton(
             tooltip: _verticalMode ? 'Switch to paged reading' : 'Switch to long-strip reading',
-            onPressed: _loading ? null : _toggleReadingMode,
+            onPressed: _loading || _preferenceSaving ? null : _toggleReadingMode,
             icon: Icon(_verticalMode ? Icons.auto_stories_rounded : Icons.view_stream_rounded),
           ),
           IconButton(
             tooltip: _rightToLeft ? 'Switch to left-to-right manga reading' : 'Switch to right-to-left manga reading',
-            onPressed: _loading ? null : _toggleReadingDirection,
+            onPressed: _loading || _preferenceSaving ? null : _toggleReadingDirection,
             icon: const Icon(Icons.swap_horiz_rounded),
           ),
           IconButton(
             tooltip: 'Toggle data saver',
-            onPressed: _loading ? null : () { setState(() => _dataSaver = !_dataSaver); _load(); },
+            onPressed: _loading || _preferenceSaving ? null : _toggleDataSaver,
             icon: Icon(_dataSaver ? Icons.data_saver_on_rounded : Icons.data_saver_off_rounded),
           ),
         ],

@@ -180,7 +180,12 @@ class _KuroToonShellState extends State<_KuroToonShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      _HomePage(runtime: widget.runtime, isActive: _selected == 0, onBrowse: () => setState(() => _selected = 1)),
+      _HomePage(
+        runtime: widget.runtime,
+        isActive: _selected == 0,
+        onBrowse: () => setState(() => _selected = 1),
+        onLibrary: () => setState(() => _selected = 3),
+      ),
       _BrowserPage(runtime: widget.runtime),
       const ShopPage(),
       LibraryPage(runtime: widget.runtime),
@@ -211,11 +216,17 @@ class _KuroToonShellState extends State<_KuroToonShell> {
 }
 
 class _HomePage extends StatefulWidget {
-  const _HomePage({required this.runtime, required this.isActive, required this.onBrowse});
+  const _HomePage({
+    required this.runtime,
+    required this.isActive,
+    required this.onBrowse,
+    required this.onLibrary,
+  });
 
   final KurotoonRuntime runtime;
   final bool isActive;
   final VoidCallback onBrowse;
+  final VoidCallback onLibrary;
 
   @override
   State<_HomePage> createState() => _HomePageState();
@@ -466,10 +477,25 @@ class _HomePageState extends State<_HomePage> {
                 const Text('Explore stories across sources. Build a library that feels like yours.',
                     style: TextStyle(height: 1.45, color: Colors.white70)),
                 const SizedBox(height: 22),
-                FilledButton.icon(
-                  onPressed: widget.onBrowse,
-                  icon: const Icon(Icons.explore_rounded),
-                  label: const Text('Explore the universe'),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: widget.onBrowse,
+                      icon: const Icon(Icons.explore_rounded),
+                      label: const Text('Explore the universe'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: widget.onLibrary,
+                      icon: const Icon(Icons.bookmarks_rounded),
+                      label: const Text('Open my library'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -503,15 +529,15 @@ class _HomePageState extends State<_HomePage> {
           const SizedBox(height: 14),
           const _FeatureTile(
             icon: Icons.hub_rounded,
-            title: 'Multiple sources',
-            subtitle: 'Repository-first extensions, installed one at a time with a review step.',
+            title: 'Source-ready by design',
+            subtitle: 'MangaDex is the current live connector; compatible catalog repositories can be previewed safely.',
             tint: _cyan,
           ),
           const SizedBox(height: 10),
           const _FeatureTile(
             icon: Icons.auto_awesome_rounded,
             title: 'A living Galaxy',
-            subtitle: 'Ambient motion with adaptive effects designed to respect your device.',
+            subtitle: 'Ambient galaxy effects, with a reduced-motion option in Me.',
             tint: _violet,
           ),
           const SizedBox(height: 10),
@@ -544,9 +570,43 @@ class _BrowserPageState extends State<_BrowserPage> {
   WorkFormat? _formatFilter;
   String? _sourceFilter;
   String? _languageFilter;
+  String _lastSubmittedQuery = '';
+  List<String> _recentQueries = const [];
+  bool _creatorMode = false;
+  bool _creatorSearchPerformed = false;
+  String _lastCreatorQuery = '';
+  List<CreatorProfile> _creatorResults = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreRecentQueries();
+  }
+
+  Future<void> _restoreRecentQueries() async {
+    try {
+      final saved = await widget.runtime.database?.getSetting<List<dynamic>>('browser.recent_queries');
+      final seen = <String>{};
+      final cleaned = <String>[];
+      // Settings can outlive app versions; validate shape and cap before rendering.
+      for (final item in saved ?? const <dynamic>[]) {
+        if (item is! String) continue;
+        final query = item.trim();
+        if (query.isEmpty || !seen.add(query.toLowerCase())) continue;
+        cleaned.add(query);
+        if (cleaned.length == 6) break;
+      }
+      if (mounted) setState(() => _recentQueries = List.unmodifiable(cleaned));
+    } on Object {
+      // Search history is optional: corrupt/missing preferences must not block Browse.
+    }
+  }
 
   List<CatalogEntry> get _visibleEntries {
     final entries = (_outcome?.entries ?? const <CatalogEntry>[]).where((entry) {
+      // A stale/orphaned catalog row must not reach _candidateForEntry, which
+      // intentionally expects at least one source listing to open a series.
+      if (entry.listings.isEmpty) return false;
       if (_formatFilter != null && entry.work.format != _formatFilter) return false;
       if (_sourceFilter != null && !entry.providerIds.contains(_sourceFilter)) return false;
       if (_languageFilter != null &&
@@ -555,7 +615,7 @@ class _BrowserPageState extends State<_BrowserPage> {
       }
       return true;
     }).toList();
-    final query = WorkIdentityMatcher.normalizeTitle(_controller.text);
+    final query = WorkIdentityMatcher.normalizeTitle(_lastSubmittedQuery);
     entries.sort((left, right) {
       int relevance(CatalogEntry entry) {
         final title = WorkIdentityMatcher.normalizeTitle(entry.work.title);
@@ -593,14 +653,31 @@ class _BrowserPageState extends State<_BrowserPage> {
   }
 
   Future<void> _search() async {
+    if (_creatorMode) {
+      await _searchCreators();
+      return;
+    }
     final query = _controller.text.trim();
     if (query.isEmpty || _loading) return;
     FocusScope.of(context).unfocus();
+    final nextHistory = <String>[
+      query,
+      ..._recentQueries.where((saved) => saved.toLowerCase() != query.toLowerCase()),
+    ].take(6).toList(growable: false);
+    _lastSubmittedQuery = query;
     setState(() {
+      _recentQueries = List.unmodifiable(nextHistory);
       _loading = true;
       _error = null;
       _outcome = null;
     });
+    try {
+      // History persistence is best-effort; a settings write failure must not
+      // turn a valid network search into a failed search.
+      await widget.runtime.database?.setSetting('browser.recent_queries', nextHistory);
+    } on Object {
+      // Continue to the live search even if local history could not be saved.
+    }
     try {
       final workflow = widget.runtime.catalogWorkflow;
       if (workflow == null) throw StateError('Persistent catalog storage is unavailable.');
@@ -615,39 +692,60 @@ class _BrowserPageState extends State<_BrowserPage> {
     }
   }
 
-  WorkCandidate _candidateForEntry(CatalogEntry entry) {
-    if (entry.listings.isEmpty) throw StateError('Catalog entry has no source listings.');
-    final candidates = entry.listings.toList();
-    candidates.sort((left, right) {
-      int priority(WorkCandidate candidate) {
-        final providers = widget.runtime.providers.all.where((item) => item.descriptor.id == candidate.providerId);
-        if (providers.isEmpty) return 0;
-        final provider = providers.first;
-        final enabled = widget.runtime.providers.isEnabled(candidate.providerId);
-        final chapters = provider is ChapterFeedProvider &&
-            provider.descriptor.supports(ProviderCapability.chapters);
-        final pages = provider is ReaderPagesProvider &&
-            provider.descriptor.supports(ProviderCapability.pages);
-        return (enabled ? 4 : 0) + (chapters ? 2 : 0) + (pages ? 1 : 0);
-      }
-      return priority(right).compareTo(priority(left));
+  Future<void> _switchBrowserMode(bool creators) async {
+    if (_loading || creators == _creatorMode) return;
+    setState(() {
+      _creatorMode = creators;
+      _creatorSearchPerformed = false;
+      _lastCreatorQuery = '';
+      _creatorResults = const [];
+      _outcome = null;
+      _error = null;
+      _lastSubmittedQuery = '';
+      _formatFilter = null;
+      _sourceFilter = null;
+      _languageFilter = null;
     });
-    final source = candidates.first;
-    return WorkCandidate(
-      providerId: source.providerId,
-      externalId: source.externalId,
-      title: entry.work.title,
-      providerUrl: source.providerUrl,
-      alternateTitles: entry.work.alternateTitles,
-      creatorNames: entry.work.creatorNames,
-      year: entry.work.year,
-      format: entry.work.format,
-      language: source.language,
-      description: source.description,
-      coverUrl: source.coverUrl,
-      tags: source.tags,
+    // Creator lookup is local-only, so it can be run immediately for an existing query.
+    if (creators && _controller.text.trim().isNotEmpty) await _searchCreators();
+  }
+
+  Future<void> _searchCreators() async {
+    final query = _controller.text.trim();
+    if (query.isEmpty || _loading) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loading = true;
+      _error = null;
+      _creatorSearchPerformed = true;
+      _lastCreatorQuery = query;
+      _creatorResults = const [];
+      _outcome = null;
+    });
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local creator catalog unavailable.');
+      // Creator discovery queries only the bounded local index; it never calls a network provider.
+      final creators = await database.searchCreatorProfiles(query, limit: 50);
+      if (!mounted) return;
+      setState(() => _creatorResults = creators);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _error = 'Local creator lookup could not complete. Check local storage and retry.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openCreator(CreatorProfile creator) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _CreatorDetailPage(runtime: widget.runtime, creator: creator),
+      ),
     );
   }
+
+  WorkCandidate _candidateForEntry(CatalogEntry entry) => _candidateForCatalogEntry(entry, widget.runtime);
 
   Future<void> _openSeries(WorkCandidate candidate) async {
     await Navigator.of(context).push<void>(
@@ -665,9 +763,19 @@ class _BrowserPageState extends State<_BrowserPage> {
           const SizedBox(height: 8),
           const Text('Find your next obsession.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
-          const Text('Search the sources currently connected to Kurotoon.',
+          const Text('Search current provider results or explore creators already indexed on this device.',
               style: TextStyle(color: Colors.white60, height: 1.4)),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment<bool>(value: false, label: Text('Stories'), icon: Icon(Icons.menu_book_rounded)),
+              ButtonSegment<bool>(value: true, label: Text('Creators'), icon: Icon(Icons.person_search_rounded)),
+            ],
+            selected: {_creatorMode},
+            showSelectedIcon: false,
+            onSelectionChanged: _loading ? null : (selection) => _switchBrowserMode(selection.single),
+          ),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
@@ -675,9 +783,28 @@ class _BrowserPageState extends State<_BrowserPage> {
                   controller: _controller,
                   textInputAction: TextInputAction.search,
                   onSubmitted: (_) => _search(),
-                  decoration: const InputDecoration(
-                    hintText: 'Title, alternate title…',
-                    prefixIcon: Icon(Icons.search_rounded),
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: _creatorMode ? 'Creator name or pen name…' : 'Title, alternate title…',
+                    prefixIcon: Icon(_creatorMode ? Icons.person_search_rounded : Icons.search_rounded),
+                    suffixIcon: _controller.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => setState(() {
+                              _controller.clear();
+                              _outcome = null;
+                              _error = null;
+                              _lastSubmittedQuery = '';
+                              _formatFilter = null;
+                              _sourceFilter = null;
+                              _languageFilter = null;
+                              _creatorResults = const [];
+                              _creatorSearchPerformed = false;
+                              _lastCreatorQuery = '';
+                            }),
+                          ),
                   ),
                 ),
               ),
@@ -687,13 +814,91 @@ class _BrowserPageState extends State<_BrowserPage> {
                 icon: _loading
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.arrow_forward_rounded),
-                tooltip: 'Search',
+                tooltip: _creatorMode ? 'Find creators' : 'Search stories',
               ),
             ],
           ),
           const SizedBox(height: 18),
+          if (!_creatorMode && _outcome == null && !_loading && _error == null && _recentQueries.isNotEmpty) ...[
+            Row(
+              children: [
+                const Expanded(child: _SectionHeading(title: 'Recent searches', subtitle: 'Stored privately on this device')),
+                TextButton(
+                  onPressed: () async {
+                    setState(() => _recentQueries = const []);
+                    try {
+                      await widget.runtime.database?.setSetting('browser.recent_queries', const <String>[]);
+                    } on Object {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Recent searches were cleared for this session but could not be saved.')),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: _recentQueries.map((query) => ActionChip(
+                avatar: const Icon(Icons.history_rounded, size: 16),
+                label: Text(query, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onPressed: () {
+                  _controller.text = query;
+                  _search();
+                },
+              )).toList(growable: false),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (_outcome != null && _controller.text.trim() != _lastSubmittedQuery)
+            _InlineNotice(
+              icon: Icons.info_outline_rounded,
+              text: 'Showing results for “$_lastSubmittedQuery”. Submit the new title to run another search.',
+            ),
           if (_loading) const LinearProgressIndicator(minHeight: 2),
-          if (_error != null) _InlineNotice(icon: Icons.wifi_off_rounded, text: _error!),
+          if (_error != null) ...[
+            _InlineNotice(icon: _creatorMode ? Icons.manage_search_rounded : Icons.wifi_off_rounded, text: _error!),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _loading || _controller.text.trim().isEmpty ? null : _search,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(_creatorMode ? 'Search creators again' : 'Try search again'),
+              ),
+            ),
+          ],
+          if (_creatorMode && _creatorResults.isNotEmpty && _controller.text.trim() != _lastCreatorQuery)
+            _InlineNotice(
+              icon: Icons.info_outline_rounded,
+              text: 'Showing creators for “$_lastCreatorQuery”. Submit the new name to search again.',
+            ),
+          if (_creatorMode && !_creatorSearchPerformed && !_loading && _error == null)
+            const _InlineNotice(
+              icon: Icons.person_search_rounded,
+              text: 'Creator search uses the catalog already indexed on this device. Search Stories first to populate the local catalog; creator lookup itself does not contact a network source.',
+            ),
+          if (_creatorMode && _creatorSearchPerformed && !_loading && _error == null) ...[
+            _SectionHeading(
+              title: '${_creatorResults.length} creator${_creatorResults.length == 1 ? '' : 's'} found',
+              subtitle: 'From locally indexed source metadata · no extra network request',
+            ),
+            const SizedBox(height: 12),
+            if (_creatorResults.isEmpty)
+              const _InlineNotice(
+                icon: Icons.person_search_rounded,
+                text: 'No indexed creators match this name. Try a shorter name, or search a title in Stories mode first.',
+              )
+            else
+              for (final creator in _creatorResults) ...[
+                _CreatorResultTile(creator: creator, onTap: () => _openCreator(creator)),
+                const SizedBox(height: 10),
+              ],
+          ],
           if (_outcome != null) ...[
             _SectionHeading(
               title: '${_visibleEntries.length} of ${_outcome!.entries.length} unified results',
@@ -703,6 +908,19 @@ class _BrowserPageState extends State<_BrowserPage> {
             ),
             const SizedBox(height: 12),
             if (_outcome!.entries.isNotEmpty) ...[
+              if (_formatFilter != null || _sourceFilter != null || _languageFilter != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() {
+                      _formatFilter = null;
+                      _sourceFilter = null;
+                      _languageFilter = null;
+                    }),
+                    icon: const Icon(Icons.filter_alt_off_rounded, size: 17),
+                    label: const Text('Clear all filters'),
+                  ),
+                ),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(children: [
@@ -786,13 +1004,226 @@ class _BrowserPageState extends State<_BrowserPage> {
                 const SizedBox(height: 10),
               ],
           ],
-          if (!_loading && _outcome == null && _error == null)
+          if (!_creatorMode && !_loading && _outcome == null && _error == null)
             const _InlineNotice(
               icon: Icons.public_rounded,
               text: 'Search uses live provider APIs. Results depend on source availability; Kurotoon does not host comic content.',
             ),
         ],
       );
+}
+
+WorkCandidate _candidateForCatalogEntry(CatalogEntry entry, KurotoonRuntime runtime) {
+    if (entry.listings.isEmpty) throw StateError('Catalog entry has no source listings.');
+    final candidates = entry.listings.toList();
+    candidates.sort((left, right) {
+      int priority(WorkCandidate candidate) {
+        final providers = runtime.providers.all.where((item) => item.descriptor.id == candidate.providerId);
+        if (providers.isEmpty) return 0;
+        final provider = providers.first;
+        final enabled = runtime.providers.isEnabled(candidate.providerId);
+        final chapters = provider is ChapterFeedProvider &&
+            provider.descriptor.supports(ProviderCapability.chapters);
+        final pages = provider is ReaderPagesProvider &&
+            provider.descriptor.supports(ProviderCapability.pages);
+        return (enabled ? 4 : 0) + (chapters ? 2 : 0) + (pages ? 1 : 0);
+      }
+      return priority(right).compareTo(priority(left));
+    });
+    final source = candidates.first;
+    return WorkCandidate(
+      providerId: source.providerId,
+      externalId: source.externalId,
+      title: entry.work.title,
+      providerUrl: source.providerUrl,
+      alternateTitles: entry.work.alternateTitles,
+      creatorNames: entry.work.creatorNames,
+      year: entry.work.year,
+      format: entry.work.format,
+      language: source.language,
+      description: source.description,
+      coverUrl: source.coverUrl,
+      tags: source.tags,
+    );
+  }
+
+class _CreatorResultTile extends StatelessWidget {
+  const _CreatorResultTile({required this.creator, required this.onTap});
+
+  final CreatorProfile creator;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final aliases = creator.aliases.where((alias) => alias.trim().isNotEmpty).take(3).toList(growable: false);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .055),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: .07)),
+      ),
+      child: ListTile(
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _violet.withValues(alpha: .14),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(Icons.person_outline_rounded, color: _violet),
+        ),
+        title: Text(creator.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text(
+          aliases.isEmpty ? 'Creator in your local catalog' : 'Also known as ' + aliases.join(' · '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Colors.white60, fontSize: 12),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _CreatorDetailPage extends StatefulWidget {
+  const _CreatorDetailPage({required this.runtime, required this.creator});
+
+  final KurotoonRuntime runtime;
+  final CreatorProfile creator;
+
+  @override
+  State<_CreatorDetailPage> createState() => _CreatorDetailPageState();
+}
+
+class _CreatorDetailPageState extends State<_CreatorDetailPage> {
+  CreatorProfile? _profile;
+  List<CatalogEntry> _works = const [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() { _loading = true; _error = null; });
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local catalog unavailable.');
+      final profile = await database.loadCreatorProfile(widget.creator.id) ?? widget.creator;
+      final works = await database.loadCreatorWorks(widget.creator.id, limit: 50);
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _works = List.unmodifiable(works.where((entry) => entry.listings.isNotEmpty));
+        _loading = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() { _error = 'This local creator profile could not be loaded. Your saved library is unaffected.'; _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final creator = _profile ?? widget.creator;
+    final aliases = creator.aliases.where((alias) => alias.trim().isNotEmpty).take(8).toList(growable: false);
+    return Scaffold(
+      backgroundColor: _ink,
+      appBar: AppBar(title: Text(creator.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 40),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xAA273C72), Color(0xAA17162F)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: .09)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const CircleAvatar(
+                  radius: 26,
+                  backgroundColor: Color(0x3329D9F5),
+                  child: Icon(Icons.person_rounded, color: _cyan, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(creator.name, style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 6),
+                    Text(
+                      aliases.isEmpty ? 'Locally indexed creator profile' : 'Also known as ' + aliases.join(' · '),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Built from available catalog metadata. This is not a complete biography or an online creator lookup.',
+                      style: TextStyle(color: Colors.white54, fontSize: 11, height: 1.45),
+                    ),
+                  ],
+                )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          _SectionHeading(
+            title: 'Works with this creator',
+            subtitle: 'Up to 50 locally indexed works, sorted by title',
+          ),
+          const SizedBox(height: 12),
+          if (_loading) const Center(child: Padding(
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(),
+          ))
+          else if (_error != null) Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _InlineNotice(icon: Icons.storage_rounded, text: _error!),
+              TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+            ],
+          )
+          else if (_works.isEmpty) const _InlineNotice(
+            icon: Icons.menu_book_outlined,
+            text: 'No readable catalog entries are linked to this creator yet. Try searching and saving another title.',
+          )
+          else ...[
+            Text(_works.length.toString() + ' locally indexed works', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            const SizedBox(height: 10),
+            for (final entry in _works) ...[
+              Builder(builder: (context) {
+                final candidate = _candidateForCatalogEntry(entry, widget.runtime);
+                final sourceLabels = entry.providerIds.map((id) {
+                  final providers = widget.runtime.providers.all.where((provider) => provider.descriptor.id == id);
+                  return providers.isEmpty ? id : providers.first.descriptor.name;
+                }).toList(growable: false);
+                return _SearchResultTile(
+                  candidate: candidate,
+                  sourceLabels: sourceLabels,
+                  onTap: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => SeriesDetailPage(runtime: widget.runtime, candidate: candidate),
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 10),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _SearchResultTile extends StatelessWidget {
@@ -884,101 +1315,278 @@ class _MePage extends StatefulWidget {
 
 class _MePageState extends State<_MePage> {
   bool _mangadexEnabled = true;
+  bool _providerBusy = false;
+  bool _rightToLeftDefault = false;
+  bool _longStripDefault = false;
+  bool _dataSaverDefault = false;
+  bool _readerPreferenceSaving = false;
 
   @override
-  Widget build(BuildContext context) {
-    final provider = widget.runtime.providers.all.where((p) => p.descriptor.id == 'mangadex');
-    if (provider.isNotEmpty) _mangadexEnabled = widget.runtime.providers.isEnabled('mangadex');
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 130),
-      children: [
-        const Text('ME', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 13, color: _violet)),
-        const SizedBox(height: 8),
-        const Text('Your reading, your rules.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 20),
-        const _SectionHeading(title: 'Reading', subtitle: 'Sources, extensions, and reader preferences'),
-        SwitchListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-          tileColor: Colors.white.withValues(alpha: 0.05),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          secondary: const Icon(Icons.public_rounded, color: _cyan),
-          title: const Text('MangaDex'),
-          subtitle: const Text('Live API provider'),
-          value: _mangadexEnabled,
-          onChanged: (value) async {
-            await widget.runtime.setProviderEnabled('mangadex', value);
-            if (mounted) setState(() => _mangadexEnabled = value);
-          },
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => ProviderDiagnosticsPage(runtime: widget.runtime),
-            ),
-          ),
-          icon: const Icon(Icons.health_and_safety_rounded),
-          label: const Text('View source diagnostics'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _cyan,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            side: BorderSide(color: _cyan.withValues(alpha: 0.35)),
-          ),
-        ),
-        const SizedBox(height: 18),
-        const _SectionHeading(title: 'Extensions & repositories', subtitle: 'Add catalogs and manage supported sources'),
-        const _InlineNotice(
-          icon: Icons.extension_rounded,
-          text: 'Browse catalogs and manage compatible declarative extensions. Compiled extension APKs are not executed.',
-        ),
-        const SizedBox(height: 10),
-        FilledButton.icon(
-          onPressed: () => Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => RepositoryManagementPage(runtime: widget.runtime),
-            ),
-          ),
-          icon: const Icon(Icons.settings_input_component_rounded),
-          label: const Text('Manage repositories & extensions'),
-          style: FilledButton.styleFrom(
-            backgroundColor: _violet,
-            foregroundColor: const Color(0xFF080B18),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-          ),
-        ),
-        const SizedBox(height: 22),
-        const _SectionHeading(title: 'Storage & privacy', subtitle: 'Manage disposable cache without touching your saved library or progress'),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => StorageManagementPage(runtime: widget.runtime),
-            ),
-          ),
-          icon: const Icon(Icons.storage_rounded),
-          label: const Text('Manage storage & cache'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _cyan,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            side: BorderSide(color: _cyan.withValues(alpha: 0.35)),
-          ),
-        ),
-        const SizedBox(height: 22),
-        const _SectionHeading(title: 'Galaxy', subtitle: 'Motion preferences'),
-        SwitchListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-          tileColor: Colors.white.withValues(alpha: 0.05),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          secondary: const Icon(Icons.blur_on_rounded, color: _violet),
-          title: const Text('Animated background'),
-          subtitle: const Text('Saved on this device; turn it off to reduce background animation.'),
-          value: widget.motionEnabled,
-          onChanged: widget.onMotionChanged,
-        ),
-        const SizedBox(height: 22),
-      ],
-    );
+  void initState() {
+    super.initState();
+    _mangadexEnabled = widget.runtime.providers.isEnabled('mangadex');
+    _restoreReaderDefaults();
   }
+
+  Future<void> _restoreReaderDefaults() async {
+    try {
+      final database = widget.runtime.database;
+      final rightToLeft = await database?.getSetting<bool>('reader.right_to_left');
+      final longStrip = await database?.getSetting<bool>('reader.long_strip');
+      final dataSaver = await database?.getSetting<bool>('reader.data_saver');
+      if (!mounted) return;
+      setState(() {
+        _rightToLeftDefault = rightToLeft ?? false;
+        _longStripDefault = longStrip ?? false;
+        _dataSaverDefault = dataSaver ?? false;
+      });
+    } on Object {
+      // Optional reader defaults should never prevent the rest of Me from opening.
+    }
+  }
+
+  Future<void> _saveReaderPreference({
+    required String key,
+    required bool value,
+    required bool previous,
+    required ValueChanged<bool> update,
+  }) async {
+    if (_readerPreferenceSaving || value == previous) return;
+    setState(() => _readerPreferenceSaving = true);
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      // Persist first, then update the switch: what the UI shows is always durable.
+      await database.setSetting(key, value);
+    } on Object {
+      if (!mounted) return;
+      setState(() => _readerPreferenceSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That reader preference could not be saved. Your previous setting was kept.')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    update(value);
+    setState(() => _readerPreferenceSaving = false);
+  }
+
+  Future<void> _setMangaDexEnabled(bool value) async {
+    if (_providerBusy) return;
+    setState(() => _providerBusy = true);
+    try {
+      await widget.runtime.setProviderEnabled('mangadex', value);
+      if (mounted) setState(() => _mangadexEnabled = value);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The source setting could not be saved. No change was applied.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _providerBusy = false);
+    }
+  }
+
+  Widget _settingsCard(List<Widget> children) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.045),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.075)),
+        ),
+        child: Column(children: children),
+      );
+
+  Widget _settingsTile({
+    required IconData icon,
+    required Color tint,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(color: tint.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(13)),
+          child: Icon(icon, color: tint),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text(subtitle, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.35)),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+        onTap: onTap,
+      );
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 136),
+        children: [
+          Row(
+            children: [
+              const _BrandMark(size: 48),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('ME', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 12, color: _violet)),
+                    SizedBox(height: 4),
+                    Text('Your reading, your rules.', style: TextStyle(fontSize: 23, height: 1.12, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xAA273C72), Color(0xAA17162F), Color(0x88101A2B)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.shield_moon_outlined, color: _cyan, size: 25),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('A local-first reading space', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      SizedBox(height: 5),
+                      Text(
+                        'No account is required. Your library and reading progress live on this device; live searches contact the sources you enable.',
+                        style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.45),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Reader defaults', subtitle: 'Applied when you open the next chapter'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.view_stream_rounded, color: _cyan),
+              title: const Text('Long-strip / webtoon mode'),
+              subtitle: const Text('Scroll vertically through tall pages'),
+              value: _longStripDefault,
+              onChanged: _readerPreferenceSaving ? null : (value) => _saveReaderPreference(
+                key: 'reader.long_strip',
+                value: value,
+                previous: _longStripDefault,
+                update: (next) => setState(() => _longStripDefault = next),
+              ),
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.data_saver_on_rounded, color: Color(0xFFFFC58A)),
+              title: const Text('Data saver by default'),
+              subtitle: const Text('Prefer smaller source images when the provider supports them'),
+              value: _dataSaverDefault,
+              onChanged: _readerPreferenceSaving ? null : (value) => _saveReaderPreference(
+                key: 'reader.data_saver',
+                value: value,
+                previous: _dataSaverDefault,
+                update: (next) => setState(() => _dataSaverDefault = next),
+              ),
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.swap_horiz_rounded, color: _violet),
+              title: const Text('Read right to left'),
+              subtitle: const Text('Use for right-to-left manga page order'),
+              value: _rightToLeftDefault,
+              onChanged: _readerPreferenceSaving ? null : (value) => _saveReaderPreference(
+                key: 'reader.right_to_left',
+                value: value,
+                previous: _rightToLeftDefault,
+                update: (next) => setState(() => _rightToLeftDefault = next),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Sources', subtitle: 'Choose which live providers can be queried'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.public_rounded, color: _cyan),
+              title: const Text('MangaDex'),
+              subtitle: Text(_providerBusy ? 'Updating source preference…' : 'Live API provider'),
+              value: _mangadexEnabled,
+              onChanged: _providerBusy ? null : _setMangaDexEnabled,
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
+            _settingsTile(
+              icon: Icons.health_and_safety_rounded,
+              tint: _cyan,
+              title: 'Source diagnostics',
+              subtitle: 'Recent provider health and cooldown information',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(builder: (_) => ProviderDiagnosticsPage(runtime: widget.runtime)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Extensions & repositories', subtitle: 'Review catalogs and manage supported source metadata'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            _settingsTile(
+              icon: Icons.hub_rounded,
+              tint: _violet,
+              title: 'Manage repositories & extensions',
+              subtitle: 'Preview, add, refresh, and remove compatible catalogs',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(builder: (_) => RepositoryManagementPage(runtime: widget.runtime)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Storage & privacy', subtitle: 'Clean temporary files without deleting saved reading data'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            _settingsTile(
+              icon: Icons.storage_rounded,
+              tint: const Color(0xFFFFC58A),
+              title: 'Storage & cache',
+              subtitle: 'Review cached files and safely remove disposable items',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(builder: (_) => StorageManagementPage(runtime: widget.runtime)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionHeading(title: 'Galaxy', subtitle: 'Keep the atmosphere comfortable for your device'),
+          const SizedBox(height: 10),
+          _settingsCard([
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.blur_on_rounded, color: _violet),
+              title: const Text('Animated background'),
+              subtitle: const Text('Turn off ambient animation to reduce visual motion and background work'),
+              value: widget.motionEnabled,
+              onChanged: widget.onMotionChanged,
+            ),
+          ]),
+          const SizedBox(height: 22),
+          const _InlineNotice(
+            icon: Icons.info_outline_rounded,
+            text: 'Kurotoon does not host comic content. Source availability and terms are controlled by each provider. Compiled extension APKs are not executed.',
+          ),
+        ],
+      );
 }
 
 class _GalaxyScaffold extends StatefulWidget {
