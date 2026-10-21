@@ -335,6 +335,9 @@ class KurotoonDatabase {
 
   Future<void> upsertCatalogEntry(CatalogEntry entry) async {
     _ensureOpen();
+    // Serialize catalog writes with the lazy legacy search-index backfill.
+    // Otherwise a concurrent backfill could delete terms written by this upsert.
+    await _ensureCatalogSearchIndexReady();
     await _database.transaction((tx) async {
       final work = entry.work;
       final workRow = <String, Object?>{
