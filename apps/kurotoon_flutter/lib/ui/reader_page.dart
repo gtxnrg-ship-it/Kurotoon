@@ -266,7 +266,7 @@ class _ReaderPageState extends State<ReaderPage> {
           IconButton(
             tooltip: _rightToLeft ? 'Switch to left-to-right manga reading' : 'Switch to right-to-left manga reading',
             onPressed: _loading ? null : _toggleReadingDirection,
-            icon: Icon(_rightToLeft ? Icons.format_textdirection_r_to_l_rounded : Icons.format_textdirection_l_to_r_rounded),
+            icon: const Icon(Icons.swap_horiz_rounded),
           ),
           IconButton(
             tooltip: 'Toggle data saver',
