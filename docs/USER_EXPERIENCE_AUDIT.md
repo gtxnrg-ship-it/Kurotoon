@@ -23,7 +23,9 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 - Library membership, reading state and progress remain local.
 - Search matches saved titles, alternate titles, creators and edition metadata without making network requests.
 - Status filters and persisted sort choices work together with local search.
-- Empty-library, no-status-match, no-search-match and storage-error states are distinguished.
+- Custom collections are stored in SQLite with a versioned schema migration; collection names are normalized and unique, memberships are idempotent, and users can create/select/delete a collection or add/remove one saved edition without making network requests.
+- Deleting a collection removes only its membership organization; deleting a saved library entry cleans its memberships but does not erase separate reading progress.
+- Empty-library, empty-collection, no-status-match, no-search-match and storage-error states are distinguished.
 - Removing an item remains an explicit, confirmed action; progress is kept separate by the reading-journey service.
 
 ## Me
@@ -40,4 +42,5 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 - Test cold start, search, series opening, reading, progress restoration, filters and settings on a physical Android device.
 - Validate search history restoration across app restarts and clearing history on the device.
 - Test long-strip and RTL defaults against representative chapters from real sources.
-- Keep crash recovery, backup/export, library collections, source-specific request policies, live-source reliability, adaptive performance and immersive audio/voice/haptic runtime as explicit open work until implemented and tested.
+- Verify collection schema migration, create/add/remove/delete semantics on device and after process restart (automated database tests are included with this change).
+- Keep crash recovery, backup/export, manual drag ordering, source-specific request policies, live-source reliability, adaptive performance and immersive audio/voice/haptic runtime as explicit open work until implemented and tested.
