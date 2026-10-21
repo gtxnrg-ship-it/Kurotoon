@@ -67,6 +67,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   void dispose() { _ambient.dispose(); _sparkle.dispose(); super.dispose(); }
 
   Future<void> _reload() async {
+    if (!mounted) return;
     final db = widget.runtime.database;
     if (db == null) { if (mounted) setState(() { _loading = false; _error = 'Local storage is unavailable.'; }); return; }
     setState(() { _loading = true; _error = null; });
