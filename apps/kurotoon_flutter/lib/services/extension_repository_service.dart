@@ -41,6 +41,35 @@ class ExtensionInstallPathPolicy {
         RegExp(r'^[a-fA-F0-9]{12}$').hasMatch(segments[1]) &&
         segments[2] == 'manifest.json';
   }
+
+  /// Also rejects symlinks in every path segment. Lexical path validation is
+  /// not sufficient when a directory inside the extension root can be a link.
+  static Future<bool> isSafeManifestPathOnDisk({
+    required String extensionsRoot,
+    required String extensionId,
+    required String manifestPath,
+  }) async {
+    if (!isSafeManifestPath(
+      extensionsRoot: extensionsRoot,
+      extensionId: extensionId,
+      manifestPath: manifestPath,
+    )) {
+      return false;
+    }
+    final root = path.normalize(path.absolute(extensionsRoot));
+    final candidate = path.normalize(path.absolute(manifestPath));
+    if (await FileSystemEntity.type(root, followLinks: false) == FileSystemEntityType.link) {
+      return false;
+    }
+    var current = root;
+    for (final segment in path.split(path.relative(candidate, from: root))) {
+      current = path.join(current, segment);
+      if (await FileSystemEntity.type(current, followLinks: false) == FileSystemEntityType.link) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 class RepositoryPreview {
@@ -308,22 +337,46 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       }
     }
     final root = await getApplicationSupportDirectory();
+    final extensionsRoot = path.join(root.path, 'extensions');
     final targetDirectory = Directory(path.join(
-      root.path,
-      'extensions',
+      extensionsRoot,
       manifest.id,
       manifest.version,
       entry.sha256.substring(0, 12),
     ));
-    await targetDirectory.create(recursive: true);
     final target = File(path.join(targetDirectory.path, 'manifest.json'));
+    if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
+      extensionsRoot: extensionsRoot,
+      extensionId: manifest.id,
+      manifestPath: target.path,
+    )) {
+      throw StateError('Refusing to install into an unsafe extension path.');
+    }
+    await targetDirectory.create(recursive: true);
+    if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
+      extensionsRoot: extensionsRoot,
+      extensionId: manifest.id,
+      manifestPath: target.path,
+    )) {
+      throw StateError('Extension path became unsafe during directory creation.');
+    }
     final temp = File(path.join(
       targetDirectory.path,
       '.manifest-' + DateTime.now().microsecondsSinceEpoch.toString() + '.tmp',
     ));
     var createdTarget = false;
     try {
+      if (await FileSystemEntity.type(temp.path, followLinks: false) != FileSystemEntityType.notFound) {
+        throw StateError('A temporary extension manifest path already exists.');
+      }
       await temp.writeAsBytes(bytes, flush: true);
+      if (!await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
+        extensionsRoot: extensionsRoot,
+        extensionId: manifest.id,
+        manifestPath: target.path,
+      )) {
+        throw StateError('Extension path became unsafe before manifest install.');
+      }
       if (!await target.exists()) {
         await temp.rename(target.path);
         createdTarget = true;
@@ -344,8 +397,15 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
       rethrow;
     }
     if (previousPath != null && previousPath != target.path) {
-      final previousFile = File(previousPath);
-      if (await previousFile.exists()) await previousFile.delete();
+      // A stale install path is not a filesystem capability. Leave an invalid
+      // path untouched for later diagnostics instead of deleting outside root.
+      if (await isSafeInstalledManifestPath(
+        extensionId: entry.id,
+        manifestPath: previousPath,
+      )) {
+        final previousFile = File(previousPath);
+        if (await previousFile.exists()) await previousFile.delete();
+      }
     }
     return target.path;
   }
@@ -355,25 +415,11 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     required String manifestPath,
   }) async {
     final root = await getApplicationSupportDirectory();
-    final extensionsRoot = path.join(root.path, 'extensions');
-    if (!await isSafeInstalledManifestPath(
+    return ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
+      extensionsRoot: path.join(root.path, 'extensions'),
       extensionId: extensionId,
       manifestPath: manifestPath,
-    )) {
-      return false;
-    }
-
-    // Lexical containment alone does not stop a symlink planted in an
-    // otherwise well-formed extension directory from redirecting file access.
-    final relative = path.relative(path.absolute(manifestPath), from: path.absolute(extensionsRoot));
-    var current = path.absolute(extensionsRoot);
-    for (final segment in path.split(relative)) {
-      current = path.join(current, segment);
-      if (await FileSystemEntity.type(current, followLinks: false) == FileSystemEntityType.link) {
-        return false;
-      }
-    }
-    return true;
+    );
   }
 
   Future<void> uninstallExtension(String extensionId) async {
@@ -395,11 +441,8 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     await database.removeInstalledExtension(extensionId);
     if (row == null || row['install_path'] is! String) return;
 
-    final root = await getApplicationSupportDirectory();
-    final extensionsRoot = path.join(root.path, 'extensions');
     final manifestPath = row['install_path'] as String;
-    if (!ExtensionInstallPathPolicy.isSafeManifestPath(
-      extensionsRoot: extensionsRoot,
+    if (!await isSafeInstalledManifestPath(
       extensionId: extensionId,
       manifestPath: manifestPath,
     )) {

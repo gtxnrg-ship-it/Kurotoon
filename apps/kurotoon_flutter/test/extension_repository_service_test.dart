@@ -58,6 +58,74 @@ void main() {
       }
     });
 
+
+    test('on-disk policy accepts a regular installed manifest', () async {
+      final temp = await Directory.systemTemp.createTemp('kurotoon-extension-path-');
+      addTearDown(() => temp.delete(recursive: true));
+      final root = p.join(temp.path, 'extensions');
+      final manifest = p.join(
+        root,
+        extensionId,
+        '1.2.3',
+        'a1b2c3d4e5f6',
+        'manifest.json',
+      );
+      final file = File(manifest);
+      await file.parent.create(recursive: true);
+      await file.writeAsString('{}');
+
+      expect(
+        await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
+          extensionsRoot: root,
+          extensionId: extensionId,
+          manifestPath: manifest,
+        ),
+        isTrue,
+      );
+    });
+
+    test('on-disk policy rejects a symlink inside the managed extension root', () async {
+      final temp = await Directory.systemTemp.createTemp('kurotoon-extension-symlink-');
+      addTearDown(() => temp.delete(recursive: true));
+      final root = p.join(temp.path, 'extensions');
+      final outside = p.join(temp.path, 'outside-source');
+      await Directory(root).create(recursive: true);
+      final outsideManifest = File(p.join(
+        outside,
+        '1.2.3',
+        'a1b2c3d4e5f6',
+        'manifest.json',
+      ));
+      await outsideManifest.parent.create(recursive: true);
+      await outsideManifest.writeAsString('{}');
+      await Link(p.join(root, extensionId)).create(outside);
+
+      final apparentManifest = p.join(
+        root,
+        extensionId,
+        '1.2.3',
+        'a1b2c3d4e5f6',
+        'manifest.json',
+      );
+      expect(
+        ExtensionInstallPathPolicy.isSafeManifestPath(
+          extensionsRoot: root,
+          extensionId: extensionId,
+          manifestPath: apparentManifest,
+        ),
+        isTrue,
+        reason: 'The lexical path looks safe and so must not be the only check.',
+      );
+      expect(
+        await ExtensionInstallPathPolicy.isSafeManifestPathOnDisk(
+          extensionsRoot: root,
+          extensionId: extensionId,
+          manifestPath: apparentManifest,
+        ),
+        isFalse,
+      );
+    });
+
     test('rejects invalid extension IDs before path resolution', () {
       expect(
         ExtensionInstallPathPolicy.isSafeManifestPath(
