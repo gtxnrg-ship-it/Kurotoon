@@ -18,8 +18,9 @@ class RepositoryMarkdownDiscovery {
         uri.hasFragment) {
       return null;
     }
-    if (uri.path.toLowerCase().endsWith('.md')) return uri;
-    if (uri.host.toLowerCase() != 'github.com') return null;
+    if (uri.host.toLowerCase() != 'github.com') {
+      return uri.path.toLowerCase().endsWith('.md') ? uri : null;
+    }
     final segments = uri.pathSegments.where((part) => part.isNotEmpty).toList();
     if (segments.length < 2) return null;
     final owner = segments[0];
