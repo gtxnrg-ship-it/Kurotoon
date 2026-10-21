@@ -9,6 +9,7 @@ import 'ui/library_page.dart';
 import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
 import 'ui/shop_page.dart';
+import 'ui/storage_management_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -178,7 +179,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
     final pages = [
       _HomePage(onBrowse: () => setState(() => _selected = 1)),
       _BrowserPage(runtime: widget.runtime),
-      ShopPage(runtime: widget.runtime),
+      const ShopPage(),
       LibraryPage(runtime: widget.runtime),
       _MePage(runtime: widget.runtime, motionEnabled: _motionEnabled, onMotionChanged: _setMotionEnabled),
     ];
@@ -199,7 +200,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
           NavigationDestination(icon: Icon(Icons.travel_explore_rounded), label: 'Browser'),
           NavigationDestination(icon: Icon(Icons.storefront_rounded), label: 'Shop'),
           NavigationDestination(icon: Icon(Icons.bookmarks_rounded), label: 'Library'),
-          NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Settings'),
+          NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Me'),
         ],
       ),
     );
@@ -284,7 +285,7 @@ class _HomePage extends StatelessWidget {
           const _FeatureTile(
             icon: Icons.offline_pin_rounded,
             title: 'Your data stays yours',
-            subtitle: 'Your library and reading progress stay local; disposable cache is bounded and managed from the Shop.',
+            subtitle: 'Your library and reading progress stay local; disposable cache is managed in Me → Storage & privacy.',
             tint: Color(0xFFFFC58A),
           ),
           const SizedBox(height: 24),
@@ -658,9 +659,9 @@ class _MePageState extends State<_MePage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 130),
       children: [
-        const Text('SETTINGS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 13, color: _violet)),
+        const Text('ME', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 13, color: _violet)),
         const SizedBox(height: 8),
-        const Text('Tune your reading universe.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
+        const Text('Your reading, your rules.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
         const SizedBox(height: 20),
         const _SectionHeading(title: 'Reading', subtitle: 'Sources, extensions, and reader preferences'),
         SwitchListTile(
@@ -695,6 +696,23 @@ class _MePageState extends State<_MePage> {
             backgroundColor: _violet,
             foregroundColor: const Color(0xFF080B18),
             padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 22),
+        const _SectionHeading(title: 'Storage & privacy', subtitle: 'Manage disposable cache without touching your saved library or progress'),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => StorageManagementPage(runtime: widget.runtime),
+            ),
+          ),
+          icon: const Icon(Icons.storage_rounded),
+          label: const Text('Manage storage & cache'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _cyan,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            side: BorderSide(color: _cyan.withValues(alpha: 0.35)),
           ),
         ),
         const SizedBox(height: 22),
