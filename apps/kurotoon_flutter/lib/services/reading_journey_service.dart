@@ -79,6 +79,19 @@ class LibraryBook {
   final ReadingProgress? progress;
 }
 
+/// A resumable history item. It intentionally does not imply library membership.
+class RecentReadingEntry {
+  const RecentReadingEntry({
+    required this.catalogEntry,
+    required this.edition,
+    required this.target,
+  });
+
+  final CatalogEntry? catalogEntry;
+  final EditionRecord? edition;
+  final ReadingResumeTarget target;
+}
+
 /// Connects the existing provider, catalog and storage foundations into a
 /// testable read journey. Page manifests are intentionally fetched fresh:
 /// MangaDex at-home URLs are temporary and are never stored as durable metadata.
@@ -685,6 +698,38 @@ class ReadingJourneyService {
       );
     }));
     return List.unmodifiable(books);
+  }
+
+  /// Returns a bounded resume shelf ordered by the last saved reading activity.
+  /// Progress is a separate durable record, so removing a work from the library
+  /// does not erase the user's reading history.
+  Future<List<RecentReadingEntry>> loadRecentReading({int limit = 8}) async {
+    _ensureActive();
+    if (limit < 1 || limit > 50) {
+      throw ArgumentError.value(limit, 'limit', 'Must be between 1 and 50.');
+    }
+    final progressRows = await database.loadRecentProgress(limit: limit);
+    final recent = <RecentReadingEntry>[];
+    for (final progress in progressRows) {
+      try {
+        final resolved = await Future.wait<Object?>([
+          database.loadCatalogEntryById(progress.workId),
+          database.loadEdition(progress.editionId),
+          loadResumeTarget(workId: progress.workId, editionId: progress.editionId),
+        ]);
+        final target = resolved[2] as ReadingResumeTarget?;
+        if (target == null) continue;
+        recent.add(RecentReadingEntry(
+          catalogEntry: resolved[0] as CatalogEntry?,
+          edition: resolved[1] as EditionRecord?,
+          target: target,
+        ));
+      } on Object {
+        // One stale/corrupt history item must not hide other valid recent items.
+        continue;
+      }
+    }
+    return List<RecentReadingEntry>.unmodifiable(recent);
   }
 
   /// Stores local progress only for a real chapter in the selected edition and
