@@ -48,6 +48,14 @@ This note records concrete behavior and the remaining acceptance gates. It inten
 - Migration from schema version 7 creates the journal table without dropping existing cache entries.
 - If recovery cannot safely reconcile a file, its journal is retained for a later retry and the cache maintenance pass does not block Library/Reader access.
 
+## Storage management
+
+- The Storage & Cache screen shows indexed cache footprint and protected bytes separately from the local Library and reading progress.
+- Cache integrity status reports interrupted operations recovered, pending files removed, backup files reconciled, unindexed cache files removed, and unresolved errors.
+- Users can explicitly rerun the managed-cache recovery pass. It operates only on disposable cache content and corresponding cache metadata.
+- A recovery problem is shown separately from cache-index loading and never implies that saved stories or reading progress were modified.
+- Cache budget forecasting/metrics and long-session storage telemetry remain open work.
+
 ## Acceptance still required
 
 - Run Flutter analysis, unit/widget tests, Dart Core CI and Android packaging on the PR head.

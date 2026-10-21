@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../runtime.dart';
+import '../storage/cache_storage_service.dart';
 import '../storage/kurotoon_database.dart';
 
 const _storageInk = Color(0xFF080B18);
@@ -17,7 +18,10 @@ class StorageManagementPage extends StatefulWidget {
 class _StorageManagementPageState extends State<StorageManagementPage> {
   bool _loading = true;
   bool _working = false;
+  bool _recovering = false;
   String? _error;
+  String? _recoveryError;
+  CacheRecoveryReport? _recoveryReport;
   List<CacheEntryFile> _entries = const [];
   final Set<String> _removing = {};
 
@@ -33,17 +37,90 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
   Future<void> _reload() async {
     final database = widget.runtime.database;
     if (database == null) {
-      if (mounted) setState(() { _loading = false; _error = 'Local storage is unavailable.'; });
+      if (mounted) setState(() {
+        _loading = false;
+        _error = 'Local storage is unavailable.';
+      });
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _recoveryError = null;
+    });
     try {
       final entries = await database.loadCacheEntries();
+      CacheRecoveryReport? report;
+      String? recoveryError;
+      try {
+        // Startup recovery runs before the cache service is returned. Keep its
+        // status separate so diagnostic failures cannot hide indexed cache data.
+        report = (await widget.runtime.cacheStorage).lastRecoveryReport;
+      } on Object catch (error) {
+        recoveryError = 'Recovery status unavailable: ${error.runtimeType}.';
+      }
       if (!mounted) return;
-      setState(() { _entries = entries; _loading = false; });
+      setState(() {
+        _entries = entries;
+        _recoveryReport = report;
+        _recoveryError = recoveryError;
+        _loading = false;
+      });
     } on Object catch (error) {
       if (!mounted) return;
-      setState(() { _loading = false; _error = 'Storage details could not be loaded: ${error.runtimeType}.'; });
+      setState(() {
+        _loading = false;
+        _error = 'Storage details could not be loaded: ${error.runtimeType}.';
+      });
+    }
+  }
+
+  Future<void> _recoverNow() async {
+    if (_working || _loading || _recovering) return;
+    final database = widget.runtime.database;
+    if (database == null) {
+      setState(() => _recoveryError = 'Local storage is unavailable.');
+      return;
+    }
+    setState(() {
+      _working = true;
+      _recovering = true;
+      _recoveryError = null;
+    });
+    try {
+      final cache = await widget.runtime.cacheStorage;
+      final report = await cache.recoverInterruptedOperations();
+      final entries = await database.loadCacheEntries();
+      if (!mounted) return;
+      setState(() {
+        _entries = entries;
+        _recoveryReport = report;
+        _recoveryError = report.complete
+            ? null
+            : 'Some cache files could not be reconciled safely. They were preserved for another recovery attempt.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            report.complete
+                ? (report.changed
+                    ? 'Cache recovery completed. ${report.operationsRecovered} interrupted operation(s) recovered.'
+                    : 'Cache recovery checked; no repair was needed.')
+                : 'Cache recovery is incomplete. Unresolved files were preserved.',
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() => _recoveryError = 'Cache recovery could not complete: ${error.runtimeType}.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _working = false;
+          _recovering = false;
+        });
+      }
     }
   }
 
@@ -135,6 +212,8 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
           ]),
           const SizedBox(height: 8),
           _notice('Cache entries: ${_entries.length}. Clearing cache removes only disposable files; the SQLite library and saved reading progress are separate.'),
+          const SizedBox(height: 10),
+          _recoveryCard(),
           const SizedBox(height: 20),
           const Text('CACHED CONTENT', style: TextStyle(color: _storageCyan, letterSpacing: 2, fontSize: 11, fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
@@ -144,6 +223,109 @@ class _StorageManagementPageState extends State<StorageManagementPage> {
       ),
     ),
   );
+
+  Widget _recoveryCard() {
+    final report = _recoveryReport;
+    final color = _recoveryError != null
+        ? Colors.orangeAccent
+        : report != null && !report.complete
+            ? Colors.orangeAccent
+            : _storageCyan;
+    final state = _recoveryError != null
+        ? 'Needs attention'
+        : report == null
+            ? 'Not available'
+            : !report.complete
+                ? 'Partially recovered'
+                : report.changed
+                    ? 'Repairs completed'
+                    : 'No repairs needed';
+    String count(int value) => value.toString();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .045),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: color.withValues(alpha: .25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.health_and_safety_outlined, color: color),
+              const SizedBox(width: 9),
+              const Expanded(
+                child: Text(
+                  'Cache integrity & recovery',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (_recovering)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(state, style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(
+            _recoveryError ??
+                (report == null
+                    ? 'Recovery results are not available yet.'
+                    : report.complete
+                        ? 'Interrupted cache operations and abandoned cache files were checked on this device.'
+                        : 'Some files could not be safely reconciled. They were kept for a later retry.'),
+            style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+          ),
+          if (report != null) ...[
+            const SizedBox(height: 12),
+            _recoveryMetric('Interrupted operations recovered', count(report.operationsRecovered)),
+            _recoveryMetric('Abandoned temporary files removed', count(report.pendingFilesRemoved)),
+            _recoveryMetric('Backup files reconciled', count(report.orphanBackupsHandled)),
+            _recoveryMetric('Unindexed cache files removed', count(report.orphanFilesRemoved)),
+            _recoveryMetric('Unresolved operations/errors', count(report.failures)),
+          ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _loading || _working ? null : _recoverNow,
+              icon: const Icon(Icons.healing_rounded),
+              label: Text(_recovering ? 'Checking cache…' : 'Check and repair cache'),
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Repairs apply only to disposable cache files and cache metadata. Your saved stories and reading progress are kept separate.',
+            style: TextStyle(color: Colors.white54, fontSize: 11, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _recoveryMetric(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(color: Colors.white60, fontSize: 11),
+              ),
+            ),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      );
 
   Widget _cacheTile(CacheEntryFile item) {
     final entry = item.entry;
