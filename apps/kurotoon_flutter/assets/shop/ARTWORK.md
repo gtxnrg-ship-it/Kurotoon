@@ -2,7 +2,7 @@
 
 These assets are isolated crops from the Kurotoon/Kuru character reference board supplied for this Shop task. They preserve the source artwork; no replacement character designs were invented.
 
-- `kuru_hero_reference.jpg`: cropped Kuru hero portrait used in the Shop banner.
+- `kuru_hero_reference.jpg`: low-resolution crop from the reference board, retained as a source reference; the Shop banner uses the isolated Happy sticker instead.
 - `stickers/happy.jpg`
 - `stickers/laughing.jpg`
 - `stickers/love.jpg`
