@@ -456,4 +456,83 @@ void main() {
   });
 
 
+  test('persists manual library order and rejects partial or stale reorder requests', () async {
+    await database.upsertCatalogEntry(entry());
+    await database.upsertCatalogEntry(CatalogEntry(
+      work: WorkRecord(
+        id: 'work/green-comet',
+        title: 'Green Comet',
+        format: WorkFormat.manga,
+      ),
+      listings: [
+        WorkCandidate(
+          providerId: 'mangadex',
+          externalId: 'green-comet',
+          title: 'Green Comet',
+          providerUrl: Uri.parse('https://mangadex.org/title/green-comet'),
+          format: WorkFormat.manga,
+        ),
+      ],
+    ));
+    await database.upsertEdition(EditionRecord(
+      id: 'edition-blue',
+      workId: 'work/blue-star',
+      format: WorkFormat.manga,
+      languageCode: 'en',
+    ));
+    await database.upsertEdition(EditionRecord(
+      id: 'edition-green',
+      workId: 'work/green-comet',
+      format: WorkFormat.manga,
+      languageCode: 'en',
+    ));
+
+    final blue = LibraryRecord(
+      workId: 'work/blue-star',
+      editionId: 'edition-blue',
+      status: LibraryStatus.reading,
+      addedAt: DateTime.utc(2026, 1, 1),
+      sortOrder: 0,
+    );
+    final green = LibraryRecord(
+      workId: 'work/green-comet',
+      editionId: 'edition-green',
+      status: LibraryStatus.planned,
+      addedAt: DateTime.utc(2026, 1, 2),
+      sortOrder: 1,
+    );
+    await database.putLibraryRecord(blue);
+    await database.putLibraryRecord(green);
+
+    expect(
+      (await database.loadLibrary()).map((record) => record.workId),
+      ['work/blue-star', 'work/green-comet'],
+    );
+
+    await database.reorderLibraryEntries([green, blue]);
+    final reordered = await database.loadLibrary();
+    expect(
+      reordered.map((record) => record.workId),
+      ['work/green-comet', 'work/blue-star'],
+    );
+    expect(reordered.map((record) => record.sortOrder), [0, 1]);
+
+    await expectLater(
+      database.reorderLibraryEntries(reordered.take(1).toList()),
+      throwsStateError,
+      reason: 'A filtered subset must not overwrite the order of hidden saved entries.',
+    );
+    await expectLater(
+      database.reorderLibraryEntries([reordered.first, reordered.first]),
+      throwsStateError,
+      reason: 'Duplicate entries must be rejected instead of losing a saved story.',
+    );
+    expect(
+      (await database.loadLibrary()).map((record) => record.workId),
+      ['work/green-comet', 'work/blue-star'],
+      reason: 'Rejected reorder operations must leave the previous ordering intact.',
+    );
+  });
+
+
 }
