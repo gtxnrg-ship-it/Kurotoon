@@ -2,7 +2,7 @@
 
 > **Living, acceptance-based tracker.** These estimates are manually reviewed against merged code, tests and CI—not guessed from line count. A checkbox means the acceptance gate is met, not merely that a file exists. Update this page with every meaningful implementation milestone.
 
-## Current checkpoint — 2026-10-19
+## Current checkpoint — 2026-10-21
 
 - [x] Native Flutter/Dart application is on `main`.
 - [x] Native release APK built by GitHub Actions.
@@ -11,10 +11,11 @@
 - [x] APK is uploaded as `Kurotoon.apk` to a continuous development release.
 - [ ] Install and verify the current APK on a real Android device.
 - [x] Create and verify the stable `continuous-latest` direct-download alias; its asset exists and is downloadable.
-- [ ] Run the native product flows against live sources on-device.
-- [ ] Replace incomplete screen placeholders with the real reader, library and repository-management flows.
+- [ ] Install and verify the current APK on a real Android device, including the recent reader/library/repository flows.
+- [ ] Run the complete search → series → chapter → read → save → resume journey against live sources on-device.
+- [x] Replace the former reader/library/repository-management placeholders with working native flows; advanced settings and device acceptance remain open.
 
-Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stable alias: `continuous-latest`. This native Flutter APK includes managed cache enforcement and persisted provider-health/backoff. The release now contains an arm64-v8a default APK, separate armeabi-v7a and x86_64 builds, and `SHA256SUMS.txt`. The direct link always tracks the latest successful main-branch build.
+Most recent fully verified main baseline before the current library-sorting change: commit `2e086e8c95b72c623625a20a9c15963c39e0fcf6` passed CI, Dart Core and Android APK workflows. Main is now at `db9fab3a373b9efa82fdfe74f75ca5d108fa809d`; its APK and Dart Core workflows are in progress as this checkpoint is being updated. The stable `continuous-latest` alias is intended to track the latest successful main-branch build. Release assets include arm64-v8a, armeabi-v7a, x86_64 and `SHA256SUMS.txt`.
 
 ## Progress dashboard
 
@@ -22,16 +23,16 @@ Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stab
 |---|---:|---|---|
 | Native build and CI | 90% | Flutter APK build, analysis, tests and release workflow pass | Real-device install, package metadata/signing strategy, smoke-test automation and other platforms |
 | Pure Dart domain and policy core | 70% | Typed work/edition/chapter models, cancellation, provider coordinator, identity matching, progress reconciliation, cache/effect/voice policies | More adversarial/property tests, manual identity corrections and end-to-end consumers |
-| Persistent state and cache safety | 62% | SQLite schema/migrations, managed cache budget enforcement, serialized writes, pinned-content protection, rollback tests and persisted provider-health snapshots | Verify complete CRUD integration, interrupted-write recovery and physical-device storage behaviour |
-| Provider integration | 58% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns and upstream `Retry-After` handling | Live flow validation, provider-specific request policies, diagnostics UI, more source adapters and schema-drift handling |
-| Repository / extension foundation | 65% | Preview/confirmation API, index/manifest checks, hashes/size caps, redirect rejection, DNS checks, persistent install records | Real repository UI, source permissions and compatibility display, update/uninstall recovery tests, deeper DNS pinning review |
+| Persistent state and cache safety | 70% | SQLite schema/migrations, managed cache budget enforcement, serialized writes, pinned-content protection, rollback tests, persisted provider-health snapshots and durable library/progress operations | Migration fixtures, interrupted-write recovery and physical-device storage behaviour |
+| Provider integration | 65% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns, upstream `Retry-After` handling and local source diagnostics | Live flow validation, provider-specific request policies, additional source adapters and schema-drift handling |
+| Repository / extension foundation | 72% | Native Me repository manager, preview/add/refresh/remove flows, JSON index/manifest checks, bounded Mihon/Tachiyomi metadata previews and persistent declarative install records | Update/rollback recovery tests, broader conformance fixtures, and compiled-extension compatibility proof |
 | Cross-source catalog and chapter merge | 45% | Identity matcher, catalog index, provenance models, candidate grouping, mini-chapter/edition concepts | End-to-end persisted merge pipeline, corrections/undo, creator pages and real multi-source fixtures |
-| Reader and library end-to-end | 20% | Core models/persistence foundation and previous product prototype evidence | Flutter-native reader, chapters/pages, progress resume, durable library CRUD, sorting, empty/error/offline states |
-| Galaxy experience / adaptive performance | 25% | Initial animated Galaxy shell and effect-budget policy | Reduced-motion/lifecycle hardening, GPU/frame/memory/battery profiling, device-tested quality adaptation |
+| Reader and library end-to-end | 55% | Native search-to-series-to-chapter reader, paged and long-strip reading, retry, progress resume, previous/next navigation, direction preference, Continue Reading and library add/remove/status/filter/sort | Physical-device/live-source acceptance, image-resource bounds, advanced fit/brightness settings, custom collections and long-session reliability |
+| Galaxy experience / adaptive performance | 28% | Animated Galaxy shell and persistent manual motion preference | Reduced-motion/lifecycle hardening, GPU/frame/memory/battery profiling, device-tested quality adaptation |
 | Voice, music, haptics and particle runtime | 10% | Timeline/voice license and size/hash policies | Real native adapters, consent UI, stop/lifecycle integration, downloadable packs, music discovery/playback, haptic and particle tuning |
 | Cross-platform releases | 10% | Shared Dart core is intended to be portable | iOS/iPadOS/Windows/Linux platform adapters, platform builds, accessibility and device test matrix |
 
-**Engineering estimate of the full product: about 42% complete.** This is a practical scope estimate, not an objective code-coverage statistic. The native build foundation is real and CI-verified; the product is not finished because the real reader, library, repository UI, cross-source integration, effects, and device acceptance are still major work. The separate backend-foundation estimate is roughly 63–65%; a larger portion of the foundations exists than is wired into an end-to-end user experience.
+**Engineering estimate of the full product: about 49% complete; backend foundations: roughly 71%.** These are scope estimates, not code-coverage statistics. The native reader, library and repository UI are now real and CI-tested, but live-source/physical-device acceptance, image-loading resource bounds, cross-source correction/undo, interrupted-operation recovery, adaptive performance, immersive audio/voice/haptics and other-platform builds are still significant work. Do not describe the product as release-ready until the remaining acceptance gates are recorded.
 
 ## Phase A — Native foundation and release hygiene
 
@@ -59,7 +60,8 @@ Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stab
 - [x] Store installed extension metadata and restore enabled provider state on runtime initialization.
 - [ ] Test provider cancellation under real HTTP read/write stalls and ensure socket/resource disposal.
 - [x] Track provider failure streaks and cooldowns, honor upstream `Retry-After`, and persist validated health snapshots without raw provider error text.
-- [ ] Surface provider health in diagnostics/settings UI and encode provider-specific request policies.
+- [x] Surface provider health and cooldowns in a local diagnostics screen under Me without issuing diagnostic network requests or displaying raw errors.
+- [ ] Define provider-specific request policies and a redacted diagnostic export.
 - [ ] Exercise every SQLite migration from a real previous-version database fixture.
 - [ ] Test app kill/crash during extension install/update/uninstall and recover orphan temp files safely.
 - [ ] Add a structured diagnostic export that redacts credentials, tokens and private user data.
@@ -75,7 +77,8 @@ Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stab
 - [x] Support explicit preview and confirmation API, manual HTTPS URL input and deep-link parsing.
 - [x] Use declarative manifests rather than arbitrary downloaded code execution.
 - [x] Validate index-declared manifest size/hash and cross-check identity/version/capabilities.
-- [ ] Build Me → Settings → Repositories UI with loading, trust warning, preview, add, refresh, remove and retry.
+- [x] Build Me → Extensions & repositories UI with manual URL input, preview, add, refresh, remove, extension enable/disable/uninstall and error/retry states.
+- [ ] Add clearer per-extension permission/trust summaries and update/rollback recovery.
 - [ ] Add extension listing, detail/capability/host/license display, explicit install/update/uninstall and enabled switch.
 - [ ] Support multiple repo catalogs, collision handling, repo attribution and stale-index UX.
 - [ ] Add update preview with version/digest diff and rollback to last valid manifest.
@@ -96,7 +99,8 @@ Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stab
 - [ ] Track translations, release groups, language, source timestamps and the last verified chapter per source.
 - [ ] Keep special chapters, seasons, one-shots, doujin layouts and mini-chapters distinct and correctly counted.
 - [ ] Build creator/artist pages aggregating all source editions with evidence and alternate identities.
-- [ ] Add durable library operations: add/remove, status, manual ordering, custom collections, sort and filter.
+- [x] Add durable library operations for membership, status, filtering and persistent sorting (recent activity, recently added, A–Z, Z–A).
+- [ ] Add manual drag ordering and custom collections/categories.
 - [ ] Add library update notifications without duplicate spam and with source disable/mute controls.
 - [ ] Add import/export for library and progress with identity review, dry-run and conflict handling.
 
@@ -104,13 +108,17 @@ Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stab
 
 ## Phase E — Native reader vertical slice
 
-- [ ] Implement chapter selection and chapter reader in Flutter; no WebView wrapper.
-- [ ] Display manga/manhwa/webtoon page types with long-strip virtualization and predictable paging.
+- [x] Implement native Flutter series details, chapter selection and chapter reader; no WebView wrapper.
+- [ ] Complete physical-device and live-source acceptance for the full reading journey.
+- [x] Display manga/manhwa/webtoon content with builder-backed continuous long-strip mode and paged reading.
 - [ ] Bound image decode/prefetch concurrency and bytes; cancel previous chapter work on navigation.
-- [ ] Add page retry, network states, broken-page recovery and source attribution.
-- [ ] Persist reading progress continuously but with write coalescing; restore the correct page/anchor on reopen.
-- [ ] Implement previous/next chapter navigation, chapter boundaries, safe-area handling and gestures.
-- [ ] Add reader settings: reading direction/layout, fit/scale, brightness where platform allows, page gap and data saver.
+- [x] Add page retry, loading/failure states, broken-page recovery and a selectable reader source where multiple chapter providers are available.
+- [x] Persist page-based reading progress and restore the saved chapter/page when it remains in the stored chapter list.
+- [ ] Coalesce high-frequency progress writes and prove correct resume on varied long-strip image aspect ratios.
+- [x] Implement previous/next chapter controls and honest chapter-boundary feedback.
+- [ ] Verify safe areas and swipe/gesture behavior across three-button and gesture navigation on physical devices.
+- [x] Add persistent reading direction (RTL/LTR), paged/long-strip layout and data-saver controls.
+- [ ] Add fit/scale, brightness where supported and page-gap settings.
 - [ ] Ensure external links and unsafe source responses cannot break navigation or escape a safe scheme policy.
 - [ ] Test with slow/error networks, very long webtoons, huge image dimensions, malformed media types and app background/foreground transitions.
 
@@ -127,7 +135,7 @@ Last verified APK build: commit `26b46e485882598f6329eadcd3844e5d146fffa7`; stab
 - [ ] Profile cold start, scroll frame pacing, image-heavy browsing, memory, battery and thermal behaviour on low-end and mid-range devices.
 - [ ] Verify phone/tablet/desktop breakpoints, keyboard, screen reader, large text and Android navigation modes.
 - [ ] Replace placeholders with genuine loading, empty, failure, retry and offline experiences.
-- [ ] Implement Library after persistence API and Reader acceptance gates; keep Shop isolated until its rules are defined.
+- [x] Implement a native Library with membership, status, resume, filtering and sorting; keep Shop isolated until its rules are defined.
 
 **Exit gate:** core reading remains smooth, accessible and fully usable with all Galaxy effects disabled.
 
