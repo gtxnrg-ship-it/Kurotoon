@@ -81,29 +81,31 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   Future<void> _purchase(KuruCollectible item) async {
     if (_working || _owned.contains(item.id)) return;
-    final balance = item.currency == CollectibleCurrency.gold ? _gold : _silver;
     if (item.currency == CollectibleCurrency.achievement) {
       _showMessage('This collectible is earned through achievements, not purchased.');
-      return;
-    }
-    if (balance < item.price) {
-      _showMessage('Not enough ${item.currency == CollectibleCurrency.gold ? 'gold' : 'silver'} coins yet. Keep exploring to earn more!');
       return;
     }
     setState(() => _working = true);
     try {
       final db = widget.runtime.database;
       if (db == null) throw StateError('Local storage is unavailable.');
-      final updated = {..._owned, item.id};
-      final nextSilver = item.currency == CollectibleCurrency.silver ? _silver - item.price : _silver;
-      final nextGold = item.currency == CollectibleCurrency.gold ? _gold - item.price : _gold;
-      // Persist inventory and wallet before publishing the state to the UI.
-      await db.setSetting(_ownedKey, updated.toList()..sort());
-      await db.setSetting(_silverKey, nextSilver);
-      await db.setSetting(_goldKey, nextGold);
+      final result = await db.purchaseShopCollectible(
+        itemId: item.id,
+        price: item.price,
+        useGold: item.currency == CollectibleCurrency.gold,
+      );
       if (!mounted) return;
-      setState(() { _owned = updated; _silver = nextSilver; _gold = nextGold; });
-      _showMessage('${item.name} added to your collection ✨');
+      if (result == ShopPurchaseStatus.insufficientFunds) {
+        _showMessage('Not enough ${item.currency == CollectibleCurrency.gold ? 'gold' : 'silver'} coins yet. Keep exploring to earn more!');
+        return;
+      }
+      if (result == ShopPurchaseStatus.alreadyOwned) {
+        await _reload();
+        _showMessage('You already own ${item.name}.');
+        return;
+      }
+      await _reload();
+      if (mounted) _showMessage('${item.name} added to your collection ✨');
     } on Object catch (error) {
       if (mounted) _showMessage('Purchase was not saved: ${error.runtimeType}.');
     } finally {
