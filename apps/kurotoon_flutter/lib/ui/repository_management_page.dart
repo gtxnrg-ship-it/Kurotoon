@@ -290,19 +290,9 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
 
   Widget _packageRow(String repositoryId, ExtensionPackageEntry entry) {
     final installed = _installed.any((row) => row['extension_id'] == entry.id);
-    final capabilities = entry.capabilities;
-    final canSearch = capabilities.contains(ExtensionCapability.search);
-    final canOpenSeries = capabilities.contains(ExtensionCapability.seriesDetails);
-    final canListChapters = capabilities.contains(ExtensionCapability.chapterFeed);
-    final canReadPages = capabilities.contains(ExtensionCapability.readerPages);
-    final readerReady = canSearch && canOpenSeries && canListChapters && canReadPages;
-    final capabilityLabel = readerReady
-        ? 'Search + series + chapters + reader'
-        : canReadPages && canListChapters
-            ? 'Chapter reading · no search'
-            : canSearch && !canListChapters
-                ? 'Metadata/search only · cannot read chapters'
-                : capabilities.map((capability) => capability.name).join(' · ');
+    final readiness = ExtensionReadiness.assess(entry.capabilities);
+    final readerReady = readiness.readerReady;
+    final capabilityLabel = readiness.summary;
     final capabilityColor = readerReady ? _repoCyan : const Color(0xFFFFC978);
     return ListTile(
       dense: true,
@@ -322,7 +312,7 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
             Text(capabilityLabel, style: TextStyle(color: capabilityColor, fontSize: 11, fontWeight: FontWeight.w600)),
             if (!readerReady)
               const Text(
-                'Installing this source does not guarantee chapter pages or a working reader.',
+                readiness.explanation,
                 style: TextStyle(color: Colors.white54, fontSize: 10),
               ),
           ],

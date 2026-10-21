@@ -17,3 +17,5 @@ export 'src/declarative_provider.dart';
 export 'src/mihon_repository_index.dart';
 
 export 'src/repository_markdown_discovery.dart';
+
+export 'src/extension_readiness.dart';

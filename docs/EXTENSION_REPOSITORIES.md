@@ -124,3 +124,8 @@ Every endpoint is validated before use. Only declared capabilities and supported
 ## Storage and updates
 
 Only repository metadata, installed manifests, and explicit user state are persisted. The catalogue is refreshed on demand; the app does not bulk-download all source packages. Package sizes and response sizes are bounded. Source uninstall must not remove the user's saved series, editions, reading progress, or creator records.
+
+
+## Reader-readiness assessment
+
+Repository entries advertise endpoint capabilities, but metadata alone is not proof of a usable reader. KuroToon evaluates the declared capability set consistently: a complete discovery-to-reading source needs search, series details, chapter feeds, and reader pages. The repository UI shows a concise readiness label and explains the missing pieces before installation. A source can still be useful without all four capabilities, but it is not described as a complete manga reader. This is a capability declaration, not a live guarantee that a remote source is online; network health and source behavior are verified when requests run.
