@@ -526,7 +526,8 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
         current = path.dirname(current);
         continue;
       }
-      if (await directory.list(followLinks: false).isNotEmpty) break;
+      final children = await directory.list(followLinks: false).toList();
+      if (children.isNotEmpty) break;
       await directory.delete();
       current = path.dirname(current);
     }
@@ -696,8 +697,9 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
         }
         final previousPath = payload['previousPath'];
         if (previousPath is String && _normalizePath(previousPath) != normalizedTarget) {
+          final previousExisted = await File(previousPath).exists();
           final removed = await _removeManifestIfSafe(journal.extensionId, previousPath);
-          if (removed) {
+          if (removed && previousExisted) {
             return <String, int>{
               'installRecordCompleted': 1,
               'temporaryFilesRemoved': tempRemoved,
@@ -742,8 +744,9 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
         extensionId: journal.extensionId,
         manifestPath: manifestPath,
       )) {
+        final manifestExisted = await File(manifestPath).exists();
         final didRemove = await _removeManifestIfSafe(journal.extensionId, manifestPath);
-        if (didRemove) removed = 1;
+        if (didRemove && manifestExisted) removed = 1;
       }
       return <String, int>{
         'uninstallRecordCompleted': 1,
