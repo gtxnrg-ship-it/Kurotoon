@@ -1146,6 +1146,49 @@ class KurotoonDatabase {
   }
 
 
+  /// Grants a small local-only silver reward once per completed chapter.
+  /// This is an offline convenience, not a server-verified entitlement.
+  Future<bool> recordShopChapterCompletion({
+    required String workId,
+    required String editionId,
+    required String chapterId,
+    int silverReward = 20,
+  }) async {
+    _ensureOpen();
+    if (workId.trim().isEmpty || editionId.trim().isEmpty || chapterId.trim().isEmpty) {
+      throw ArgumentError('Work, edition, and chapter IDs are required.');
+    }
+    if (silverReward <= 0) throw ArgumentError.value(silverReward, 'silverReward');
+    final completionId = jsonEncode([workId, editionId, chapterId]);
+    return _database.transaction((tx) async {
+      Future<Object?> readValue(String key) async {
+        final rows = await tx.query('app_settings', columns: ['value_json'], where: 'key = ?', whereArgs: [key], limit: 1);
+        return rows.isEmpty ? null : jsonDecode(rows.single['value_json'] as String);
+      }
+
+      const completedKey = 'shop.reading.completed.v1';
+      final value = await readValue(completedKey);
+      final completed = value is List ? value.whereType<String>().toSet() : <String>{};
+      if (completed.contains(completionId)) return false;
+
+      final walletValue = await readValue('shop.wallet.silver.v1');
+      final balance = walletValue is int ? walletValue : 800;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      completed.add(completionId);
+      await tx.insert('app_settings', {
+        'key': completedKey,
+        'value_json': jsonEncode(completed.toList()..sort()),
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await tx.insert('app_settings', {
+        'key': 'shop.wallet.silver.v1',
+        'value_json': jsonEncode(balance + silverReward),
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return true;
+    });
+  }
+
   /// Atomically updates the local collectible inventory and wallet.
   /// Keeping all three values in one transaction prevents a failed write from
   /// granting an item without charging its currency (or charging without ownership).
