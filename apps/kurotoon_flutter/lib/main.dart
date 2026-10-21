@@ -572,7 +572,7 @@ class _HomePageState extends State<_HomePage> {
           const _FeatureTile(
             icon: Icons.auto_awesome_rounded,
             title: 'A living Galaxy',
-            subtitle: 'Ambient galaxy effects, with a reduced-motion option in Me.',
+            subtitle: 'Adaptive galaxy effects that respect system motion preferences and slow frames.',
             tint: _violet,
           ),
           const SizedBox(height: 10),
@@ -1659,7 +1659,7 @@ class _MePageState extends State<_MePage> {
               title: const Text('Animated background'),
               subtitle: Text(widget.motionSaving
                   ? 'Saving motion preference…'
-                  : 'Follows system reduced-motion settings and pauses in the background'),
+                  : 'Follows system reduced-motion settings, pauses in the background, and adapts quality to frame pacing'),
               value: widget.motionEnabled,
               onChanged: widget.motionSaving ? null : widget.onMotionChanged,
             ),
