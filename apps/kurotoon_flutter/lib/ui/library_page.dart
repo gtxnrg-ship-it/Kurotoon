@@ -30,6 +30,8 @@ class _LibraryPageState extends State<LibraryPage> {
   bool _loading = true;
   String? _error;
   List<LibraryBook> _books = const [];
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -46,6 +48,29 @@ class _LibraryPageState extends State<LibraryPage> {
       // A missing preference should not prevent access to the saved library.
     }
     await _reload();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<LibraryBook> get _visibleBooks {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) return _books;
+    // This is a local-only search; it never triggers a provider request.
+    return List.unmodifiable(_books.where((book) {
+      final work = book.catalogEntry?.work;
+      final fields = <String>[
+        work?.title ?? 'Saved story',
+        if (work != null) ...work.alternateTitles,
+        if (work != null) ...work.creatorNames,
+        book.edition?.languageCode ?? '',
+        book.edition?.title ?? '',
+      ];
+      return fields.any((field) => field.toLowerCase().contains(query));
+    }));
   }
 
   DateTime _activityTime(LibraryBook book) =>
@@ -206,6 +231,26 @@ class _LibraryPageState extends State<LibraryPage> {
           for (final status in LibraryStatus.values) ...[const SizedBox(width: 8), _chip(_label(status), status)],
         ])),
         const SizedBox(height: 14),
+        TextField(
+          controller: _searchController,
+          textInputAction: TextInputAction.search,
+          onChanged: (value) => setState(() => _query = value),
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search_rounded),
+            hintText: 'Search saved titles, creators, or editions',
+            suffixIcon: _query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear library search',
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => setState(() {
+                      _searchController.clear();
+                      _query = '';
+                    }),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 14),
         DropdownButtonFormField<_LibrarySort>(
           initialValue: _sort,
           isExpanded: true,
@@ -225,10 +270,20 @@ class _LibraryPageState extends State<LibraryPage> {
         else if (_error != null) _notice(Icons.storage_rounded, 'Library unavailable', _error!, TextButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')))
         else if (_books.isEmpty) _notice(Icons.auto_stories_rounded, _filter == null ? 'Your collection starts here' : 'No ' + _label(_filter!).toLowerCase() + ' stories yet',
           _filter == null ? 'Browse a story and save it to your library. Your collection stays on this device.' : 'Choose another status or save a story from Browser.')
+        else if (_visibleBooks.isEmpty) _notice(
+          Icons.search_off_rounded,
+          'No saved stories match',
+          'Try a shorter title, a creator name, or clear the search to see your full collection.',
+          TextButton.icon(
+            onPressed: () => setState(() { _searchController.clear(); _query = ''; }),
+            icon: const Icon(Icons.close_rounded),
+            label: const Text('Clear search'),
+          ),
+        )
         else ...[
-          Text(_books.length.toString() + (_books.length == 1 ? ' edition' : ' editions'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          Text('${_visibleBooks.length} of ${_books.length} ${_books.length == 1 ? 'edition' : 'editions'} · stored locally', style: const TextStyle(color: Colors.white54, fontSize: 12)),
           const SizedBox(height: 10),
-          for (final book in _books) ...[_bookCard(book), const SizedBox(height: 10)],
+          for (final book in _visibleBooks) ...[_bookCard(book), const SizedBox(height: 10)],
         ],
       ],
     ),
