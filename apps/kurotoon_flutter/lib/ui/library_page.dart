@@ -365,9 +365,13 @@ class _LibraryPageState extends State<LibraryPage> {
         const SizedBox(height: 18),
         Row(
           children: [
-            const Expanded(child: _SectionHeading(
-              title: 'Collections',
-              subtitle: 'Create your own shelves for saved editions',
+            const Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Collections', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                SizedBox(height: 3),
+                Text('Create your own shelves for saved editions', style: TextStyle(color: Colors.white54, fontSize: 11)),
+              ],
             )),
             IconButton.filledTonal(
               tooltip: 'Create collection',
@@ -394,7 +398,6 @@ class _LibraryPageState extends State<LibraryPage> {
                 selected: _collectionFilter == collection.id,
                 onSelected: (_) => _selectCollection(_collectionFilter == collection.id ? null : collection.id),
                 onDeleted: () => _deleteCollection(collection),
-                deleteTooltip: 'Delete collection',
                 selectedColor: _violet.withValues(alpha: .22),
               ),
             ],
