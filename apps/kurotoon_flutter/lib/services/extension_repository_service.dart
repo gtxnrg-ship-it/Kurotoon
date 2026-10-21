@@ -77,7 +77,64 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
   Future<RepositoryPreview> previewRepository(String rawUrl) async {
     final decision = const RepositoryPolicy().validate(rawUrl);
     if (!decision.allowed || decision.uri == null) throw FormatException(decision.reason);
-    final indexUri = decision.uri!;
+    final suppliedUri = decision.uri!;
+    if (suppliedUri.path.toLowerCase().endsWith('.json')) {
+      return _previewIndex(suppliedUri);
+    }
+
+    const discovery = RepositoryMarkdownDiscovery();
+    final readme = discovery.readmeCandidate(rawUrl);
+    if (readme == null) {
+      throw const FormatException(
+        'Paste a direct HTTPS index.json URL, a public GitHub repository URL, or a README.md URL.',
+      );
+    }
+
+    // GitHub repository roots may use either default branch name. Explicit
+    // README URLs are tried exactly as supplied by the discovery helper.
+    final readmeCandidates = <Uri>[readme];
+    if (suppliedUri.host.toLowerCase() == 'github.com' &&
+        suppliedUri.pathSegments.where((part) => part.isNotEmpty).length == 2) {
+      readmeCandidates.add(Uri.https(
+        'raw.githubusercontent.com',
+        '/${suppliedUri.pathSegments.where((part) => part.isNotEmpty).elementAt(0)}/'
+        '${suppliedUri.pathSegments.where((part) => part.isNotEmpty).elementAt(1)}/master/README.md',
+      ));
+    }
+
+    Object? lastFailure;
+    for (final readmeUri in readmeCandidates) {
+      try {
+        final markdownBytes = await _getBytes(readmeUri, maxBytes: maxIndexBytes);
+        final markdown = utf8.decode(markdownBytes, allowMalformed: false);
+        final links = discovery.indexLinks(markdown, documentUri: readmeUri);
+        for (final candidate in links.take(12)) {
+          try {
+            // Each discovered URL passes the same HTTPS, DNS, size, schema,
+            // and same-origin resource checks as a manually entered index.
+            return await _previewIndex(candidate);
+          } on Object catch (error) {
+            lastFailure = error;
+          }
+        }
+      } on Object catch (error) {
+        lastFailure = error;
+      }
+    }
+    if (lastFailure != null) {
+      throw FormatException(
+        'README discovery did not find a valid KuroToon JSON index. '
+        'Mihon/Tachiyomi protobuf indexes and APK/JAR extensions are not executable providers in KuroToon.',
+      );
+    }
+    throw const FormatException(
+      'No JSON index links were found in this README. The repository must publish a KuroToon-compatible schemaVersion 1 index and declarative JSON manifests.',
+    );
+  }
+
+  Future<RepositoryPreview> _previewIndex(Uri indexUri) async {
+    final decision = const RepositoryPolicy().validate(indexUri.toString());
+    if (!decision.allowed || decision.uri == null) throw FormatException(decision.reason);
     final bytes = await _getBytes(indexUri, maxBytes: maxIndexBytes);
     final index = RepositoryIndexValidator(maxIndexBytes: maxIndexBytes).parse(
       body: utf8.decode(bytes, allowMalformed: false),
