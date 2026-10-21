@@ -130,19 +130,8 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     }
 
     // Catalog previews are UI only. Keep metadata counts accurate while
-    // retaining only a small sample so a very large upstream repository does
-    // not create thousands of widget rows on low-memory devices.
-    final allExtensions = index.extensions;
-    return MihonRepositoryIndex(
-      name: index.name,
-      badgeLabel: index.badgeLabel,
-      signingKey: index.signingKey,
-      contact: index.contact,
-      extensionListUrl: index.extensionListUrl,
-      extensions: List.unmodifiable(allExtensions.take(previewLimit)),
-      totalExtensionCount: index.extensionCount,
-      totalSourceCount: index.sourceCount,
-    );
+    // retaining a small sample so large indexes do not create thousands of rows.
+    return boundedMihonRepositoryPreview(index, limit: previewLimit);
   }
 
   Future<RepositoryPreview> previewRepository(String rawUrl) async {
