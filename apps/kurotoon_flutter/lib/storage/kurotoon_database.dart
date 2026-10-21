@@ -29,6 +29,22 @@ class LibraryRecord {
   final int sortOrder;
 }
 
+class LibraryCollection {
+  const LibraryCollection({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+    required this.sortOrder,
+    required this.itemCount,
+  });
+
+  final String id;
+  final String name;
+  final DateTime createdAt;
+  final int sortOrder;
+  final int itemCount;
+}
+
 class CacheEntryFile {
   const CacheEntryFile({required this.entry, required this.filePath});
 
@@ -68,7 +84,7 @@ class KurotoonDatabase {
     return _database;
   }
 
-  static const int schemaVersion = 6;
+  static const int schemaVersion = 7;
 
   static Future<KurotoonDatabase> open({
     String? databasePath,
@@ -179,6 +195,23 @@ class KurotoonDatabase {
         FOREIGN KEY(work_id) REFERENCES works(id) ON UPDATE CASCADE ON DELETE RESTRICT,
         FOREIGN KEY(edition_id) REFERENCES editions(id) ON UPDATE CASCADE ON DELETE RESTRICT
       )''',
+      '''CREATE TABLE library_collections (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        created_at INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )''',
+      '''CREATE TABLE library_collection_entries (
+        collection_id TEXT NOT NULL,
+        work_id TEXT NOT NULL,
+        edition_id TEXT NOT NULL,
+        added_at INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(collection_id, work_id, edition_id),
+        FOREIGN KEY(collection_id) REFERENCES library_collections(id) ON UPDATE CASCADE ON DELETE CASCADE,
+        FOREIGN KEY(work_id, edition_id) REFERENCES library_entries(work_id, edition_id) ON UPDATE CASCADE ON DELETE CASCADE
+      )''',
+      'CREATE INDEX library_collection_entries_edition_idx ON library_collection_entries(edition_id, collection_id)',
       '''CREATE TABLE reading_progress (
         work_id TEXT NOT NULL,
         edition_id TEXT NOT NULL,
@@ -283,6 +316,28 @@ class KurotoonDatabase {
     if (oldVersion < 4 && newVersion >= 4) await _createCatalogSearchTermsTable(db);
     if (oldVersion < 5 && newVersion >= 5) await _createCreatorCatalogIndexes(db);
     if (oldVersion < 6 && newVersion >= 6) await _createRecentReadingIndex(db);
+    if (oldVersion < 7 && newVersion >= 7) await _createLibraryCollectionsSchema(db);
+  }
+
+  /// Versioned migration: existing library rows and reading progress are untouched.
+  static Future<void> _createLibraryCollectionsSchema(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS library_collections (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      created_at INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS library_collection_entries (
+      collection_id TEXT NOT NULL,
+      work_id TEXT NOT NULL,
+      edition_id TEXT NOT NULL,
+      added_at INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(collection_id, work_id, edition_id),
+      FOREIGN KEY(collection_id) REFERENCES library_collections(id) ON UPDATE CASCADE ON DELETE CASCADE,
+      FOREIGN KEY(work_id, edition_id) REFERENCES library_entries(work_id, edition_id) ON UPDATE CASCADE ON DELETE CASCADE
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS library_collection_entries_edition_idx ON library_collection_entries(edition_id, collection_id)');
   }
 
   static Future<void> _createRecentReadingIndex(DatabaseExecutor db) async {
@@ -1090,6 +1145,122 @@ class KurotoonDatabase {
     );
   }
 
+  /// Creates a named, device-local collection. SQLite's case-insensitive
+  /// unique constraint prevents confusing duplicates such as "Favorites" and
+  /// "favorites"; validation also keeps empty/oversized names out of storage.
+  Future<void> createLibraryCollection({required String id, required String name}) async {
+    _ensureOpen();
+    final normalizedId = id.trim();
+    final normalizedName = name.trim().replaceAll(RegExp(r'\\s+'), ' ');
+    if (normalizedId.isEmpty || normalizedId.length > 160) {
+      throw ArgumentError.value(id, 'id', 'Must contain between 1 and 160 characters.');
+    }
+    if (normalizedName.isEmpty || normalizedName.length > 40) {
+      throw ArgumentError.value(name, 'name', 'Must contain between 1 and 40 characters.');
+    }
+    await _database.transaction((tx) async {
+      final orderRows = await tx.rawQuery(
+        'SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM library_collections',
+      );
+      final sortOrder = (orderRows.single['max_order'] as int) + 1;
+      await tx.insert('library_collections', {
+        'id': normalizedId,
+        'name': normalizedName,
+        'created_at': DateTime.now().toUtc().millisecondsSinceEpoch,
+        'sort_order': sortOrder,
+      });
+    });
+  }
+
+  Future<List<LibraryCollection>> loadLibraryCollections() async {
+    _ensureOpen();
+    final rows = await _database.rawQuery('''
+      SELECT c.id, c.name, c.created_at, c.sort_order,
+             COUNT(e.edition_id) AS item_count
+      FROM library_collections c
+      LEFT JOIN library_collection_entries e ON e.collection_id = c.id
+      GROUP BY c.id, c.name, c.created_at, c.sort_order
+      ORDER BY c.sort_order ASC, c.name COLLATE NOCASE ASC, c.created_at ASC
+    ''');
+    return List.unmodifiable(rows.map((row) => LibraryCollection(
+      id: row['id'] as String,
+      name: row['name'] as String,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int, isUtc: true),
+      sortOrder: row['sort_order'] as int,
+      itemCount: row['item_count'] as int,
+    )));
+  }
+
+  Future<Set<String>> loadLibraryCollectionEditionIds(String collectionId) async {
+    _ensureOpen();
+    final rows = await _database.query(
+      'library_collection_entries',
+      columns: ['edition_id'],
+      where: 'collection_id = ?',
+      whereArgs: [collectionId],
+    );
+    return Set.unmodifiable(rows.map((row) => row['edition_id'] as String));
+  }
+
+  /// Returns true only for a new membership; repeated taps are idempotent.
+  Future<bool> addLibraryEntryToCollection({
+    required String collectionId,
+    required String workId,
+    required String editionId,
+  }) async {
+    _ensureOpen();
+    return _database.transaction((tx) async {
+      final collection = await tx.query(
+        'library_collections',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [collectionId],
+        limit: 1,
+      );
+      if (collection.isEmpty) throw StateError('The selected collection no longer exists.');
+      final libraryEntry = await tx.query(
+        'library_entries',
+        columns: ['work_id'],
+        where: 'work_id = ? AND edition_id = ?',
+        whereArgs: [workId, editionId],
+        limit: 1,
+      );
+      if (libraryEntry.isEmpty) {
+        throw StateError('Only saved library entries can be added to a collection.');
+      }
+      final existing = await tx.query(
+        'library_collection_entries',
+        columns: ['collection_id'],
+        where: 'collection_id = ? AND work_id = ? AND edition_id = ?',
+        whereArgs: [collectionId, workId, editionId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) return false;
+      await tx.insert('library_collection_entries', {
+        'collection_id': collectionId,
+        'work_id': workId,
+        'edition_id': editionId,
+        'added_at': DateTime.now().toUtc().millisecondsSinceEpoch,
+        'sort_order': 0,
+      });
+      return true;
+    });
+  }
+
+  Future<void> removeLibraryCollection(String collectionId) async {
+    _ensureOpen();
+    await _database.transaction((tx) async {
+      // Explicit membership cleanup also handles databases whose foreign-key
+      // enforcement was disabled by an older app build.
+      await tx.delete(
+        'library_collection_entries',
+        where: 'collection_id = ?',
+        whereArgs: [collectionId],
+      );
+      await tx.delete('library_collections', where: 'id = ?', whereArgs: [collectionId]);
+    });
+  }
+
   Future<ReadingProgress> saveProgress(ReadingProgress incoming) async {
     _ensureOpen();
     return _database.transaction((tx) async {
@@ -1543,11 +1714,20 @@ class KurotoonDatabase {
 
   Future<void> removeLibraryRecord(String workId, String editionId) async {
     _ensureOpen();
-    await _database.delete(
-      'library_entries',
-      where: 'work_id = ? AND edition_id = ?',
-      whereArgs: [workId, editionId],
-    );
+    await _database.transaction((tx) async {
+      // Collection memberships belong to library membership, not to reading
+      // history. Delete them explicitly to avoid orphan rows on older DB files.
+      await tx.delete(
+        'library_collection_entries',
+        where: 'work_id = ? AND edition_id = ?',
+        whereArgs: [workId, editionId],
+      );
+      await tx.delete(
+        'library_entries',
+        where: 'work_id = ? AND edition_id = ?',
+        whereArgs: [workId, editionId],
+      );
+    });
   }
 
   Future<void> touchCacheEntry(String key, {DateTime? accessedAt}) async {
