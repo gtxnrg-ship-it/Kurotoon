@@ -109,7 +109,7 @@ void main() {
       json,
       indexUri: Uri.parse('https://repo.example.org/index.min.json'),
     );
-    expect(index.name, 'index.min.json');
+    expect(index.name, 'repo.example.org');
     expect(index.badgeLabel, 'JSON catalog');
     expect(index.signingKey, 'unverified-json:repo.example.org');
     expect(index.extensions, hasLength(1));
