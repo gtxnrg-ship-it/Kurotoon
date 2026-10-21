@@ -75,6 +75,36 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  Future<void> _completeChapter() async {
+    final database = widget.runtime.database;
+    if (database == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Local storage is unavailable; no reward was granted.')),
+      );
+      return;
+    }
+    try {
+      final awarded = await database.recordShopChapterCompletion(
+        workId: widget.workId,
+        editionId: widget.chapter.editionId,
+        chapterId: widget.chapter.id,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(awarded
+            ? 'Chapter completed! +20 silver added to your local Galaxy Shop wallet.'
+            : 'You already claimed the reward for this chapter.'),
+        duration: const Duration(seconds: 3),
+      ));
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save the chapter reward. Please try again.')),
+        );
+      }
+    }
+  }
+
   Future<void> _adjacent(int direction) async {
     final service = widget.runtime.readingJourney;
     if (service == null) return;
@@ -175,6 +205,12 @@ class _ReaderPageState extends State<ReaderPage> {
             const SizedBox(height: 5),
             Text(urls.isEmpty ? 'No pages available' : 'Page ' + (_page + 1).toString() + ' of ' + urls.length.toString(), style: const TextStyle(color: Colors.white54, fontSize: 11)),
           ])),
+          if (urls.isNotEmpty && _page == urls.length - 1)
+            IconButton.filledTonal(
+              tooltip: 'Mark chapter complete and claim 20 silver',
+              onPressed: _completeChapter,
+              icon: const Icon(Icons.task_alt_rounded),
+            ),
           IconButton.filledTonal(onPressed: () => _adjacent(1), icon: const Icon(Icons.skip_next_rounded)),
         ])),
       ]),
