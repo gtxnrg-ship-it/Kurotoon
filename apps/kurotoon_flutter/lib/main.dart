@@ -346,8 +346,11 @@ class _BrowserPageState extends State<_BrowserPage> {
         if (providers.isEmpty) return 0;
         final provider = providers.first;
         final enabled = widget.runtime.providers.isEnabled(candidate.providerId);
-        final chapters = provider.descriptor.supports(ProviderCapability.chapters);
-        return (enabled ? 2 : 0) + (chapters ? 1 : 0);
+        final chapters = provider is ChapterFeedProvider &&
+            provider.descriptor.supports(ProviderCapability.chapters);
+        final pages = provider is ReaderPagesProvider &&
+            provider.descriptor.supports(ProviderCapability.pages);
+        return (enabled ? 4 : 0) + (chapters ? 2 : 0) + (pages ? 1 : 0);
       }
       return priority(right).compareTo(priority(left));
     });
