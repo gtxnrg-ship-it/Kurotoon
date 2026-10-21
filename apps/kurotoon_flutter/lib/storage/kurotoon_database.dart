@@ -1151,7 +1151,7 @@ class KurotoonDatabase {
   Future<void> createLibraryCollection({required String id, required String name}) async {
     _ensureOpen();
     final normalizedId = id.trim();
-    final normalizedName = name.trim().replaceAll(RegExp(r'\\s+'), ' ');
+    final normalizedName = name.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (normalizedId.isEmpty || normalizedId.length > 160) {
       throw ArgumentError.value(id, 'id', 'Must contain between 1 and 160 characters.');
     }
