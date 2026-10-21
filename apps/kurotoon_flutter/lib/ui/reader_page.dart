@@ -65,6 +65,12 @@ class _ReaderPageState extends State<ReaderPage> {
     } on Object {
       // Reading direction is optional; use the default direction if unavailable.
     }
+    try {
+      final savedDataSaver = await widget.runtime.database?.getSetting<bool>('reader.data_saver');
+      if (mounted && savedDataSaver != null) _dataSaver = savedDataSaver;
+    } on Object {
+      // A corrupt/missing data-saver preference falls back to full-quality loading.
+    }
     if (mounted) await _load();
   }
 
@@ -155,6 +161,27 @@ class _ReaderPageState extends State<ReaderPage> {
     if (page == null || page == _page) return;
     setState(() => _page = page);
     _save(page, count);
+  }
+
+  Future<void> _toggleDataSaver() async {
+    if (_loading) return;
+    final previous = _dataSaver;
+    final next = !previous;
+    setState(() => _dataSaver = next);
+    try {
+      final database = widget.runtime.database;
+      if (database == null) throw StateError('Local settings are unavailable.');
+      await database.setSetting('reader.data_saver', next);
+    } on Object {
+      if (!mounted) return;
+      // Keep the toolbar and durable setting in agreement if persistence fails.
+      setState(() => _dataSaver = previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Data-saver preference could not be saved. The previous setting was restored.')),
+      );
+      return;
+    }
+    if (mounted) await _load();
   }
 
   Future<void> _toggleReadingDirection() async {
@@ -289,7 +316,7 @@ class _ReaderPageState extends State<ReaderPage> {
           ),
           IconButton(
             tooltip: 'Toggle data saver',
-            onPressed: _loading ? null : () { setState(() => _dataSaver = !_dataSaver); _load(); },
+            onPressed: _loading ? null : _toggleDataSaver,
             icon: Icon(_dataSaver ? Icons.data_saver_on_rounded : Icons.data_saver_off_rounded),
           ),
         ],
