@@ -529,15 +529,15 @@ class _HomePageState extends State<_HomePage> {
           const SizedBox(height: 14),
           const _FeatureTile(
             icon: Icons.hub_rounded,
-            title: 'Multiple sources',
-            subtitle: 'Repository-first extensions, installed one at a time with a review step.',
+            title: 'Source-ready by design',
+            subtitle: 'MangaDex is the current live connector; compatible catalog repositories can be previewed safely.
             tint: _cyan,
           ),
           const SizedBox(height: 10),
           const _FeatureTile(
             icon: Icons.auto_awesome_rounded,
             title: 'A living Galaxy',
-            subtitle: 'Ambient motion with adaptive effects designed to respect your device.',
+            subtitle: 'Ambient galaxy effects, with a reduced-motion option in Me.',
             tint: _violet,
           ),
           const SizedBox(height: 10),
