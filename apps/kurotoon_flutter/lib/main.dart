@@ -1036,6 +1036,7 @@ class _MePageState extends State<_MePage> {
   bool _providerBusy = false;
   bool _rightToLeftDefault = false;
   bool _longStripDefault = false;
+  bool _dataSaverDefault = false;
 
   @override
   void initState() {
@@ -1049,10 +1050,12 @@ class _MePageState extends State<_MePage> {
       final database = widget.runtime.database;
       final rightToLeft = await database?.getSetting<bool>('reader.right_to_left');
       final longStrip = await database?.getSetting<bool>('reader.long_strip');
+      final dataSaver = await database?.getSetting<bool>('reader.data_saver');
       if (!mounted) return;
       setState(() {
         _rightToLeftDefault = rightToLeft ?? false;
         _longStripDefault = longStrip ?? false;
+        _dataSaverDefault = dataSaver ?? false;
       });
     } on Object {
       // Optional reader defaults should never prevent the rest of Me from opening.
@@ -1194,6 +1197,20 @@ class _MePageState extends State<_MePage> {
                 value: value,
                 previous: _longStripDefault,
                 update: (next) => setState(() => _longStripDefault = next),
+              ),
+            ),
+            const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              secondary: const Icon(Icons.data_saver_on_rounded, color: Color(0xFFFFC58A)),
+              title: const Text('Data saver by default'),
+              subtitle: const Text('Prefer smaller source images when the provider supports them'),
+              value: _dataSaverDefault,
+              onChanged: (value) => _saveReaderPreference(
+                key: 'reader.data_saver',
+                value: value,
+                previous: _dataSaverDefault,
+                update: (next) => setState(() => _dataSaverDefault = next),
               ),
             ),
             const Divider(height: 1, indent: 16, endIndent: 16, color: Colors.white12),
