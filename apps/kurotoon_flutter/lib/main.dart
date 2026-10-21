@@ -307,6 +307,50 @@ class _BrowserPageState extends State<_BrowserPage> {
   CatalogSearchOutcome? _outcome;
   bool _loading = false;
   String? _error;
+  WorkFormat? _formatFilter;
+  String? _sourceFilter;
+  String? _languageFilter;
+
+  List<CatalogEntry> get _visibleEntries {
+    final entries = (_outcome?.entries ?? const <CatalogEntry>[]).where((entry) {
+      if (_formatFilter != null && entry.work.format != _formatFilter) return false;
+      if (_sourceFilter != null && !entry.providerIds.contains(_sourceFilter)) return false;
+      if (_languageFilter != null &&
+          !entry.listings.any((listing) => listing.language?.toLowerCase() == _languageFilter)) {
+        return false;
+      }
+      return true;
+    }).toList();
+    final query = WorkIdentityMatcher.normalizeTitle(_controller.text);
+    entries.sort((left, right) {
+      int relevance(CatalogEntry entry) {
+        final title = WorkIdentityMatcher.normalizeTitle(entry.work.title);
+        if (title == query) return 0;
+        if (title.startsWith(query)) return 1;
+        if (entry.work.alternateTitles.any((alias) => WorkIdentityMatcher.normalizeTitle(alias) == query)) return 2;
+        return 3;
+      }
+      final order = relevance(left).compareTo(relevance(right));
+      return order != 0 ? order : left.work.title.toLowerCase().compareTo(right.work.title.toLowerCase());
+    });
+    return List.unmodifiable(entries);
+  }
+
+  String _formatLabel(WorkFormat format) => switch (format) {
+        WorkFormat.manga => 'Manga',
+        WorkFormat.manhwa => 'Manhwa',
+        WorkFormat.manhua => 'Manhua',
+        WorkFormat.webtoon => 'Webtoon',
+        WorkFormat.comic => 'Comic',
+        WorkFormat.novel => 'Novel',
+        WorkFormat.oneShot => 'One-shot',
+        WorkFormat.unknown => 'Other',
+      };
+
+  String _sourceName(String id) {
+    final matches = widget.runtime.providers.all.where((provider) => provider.descriptor.id == id);
+    return matches.isEmpty ? id : matches.first.descriptor.name;
+  }
 
   @override
   void dispose() {
@@ -418,16 +462,85 @@ class _BrowserPageState extends State<_BrowserPage> {
           if (_error != null) _InlineNotice(icon: Icons.wifi_off_rounded, text: _error!),
           if (_outcome != null) ...[
             _SectionHeading(
-              title: _outcome!.entries.length.toString() + ' unified results',
+              title: '${_visibleEntries.length} of ${_outcome!.entries.length} unified results',
               subtitle: _outcome!.batch.hasPartialFailures
                   ? 'Some sources did not respond. Results are merged where identity matching is safe.'
-                  : 'Duplicate listings are grouped into one series; source alternatives stay attached.',
+                  : 'Across ${widget.runtime.providers.enabled.length} enabled sources · duplicate listings grouped safely.',
             ),
             const SizedBox(height: 12),
+            if (_outcome!.entries.isNotEmpty) ...[
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  ChoiceChip(
+                    label: const Text('All formats'),
+                    selected: _formatFilter == null,
+                    onSelected: (_) => setState(() => _formatFilter = null),
+                  ),
+                  for (final format in WorkFormat.values.where((item) => item != WorkFormat.unknown)) ...[
+                    const SizedBox(width: 7),
+                    ChoiceChip(
+                      label: Text(_formatLabel(format)),
+                      selected: _formatFilter == format,
+                      onSelected: (_) => setState(() => _formatFilter = _formatFilter == format ? null : format),
+                    ),
+                  ],
+                ]),
+              ),
+              const SizedBox(height: 8),
+              Builder(builder: (context) {
+                final sources = _outcome!.entries.expand((entry) => entry.providerIds).toSet().toList()..sort();
+                final languages = _outcome!.entries.expand((entry) => entry.listings
+                    .map((listing) => listing.language?.toLowerCase())
+                    .whereType<String>()
+                    .where((language) => language.isNotEmpty)).toSet().toList()..sort();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (sources.length > 1) ...[
+                      const Text('SOURCE', style: TextStyle(letterSpacing: 1.5, color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 6),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          ChoiceChip(label: const Text('All sources'), selected: _sourceFilter == null,
+                            onSelected: (_) => setState(() => _sourceFilter = null)),
+                          for (final source in sources) ...[
+                            const SizedBox(width: 7),
+                            ChoiceChip(label: Text(_sourceName(source)), selected: _sourceFilter == source,
+                              onSelected: (_) => setState(() => _sourceFilter = _sourceFilter == source ? null : source)),
+                          ],
+                        ]),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    if (languages.length > 1) ...[
+                      const Text('LANGUAGE', style: TextStyle(letterSpacing: 1.5, color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 6),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          ChoiceChip(label: const Text('All languages'), selected: _languageFilter == null,
+                            onSelected: (_) => setState(() => _languageFilter = null)),
+                          for (final language in languages) ...[
+                            const SizedBox(width: 7),
+                            ChoiceChip(label: Text(language.toUpperCase()), selected: _languageFilter == language,
+                              onSelected: (_) => setState(() => _languageFilter = _languageFilter == language ? null : language)),
+                          ],
+                        ]),
+                      ),
+                    ],
+                  ],
+                );
+              }),
+              const SizedBox(height: 12),
+            ],
             if (_outcome!.entries.isEmpty)
               const _InlineNotice(icon: Icons.search_off_rounded, text: 'No results returned. Try another title or check the source connection.')
+            else if (_visibleEntries.isEmpty)
+              const _InlineNotice(icon: Icons.filter_alt_off_rounded, text: 'No results match these filters. Clear a filter or try another title.')
             else
-              for (final entry in _outcome!.entries) ...[
+              for (final entry in _visibleEntries) ...[
                 _SearchResultTile(
                   candidate: _candidateForEntry(entry),
                   sourceLabels: entry.providerIds.map((id) {
