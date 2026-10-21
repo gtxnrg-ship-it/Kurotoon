@@ -368,27 +368,56 @@ class CacheStorageService {
 
     final nonce = DateTime.now().microsecondsSinceEpoch;
     final temporary = File(target.path + '.pending-' + nonce.toString());
-    final backups = <String, String>{};
+    final backupPaths = <String, String>{};
+    for (final originalPath in pathsToStage) {
+      if (await File(originalPath).exists()) {
+        backupPaths[originalPath] = originalPath + '.rollback-' + nonce.toString();
+      }
+    }
+    if (await target.exists() && !backupPaths.containsKey(target.path)) {
+      backupPaths[target.path] = target.path + '.rollback-' + nonce.toString();
+    }
+
+    final journalId = 'write-' + nonce.toString();
+    // This durable journal is committed before any existing bytes are moved.
+    // commitCacheWrite removes it in the same SQLite transaction as metadata.
+    await database.beginCacheOperationJournal(
+      id: journalId,
+      operation: 'write',
+      key: key,
+      payload: <String, Object?>{
+        'targetPath': target.path,
+        'temporaryPath': temporary.path,
+        'backups': backupPaths,
+      },
+    );
+
+    final stagedBackups = <String, String>{};
     var targetInstalled = false;
     var metadataCommitted = false;
-
     try {
       await temporary.writeAsBytes(bytes, flush: true);
 
       for (final originalPath in pathsToStage) {
+        final backupPath = backupPaths[originalPath];
+        if (backupPath == null) continue;
         final original = File(originalPath);
-        if (!await original.exists()) continue;
-        final backupPath = originalPath + '.rollback-' + nonce.toString();
+        if (!await original.exists()) {
+          throw StateError('A cache file changed while its write was being staged.');
+        }
         await original.rename(backupPath);
-        backups[originalPath] = backupPath;
+        stagedBackups[originalPath] = backupPath;
       }
 
-      // If the target path belongs to an older cache key, it is not allowed
-      // to be overwritten without staging it first.
-      if (await target.exists() && !backups.containsKey(target.path)) {
-        final backupPath = target.path + '.rollback-' + nonce.toString();
+      // If an existing file at the final target was not one of the planned
+      // evictions, stage it too before the rename can overwrite its contents.
+      if (await target.exists() && !stagedBackups.containsKey(target.path)) {
+        final backupPath = backupPaths[target.path];
+        if (backupPath == null) {
+          throw StateError('A cache target appeared while its write was being staged.');
+        }
         await target.rename(backupPath);
-        backups[target.path] = backupPath;
+        stagedBackups[target.path] = backupPath;
       }
 
       await temporary.rename(target.path);
@@ -404,30 +433,34 @@ class CacheStorageService {
         ),
         filePath: target.path,
       );
-      await database.commitCacheWrite(entry, evictedKeys: evictedKeys);
+      await database.commitCacheWrite(
+        entry,
+        evictedKeys: evictedKeys,
+        journalId: journalId,
+      );
       metadataCommitted = true;
 
-      // A backup left behind by a filesystem permission error is an orphan,
-      // not a reason to roll back an already committed cache index.
-      for (final backupPath in backups.values) {
+      // Once SQLite has committed, leftover backups are disposable cache files.
+      for (final backupPath in backupPaths.values) {
         try {
           final backup = File(backupPath);
           if (await backup.exists()) await backup.delete();
         } on Object {
-          // A future maintenance pass may clean this disposable orphan.
+          // Startup recovery cleans disposable leftovers after committed writes.
         }
       }
       return entry;
     } catch (_) {
       if (metadataCommitted) rethrow;
+      var rollbackComplete = true;
       if (targetInstalled && await target.exists()) {
         try {
           await target.delete();
-        } on FileSystemException {
-          // Preserve the original failure; the staged backup remains available.
+        } on Object {
+          rollbackComplete = false;
         }
       }
-      for (final backup in backups.entries.toList().reversed) {
+      for (final backup in stagedBackups.entries.toList().reversed) {
         try {
           final backupFile = File(backup.value);
           if (await backupFile.exists()) {
@@ -436,19 +469,28 @@ class CacheStorageService {
             if (await original.exists()) await original.delete();
             await backupFile.rename(original.path);
           }
-        } on FileSystemException {
-          // Preserve the original failure and leave the rollback file recoverable.
+        } on Object {
+          rollbackComplete = false;
+        }
+      }
+      for (final originalPath in backupPaths.keys) {
+        if (!stagedBackups.containsKey(originalPath) && !await File(originalPath).exists()) {
+          rollbackComplete = false;
+        }
+      }
+      try {
+        if (await temporary.exists()) await temporary.delete();
+      } on Object {
+        rollbackComplete = false;
+      }
+      if (rollbackComplete) {
+        try {
+          await database.removeCacheOperationJournal(journalId);
+        } on Object {
+          // A leftover journal is safe: recovery is idempotent after rollback.
         }
       }
       rethrow;
-    } finally {
-      if (await temporary.exists()) {
-        try {
-          await temporary.delete();
-        } on FileSystemException {
-          // Temporary files are disposable and can be cleaned later.
-        }
-      }
     }
   }
 
@@ -464,6 +506,16 @@ class CacheStorageService {
       final original = File(entry.filePath);
       final nonce = DateTime.now().microsecondsSinceEpoch;
       final backup = File(entry.filePath + '.remove-' + nonce.toString());
+      final journalId = 'remove-' + nonce.toString();
+      await database.beginCacheOperationJournal(
+        id: journalId,
+        operation: 'remove',
+        key: key,
+        payload: <String, Object?>{
+          'originalPath': original.path,
+          'backupPath': backup.path,
+        },
+      );
       var staged = false;
       var metadataRemoved = false;
       try {
@@ -471,20 +523,35 @@ class CacheStorageService {
           await original.rename(backup.path);
           staged = true;
         }
-        await database.confirmCacheEviction([key]);
+        await database.confirmCacheEviction([key], journalId: journalId);
         metadataRemoved = true;
         if (staged && await backup.exists()) {
           try {
             await backup.delete();
           } on Object {
-            // Metadata is committed; a leftover disposable file can be cleaned later.
+            // Metadata is committed; startup cleanup removes this backup.
           }
         }
       } catch (_) {
         if (metadataRemoved) rethrow;
+        var rollbackComplete = true;
         if (staged && await backup.exists()) {
-          if (await original.exists()) await original.delete();
-          await backup.rename(original.path);
+          try {
+            if (await original.exists()) await original.delete();
+            await original.parent.create(recursive: true);
+            await backup.rename(original.path);
+          } on Object {
+            rollbackComplete = false;
+          }
+        } else if (staged && !await original.exists()) {
+          rollbackComplete = false;
+        }
+        if (rollbackComplete) {
+          try {
+            await database.removeCacheOperationJournal(journalId);
+          } on Object {
+            // Preserve the journal if cleanup fails; recovery is idempotent.
+          }
         }
         rethrow;
       }
@@ -526,4 +593,18 @@ class CacheStorageService {
     _disposed = true;
     await _writeQueue;
   }
+}
+
+class _CleanupResult {
+  const _CleanupResult({
+    this.pendingRemoved = 0,
+    this.backupsHandled = 0,
+    this.orphanFilesRemoved = 0,
+    this.failures = 0,
+  });
+
+  final int pendingRemoved;
+  final int backupsHandled;
+  final int orphanFilesRemoved;
+  final int failures;
 }
