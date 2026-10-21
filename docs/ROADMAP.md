@@ -27,7 +27,7 @@ Most recent fully verified main baseline before the current library-sorting chan
 | Provider integration | 65% | Native MangaDex adapter, bounded coordination, persistent failure streaks/cooldowns, upstream `Retry-After` handling and local source diagnostics | Live flow validation, provider-specific request policies, additional source adapters and schema-drift handling |
 | Repository / extension foundation | 72% | Native Me repository manager, preview/add/refresh/remove flows, JSON index/manifest checks, bounded Mihon/Tachiyomi metadata previews and persistent declarative install records | Update/rollback recovery tests, broader conformance fixtures, and compiled-extension compatibility proof |
 | Cross-source catalog and chapter merge | 45% | Identity matcher, catalog index, provenance models, candidate grouping, mini-chapter/edition concepts | End-to-end persisted merge pipeline, corrections/undo, creator pages and real multi-source fixtures |
-| Reader and library end-to-end | 55% | Native search-to-series-to-chapter reader, paged and long-strip reading, retry, progress resume, previous/next navigation, direction preference, Continue Reading and library add/remove/status/filter/sort | Physical-device/live-source acceptance, image-resource bounds, advanced fit/brightness settings, custom collections and long-session reliability |
+| Reader and library end-to-end | 55% | Native search-to-series-to-chapter reader, paged and long-strip reading, retry, progress resume, previous/next navigation, direction preference, Continue Reading, persisted library sorting/search, and local collection organization | Physical-device/live-source acceptance, collection migration verification, manual drag ordering, advanced fit/brightness settings and long-session reliability |
 | Galaxy experience / adaptive performance | 28% | Animated Galaxy shell and persistent manual motion preference | Reduced-motion/lifecycle hardening, GPU/frame/memory/battery profiling, device-tested quality adaptation |
 | Voice, music, haptics and particle runtime | 10% | Timeline/voice license and size/hash policies | Real native adapters, consent UI, stop/lifecycle integration, downloadable packs, music discovery/playback, haptic and particle tuning |
 | Cross-platform releases | 10% | Shared Dart core is intended to be portable | iOS/iPadOS/Windows/Linux platform adapters, platform builds, accessibility and device test matrix |
@@ -100,7 +100,8 @@ Most recent fully verified main baseline before the current library-sorting chan
 - [ ] Keep special chapters, seasons, one-shots, doujin layouts and mini-chapters distinct and correctly counted.
 - [ ] Build creator/artist pages aggregating all source editions with evidence and alternate identities.
 - [x] Add durable library operations for membership, status, filtering and persistent sorting (recent activity, recently added, A–Z, Z–A).
-- [ ] Add manual drag ordering and custom collections/categories.
+- [ ] Add manual drag ordering and custom categories across the library and collections.
+- [ ] Verify named local collections on-device and after process restart, including schema migration and preserving saved progress when collections or memberships are removed.
 - [ ] Add library update notifications without duplicate spam and with source disable/mute controls.
 - [ ] Add import/export for library and progress with identity review, dry-run and conflict handling.
 
