@@ -76,7 +76,14 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
 
   /// Inspects a Mihon/Tachiyomi index without installing or executing packages.
   /// Supports protobuf index.pb and legacy index.json/index.min.json catalogs.
-  Future<MihonRepositoryIndex> previewMihonCatalog(String rawUrl) async {
+  Future<MihonRepositoryIndex> previewMihonCatalog(
+    String rawUrl, {
+    int previewLimit = 50,
+  }) async {
+    if (previewLimit < 1 || previewLimit > 100) {
+      throw ArgumentError.value(previewLimit, 'previewLimit', 'Must be between 1 and 100.');
+    }
+    const maxMetadataEntries = 10000;
     final decision = const RepositoryPolicy().validate(rawUrl);
     if (!decision.allowed || decision.uri == null) throw FormatException(decision.reason);
     final uri = RepositoryMarkdownDiscovery().normalizeGitHubFileUrl(decision.uri!);
@@ -84,25 +91,57 @@ class ExtensionRepositoryService implements DeclarativeJsonFetcher {
     final bytes = await _getBytes(uri, maxBytes: 4 * 1024 * 1024);
     MihonRepositoryIndex index;
     if (lowerPath.endsWith('.pb')) {
-      index = MihonRepositoryIndex.parse(bytes, indexUri: uri, maxBytes: 4 * 1024 * 1024);
+      index = MihonRepositoryIndex.parse(
+        bytes,
+        indexUri: uri,
+        maxBytes: 4 * 1024 * 1024,
+        maxExtensions: maxMetadataEntries,
+      );
     } else if (lowerPath.endsWith('.json')) {
-      index = MihonRepositoryIndex.parseJson(bytes, indexUri: uri, maxBytes: 4 * 1024 * 1024);
+      index = MihonRepositoryIndex.parseJson(
+        bytes,
+        indexUri: uri,
+        maxBytes: 4 * 1024 * 1024,
+        maxExtensions: maxMetadataEntries,
+      );
     } else {
       throw const FormatException('Use a direct index.pb, index.json, or index.min.json URL.');
     }
+
     final listUri = index.extensionListUrl;
-    if (listUri == null) return index;
-    if (listUri.host.toLowerCase() != uri.host.toLowerCase()) {
-      throw const FormatException('External Mihon extension lists must stay on the same host as the repository index.');
+    if (listUri != null) {
+      if (listUri.host.toLowerCase() != uri.host.toLowerCase()) {
+        throw const FormatException('External Mihon extension lists must stay on the same host as the repository index.');
+      }
+      final listBytes = await _getBytes(listUri, maxBytes: 16 * 1024 * 1024);
+      final extensions = MihonRepositoryIndex.parseExtensionList(
+        listBytes,
+        maxBytes: 16 * 1024 * 1024,
+        maxExtensions: maxMetadataEntries,
+      );
+      index = MihonRepositoryIndex(
+        name: index.name,
+        badgeLabel: index.badgeLabel,
+        signingKey: index.signingKey,
+        contact: index.contact,
+        extensionListUrl: listUri,
+        extensions: extensions,
+      );
     }
-    final listBytes = await _getBytes(listUri, maxBytes: 16 * 1024 * 1024);
+
+    // Catalog previews are UI only. Keep metadata counts accurate while
+    // retaining only a small sample so a very large upstream repository does
+    // not create thousands of widget rows on low-memory devices.
+    final allExtensions = index.extensions;
     return MihonRepositoryIndex(
       name: index.name,
       badgeLabel: index.badgeLabel,
       signingKey: index.signingKey,
       contact: index.contact,
-      extensionListUrl: listUri,
-      extensions: MihonRepositoryIndex.parseExtensionList(listBytes, maxBytes: 16 * 1024 * 1024),
+      extensionListUrl: index.extensionListUrl,
+      extensions: List.unmodifiable(allExtensions.take(previewLimit)),
+      totalExtensionCount: index.extensionCount,
+      totalSourceCount: index.sourceCount,
     );
   }
 
