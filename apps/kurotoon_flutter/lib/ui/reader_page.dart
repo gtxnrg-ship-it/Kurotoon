@@ -3,6 +3,25 @@ import 'package:kurotoon_core/kurotoon_core.dart';
 
 import '../runtime.dart';
 
+/// Bounds the decoded width of remote comic pages to the useful display
+/// resolution. The source bytes may still be large, but decoding them at an
+/// extreme native width wastes memory on phones and older tablets.
+int readerImageDecodeWidth({
+  required double logicalWidth,
+  required double devicePixelRatio,
+}) {
+  const minimumDecodeWidth = 480;
+  const maximumDecodeWidth = 1920;
+  if (!logicalWidth.isFinite ||
+      logicalWidth <= 0 ||
+      !devicePixelRatio.isFinite ||
+      devicePixelRatio <= 0) {
+    return minimumDecodeWidth;
+  }
+  final requested = (logicalWidth * devicePixelRatio).round();
+  return requested.clamp(minimumDecodeWidth, maximumDecodeWidth).toInt();
+}
+
 class ReaderPage extends StatefulWidget {
   const ReaderPage({super.key, required this.runtime, required this.workId, required this.chapter});
   final KurotoonRuntime runtime;
@@ -371,9 +390,14 @@ class _ReaderImageState extends State<_ReaderImage> {
         ],
       );
     }
+    final decodeWidth = readerImageDecodeWidth(
+      logicalWidth: MediaQuery.sizeOf(context).width,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
     return Image.network(
       widget.url.toString(),
       key: ValueKey(_attempt),
+      cacheWidth: decodeWidth,
       fit: widget.fitWidth ? BoxFit.fitWidth : BoxFit.contain,
       loadingBuilder: (context, child, progress) => progress == null
           ? child
