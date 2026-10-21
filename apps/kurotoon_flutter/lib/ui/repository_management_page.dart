@@ -311,7 +311,7 @@ class _RepositoryManagementPageState extends State<RepositoryManagementPage> {
             const SizedBox(height: 3),
             Text(capabilityLabel, style: TextStyle(color: capabilityColor, fontSize: 11, fontWeight: FontWeight.w600)),
             if (!readerReady)
-              const Text(
+              Text(
                 readiness.explanation,
                 style: TextStyle(color: Colors.white54, fontSize: 10),
               ),
