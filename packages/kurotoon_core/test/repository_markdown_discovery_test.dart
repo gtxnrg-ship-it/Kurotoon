@@ -18,6 +18,15 @@ void main() {
     );
   });
 
+  test('normalizes a direct GitHub blob index URL to raw content', () {
+    expect(
+      discovery.normalizeGitHubFileUrl(
+        Uri.parse('https://github.com/example/catalog/blob/main/index.json'),
+      ),
+      Uri.parse('https://raw.githubusercontent.com/example/catalog/main/index.json'),
+    );
+  });
+
   test('discovers and prioritizes linked index JSON files', () {
     final readme = Uri.parse('https://raw.githubusercontent.com/example/catalog/main/README.md');
     final links = discovery.indexLinks('''
