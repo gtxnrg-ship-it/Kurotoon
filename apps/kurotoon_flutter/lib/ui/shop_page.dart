@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:kurotoon_core/kurotoon_core.dart';
-
 import '../runtime.dart';
-import '../storage/cache_storage_service.dart';
 import '../storage/kurotoon_database.dart';
 
 const _shopInk = Color(0xFF080B18);
