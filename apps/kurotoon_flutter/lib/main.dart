@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:kurotoon_core/kurotoon_core.dart';
 
 import 'runtime.dart';
+import 'services/catalog_workflow_service.dart';
 import 'ui/library_page.dart';
 import 'ui/repository_management_page.dart';
 import 'ui/series_detail_page.dart';
@@ -198,7 +199,7 @@ class _KuroToonShellState extends State<_KuroToonShell> {
           NavigationDestination(icon: Icon(Icons.travel_explore_rounded), label: 'Browser'),
           NavigationDestination(icon: Icon(Icons.storefront_rounded), label: 'Shop'),
           NavigationDestination(icon: Icon(Icons.bookmarks_rounded), label: 'Library'),
-          NavigationDestination(icon: Icon(Icons.person_rounded), label: 'Me'),
+          NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Settings'),
         ],
       ),
     );
@@ -303,7 +304,7 @@ class _BrowserPage extends StatefulWidget {
 
 class _BrowserPageState extends State<_BrowserPage> {
   final _controller = TextEditingController();
-  SearchBatch? _batch;
+  CatalogSearchOutcome? _outcome;
   bool _loading = false;
   String? _error;
 
@@ -320,18 +321,54 @@ class _BrowserPageState extends State<_BrowserPage> {
     setState(() {
       _loading = true;
       _error = null;
-      _batch = null;
+      _outcome = null;
     });
     try {
-      final batch = await widget.runtime.createSearchCoordinator().search(query);
+      final workflow = widget.runtime.catalogWorkflow;
+      if (workflow == null) throw StateError('Persistent catalog storage is unavailable.');
+      final outcome = await workflow.searchAndCatalog(query);
       if (!mounted) return;
-      setState(() => _batch = batch);
+      setState(() => _outcome = outcome);
     } catch (_) {
       if (!mounted) return;
       setState(() => _error = 'Search could not complete. Check your connection and try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  WorkCandidate _candidateForEntry(CatalogEntry entry) {
+    if (entry.listings.isEmpty) throw StateError('Catalog entry has no source listings.');
+    final candidates = entry.listings.toList();
+    candidates.sort((left, right) {
+      int priority(WorkCandidate candidate) {
+        final providers = widget.runtime.providers.all.where((item) => item.descriptor.id == candidate.providerId);
+        if (providers.isEmpty) return 0;
+        final provider = providers.first;
+        final enabled = widget.runtime.providers.isEnabled(candidate.providerId);
+        final chapters = provider is ChapterFeedProvider &&
+            provider.descriptor.supports(ProviderCapability.chapters);
+        final pages = provider is ReaderPagesProvider &&
+            provider.descriptor.supports(ProviderCapability.pages);
+        return (enabled ? 4 : 0) + (chapters ? 2 : 0) + (pages ? 1 : 0);
+      }
+      return priority(right).compareTo(priority(left));
+    });
+    final source = candidates.first;
+    return WorkCandidate(
+      providerId: source.providerId,
+      externalId: source.externalId,
+      title: entry.work.title,
+      providerUrl: source.providerUrl,
+      alternateTitles: entry.work.alternateTitles,
+      creatorNames: entry.work.creatorNames,
+      year: entry.work.year,
+      format: entry.work.format,
+      language: source.language,
+      description: source.description,
+      coverUrl: source.coverUrl,
+      tags: source.tags,
+    );
   }
 
   Future<void> _openSeries(WorkCandidate candidate) async {
@@ -379,21 +416,30 @@ class _BrowserPageState extends State<_BrowserPage> {
           const SizedBox(height: 18),
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           if (_error != null) _InlineNotice(icon: Icons.wifi_off_rounded, text: _error!),
-          if (_batch != null) ...[
+          if (_outcome != null) ...[
             _SectionHeading(
-              title: _batch!.candidates.length.toString() + ' results',
-              subtitle: _batch!.hasPartialFailures ? 'Some sources did not respond.' : 'Results from connected sources',
+              title: _outcome!.entries.length.toString() + ' unified results',
+              subtitle: _outcome!.batch.hasPartialFailures
+                  ? 'Some sources did not respond. Results are merged where identity matching is safe.'
+                  : 'Duplicate listings are grouped into one series; source alternatives stay attached.',
             ),
             const SizedBox(height: 12),
-            if (_batch!.candidates.isEmpty)
+            if (_outcome!.entries.isEmpty)
               const _InlineNotice(icon: Icons.search_off_rounded, text: 'No results returned. Try another title or check the source connection.')
             else
-              for (final candidate in _batch!.candidates) ...[
-                _SearchResultTile(candidate: candidate, onTap: () => _openSeries(candidate)),
+              for (final entry in _outcome!.entries) ...[
+                _SearchResultTile(
+                  candidate: _candidateForEntry(entry),
+                  sourceLabels: entry.providerIds.map((id) {
+                    final providers = widget.runtime.providers.all.where((provider) => provider.descriptor.id == id);
+                    return providers.isEmpty ? id : providers.first.descriptor.name;
+                  }).toList(growable: false),
+                  onTap: () => _openSeries(_candidateForEntry(entry)),
+                ),
                 const SizedBox(height: 10),
               ],
           ],
-          if (!_loading && _batch == null && _error == null)
+          if (!_loading && _outcome == null && _error == null)
             const _InlineNotice(
               icon: Icons.public_rounded,
               text: 'Search uses live provider APIs. Results depend on source availability; Kurotoon does not host comic content.',
@@ -403,8 +449,13 @@ class _BrowserPageState extends State<_BrowserPage> {
 }
 
 class _SearchResultTile extends StatelessWidget {
-  const _SearchResultTile({required this.candidate, required this.onTap});
+  const _SearchResultTile({
+    required this.candidate,
+    required this.sourceLabels,
+    required this.onTap,
+  });
   final WorkCandidate candidate;
+  final List<String> sourceLabels;
   final VoidCallback onTap;
 
   @override
@@ -450,8 +501,14 @@ class _SearchResultTile extends StatelessWidget {
                         style: const TextStyle(color: _cyan, fontSize: 11)),
                   ],
                   const SizedBox(height: 10),
-                  Text(candidate.providerId.toUpperCase(),
-                      style: const TextStyle(letterSpacing: 1.1, color: _violet, fontSize: 10, fontWeight: FontWeight.bold)),
+                  Text(
+                    sourceLabels.length == 1
+                        ? '1 SOURCE · ${sourceLabels.first}'
+                        : '${sourceLabels.length} SOURCES · ${sourceLabels.take(3).join(' · ')}${sourceLabels.length > 3 ? ' · +' + (sourceLabels.length - 3).toString() : ''}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(letterSpacing: .5, color: _violet, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton.icon(
@@ -488,11 +545,11 @@ class _MePageState extends State<_MePage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 130),
       children: [
-        const Text('YOUR SPACE', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 13, color: _violet)),
+        const Text('SETTINGS', style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w900, fontSize: 13, color: _violet)),
         const SizedBox(height: 8),
-        const Text('Make it yours.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
+        const Text('Tune your reading universe.', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
         const SizedBox(height: 20),
-        const _SectionHeading(title: 'Sources', subtitle: 'Connected providers'),
+        const _SectionHeading(title: 'Reading', subtitle: 'Sources, extensions, and reader preferences'),
         SwitchListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 14),
           tileColor: Colors.white.withValues(alpha: 0.05),
@@ -506,22 +563,11 @@ class _MePageState extends State<_MePage> {
             if (mounted) setState(() => _mangadexEnabled = value);
           },
         ),
-        const SizedBox(height: 22),
-        const _SectionHeading(title: 'Galaxy', subtitle: 'Motion preferences'),
-        SwitchListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-          tileColor: Colors.white.withValues(alpha: 0.05),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          secondary: const Icon(Icons.blur_on_rounded, color: _violet),
-          title: const Text('Animated background'),
-          subtitle: const Text('Saved on this device; turn it off to reduce background animation.'),
-          value: widget.motionEnabled,
-          onChanged: widget.onMotionChanged,
-        ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 18),
+        const _SectionHeading(title: 'Extensions & repositories', subtitle: 'Add catalogs and manage supported sources'),
         const _InlineNotice(
           icon: Icons.extension_rounded,
-          text: 'Review repositories, browse verified declarative extensions, and manage installed sources. Compiled extension APKs are not executed.',
+          text: 'Browse catalogs and manage compatible declarative extensions. Compiled extension APKs are not executed.',
         ),
         const SizedBox(height: 10),
         FilledButton.icon(
@@ -538,6 +584,19 @@ class _MePageState extends State<_MePage> {
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
+        const SizedBox(height: 22),
+        const _SectionHeading(title: 'Galaxy', subtitle: 'Motion preferences'),
+        SwitchListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          tileColor: Colors.white.withValues(alpha: 0.05),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          secondary: const Icon(Icons.blur_on_rounded, color: _violet),
+          title: const Text('Animated background'),
+          subtitle: const Text('Saved on this device; turn it off to reduce background animation.'),
+          value: widget.motionEnabled,
+          onChanged: widget.onMotionChanged,
+        ),
+        const SizedBox(height: 22),
       ],
     );
   }

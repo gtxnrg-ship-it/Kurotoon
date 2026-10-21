@@ -172,6 +172,39 @@ void main() {
     await temp.delete(recursive: true);
   });
 
+  test('unified search keeps the latest aggregate for a canonical work', () {
+    final first = _candidate();
+    final second = WorkCandidate(
+      providerId: 'other.source',
+      externalId: 'series-2',
+      title: 'Blue Star',
+      creatorNames: const ['Artist'],
+      year: 2023,
+      format: WorkFormat.manga,
+      providerUrl: Uri.https('other.fake.example.org', '/series/series-2'),
+    );
+    final work = WorkRecord(
+      id: 'work/blue-star',
+      title: 'Blue Star',
+      creatorNames: const ['Artist'],
+      year: 2023,
+      format: WorkFormat.manga,
+    );
+    final firstEntry = CatalogEntry(work: work, listings: [first]);
+    final mergedEntry = CatalogEntry(work: work, listings: [first, second]);
+    final outcome = CatalogSearchOutcome(
+      batch: SearchBatch(results: const [], cancelled: false),
+      catalogResults: [
+        CatalogUpsertResult(status: CatalogUpsertStatus.created, entry: firstEntry),
+        CatalogUpsertResult(status: CatalogUpsertStatus.linked, entry: mergedEntry),
+      ],
+    );
+
+    expect(outcome.entries, hasLength(1));
+    expect(outcome.entries.single.listings, hasLength(2));
+    expect(outcome.entries.single.providerIds, containsAll(['fake.source', 'other.source']));
+  });
+
   test('search, refresh metadata, save chapter feed, fetch fresh pages, and persist progress', () async {
     final firstSearch = await workflow.searchAndCatalog('Blue Star');
     expect(firstSearch.batch.candidates, hasLength(1));
