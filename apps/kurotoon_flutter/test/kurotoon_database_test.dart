@@ -445,4 +445,49 @@ void main() {
         ['kuru_happy']);
   });
 
+  test('concurrent purchases of the same collectible charge the wallet only once', () async {
+    await database.setSetting('shop.wallet.silver.v1', 250);
+    await database.setSetting('shop.collection.owned.v1', <String>['kuru_happy']);
+
+    final results = await Future.wait([
+      database.purchaseShopCollectible(
+        itemId: 'kuru_love',
+        price: 100,
+        useGold: false,
+      ),
+      database.purchaseShopCollectible(
+        itemId: 'kuru_love',
+        price: 100,
+        useGold: false,
+      ),
+    ]);
+
+    expect(results.where((result) => result == ShopPurchaseStatus.purchased), hasLength(1));
+    expect(results.where((result) => result == ShopPurchaseStatus.alreadyOwned), hasLength(1));
+    expect(await database.getSetting<int>('shop.wallet.silver.v1'), 150);
+    expect(
+      await database.getSetting<List<dynamic>>('shop.collection.owned.v1'),
+      contains('kuru_love'),
+    );
+  });
+
+  test('shop purchase rejects invalid prices without changing the wallet', () async {
+    await database.setSetting('shop.wallet.silver.v1', 250);
+    await database.setSetting('shop.collection.owned.v1', <String>['kuru_happy']);
+
+    await expectLater(
+      database.purchaseShopCollectible(
+        itemId: 'kuru_love',
+        price: 0,
+        useGold: false,
+      ),
+      throwsArgumentError,
+    );
+    expect(await database.getSetting<int>('shop.wallet.silver.v1'), 250);
+    expect(
+      await database.getSetting<List<dynamic>>('shop.collection.owned.v1'),
+      ['kuru_happy'],
+    );
+  });
+
 }
