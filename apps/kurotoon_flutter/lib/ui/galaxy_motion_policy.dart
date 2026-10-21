@@ -16,7 +16,7 @@ int nextGalaxyEffectQuality({
   required int consecutiveSlowFrames,
   required int consecutiveFastFrames,
 }) {
-  final quality = currentQuality.clamp(0, 2);
+  final quality = currentQuality.clamp(0, 2).toInt();
   if (consecutiveSlowFrames >= 8 && quality > 0) return quality - 1;
   if (consecutiveFastFrames >= 240 && quality < 2) return quality + 1;
   return quality;
