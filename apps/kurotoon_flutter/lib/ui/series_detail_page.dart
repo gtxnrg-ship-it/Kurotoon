@@ -28,6 +28,8 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
   String? _editionId;
   String? _warning;
   List<ChapterUnit> _chapters = const [];
+  List<WorkCandidate> _sourceListings = const [];
+  final Map<String, int?> _sourceOffsets = {};
   int? _nextOffset;
   bool _saved = false;
   ReadingJourneyService? get _journey => widget.runtime.readingJourney;
@@ -47,7 +49,12 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
         setState(() { _error = result.catalogResult.message ?? 'This source needs an identity review before the series can be opened.'; _opening = false; });
         return;
       }
-      setState(() { _workId = entry.work.id; _warning = result.warning; _opening = false; });
+      setState(() {
+        _workId = entry.work.id;
+        _sourceListings = entry.listings;
+        _warning = result.warning;
+        _opening = false;
+      });
       await _loadChapters(reset: true);
     } on Object {
       if (!mounted) return;
@@ -55,31 +62,154 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
     }
   }
 
+  List<String> _eligibleChapterProviders() {
+    final ids = <String>{};
+    for (final listing in _sourceListings) {
+      final matches = widget.runtime.providers.all.where((item) => item.descriptor.id == listing.providerId);
+      if (matches.isEmpty) continue;
+      final provider = matches.first;
+      if (!widget.runtime.providers.isEnabled(listing.providerId) ||
+          !provider.descriptor.supports(ProviderCapability.chapters)) continue;
+      ids.add(listing.providerId);
+    }
+    // A newly opened listing can be the first one saved to the catalog.
+    if (ids.isEmpty) {
+      final matches = widget.runtime.providers.all.where((item) => item.descriptor.id == widget.candidate.providerId);
+      if (matches.isNotEmpty &&
+          widget.runtime.providers.isEnabled(widget.candidate.providerId) &&
+          matches.first.descriptor.supports(ProviderCapability.chapters)) {
+        ids.add(widget.candidate.providerId);
+      }
+    }
+    // Prefer the source the user opened, then keep the remaining source order stable.
+    return [
+      if (ids.remove(widget.candidate.providerId)) widget.candidate.providerId,
+      ...ids,
+    ];
+  }
+
   Future<void> _loadChapters({bool reset = false}) async {
     final workId = _workId;
     final service = _journey;
     if (workId == null || service == null || _loadingChapters) return;
-    final offset = reset ? 0 : (_nextOffset ?? 0);
     if (!reset && _nextOffset == null) return;
+    final sourceIds = _eligibleChapterProviders();
     setState(() {
-      _loadingChapters = true; _chapterError = null;
-      if (reset) { _chapters = const []; _nextOffset = null; _editionId = null; }
+      _loadingChapters = true;
+      _chapterError = null;
+      if (reset) {
+        _chapters = const [];
+        _sourceOffsets.clear();
+        _nextOffset = null;
+        _editionId = null;
+      }
     });
     try {
-      final result = await service.refreshChapters(workId: workId, providerId: widget.candidate.providerId, offset: offset);
+      final fetched = <ChapterUnit>[];
+      final nextOffsets = Map<String, int?>.from(_sourceOffsets);
+      final warnings = <String>[];
+      var attempted = 0;
+      for (final providerId in sourceIds) {
+        final offset = reset ? 0 : nextOffsets[providerId];
+        if (!reset && offset == null) continue;
+        attempted++;
+        try {
+          final result = await service.refreshChapters(
+            workId: workId,
+            providerId: providerId,
+            offset: offset ?? 0,
+          );
+          fetched.addAll(result.chapters);
+          nextOffsets[providerId] = result.nextOffset;
+          if (result.warning != null && result.warning!.trim().isNotEmpty) {
+            warnings.add('${providerId}: ${result.warning}');
+          }
+        } on Object catch (error) {
+          nextOffsets[providerId] = null;
+          warnings.add('${providerId}: chapter feed unavailable (${error.runtimeType})');
+        }
+      }
+      final merged = _mergeChapters(reset ? const <ChapterUnit>[] : _chapters, fetched);
       if (!mounted) return;
       setState(() {
-        _chapters = reset ? result.chapters : [..._chapters, ...result.chapters];
-        _nextOffset = result.nextOffset;
-        _editionId ??= result.editionIds.isEmpty ? null : result.editionIds.first;
-        final notes = [if (_warning != null && _warning!.isNotEmpty) _warning!, if (result.warning != null) result.warning!];
-        _warning = notes.isEmpty ? null : notes.join(' ');
+        _chapters = merged;
+        _sourceOffsets
+          ..clear()
+          ..addAll(nextOffsets);
+        _nextOffset = nextOffsets.values.any((offset) => offset != null) ? 1 : null;
+        _editionId ??= merged.isEmpty ? null : merged.first.editionId;
+        final notes = [
+          if (_warning != null && _warning!.isNotEmpty) _warning!,
+          ...warnings,
+        ];
+        _warning = notes.isEmpty ? null : notes.toSet().join(' ');
         _loadingChapters = false;
+        if (merged.isEmpty && warnings.isNotEmpty) {
+          _chapterError = 'No compatible source returned chapters. ' + warnings.join(' · ');
+        } else if (attempted == 0 && merged.isEmpty) {
+          _chapterError = 'No enabled source currently supports chapter feeds.';
+        }
       });
     } on Object {
       if (!mounted) return;
-      setState(() { _chapterError = 'Chapters could not be loaded. Your saved library and progress are unchanged.'; _loadingChapters = false; });
+      setState(() {
+        _chapterError = 'Chapters could not be loaded. Your saved library and progress are unchanged.';
+        _loadingChapters = false;
+      });
     }
+  }
+
+  List<ChapterUnit> _mergeChapters(
+    Iterable<ChapterUnit> existing,
+    Iterable<ChapterUnit> incoming,
+  ) {
+    final merged = <String, ChapterUnit>{};
+    String identity(ChapterUnit chapter) {
+      final language = (chapter.listings.firstOrNull?.languageCode ?? 'und').toLowerCase();
+      final number = chapter.chapterNumber;
+      final volume = chapter.volumeNumber?.toString() ?? '-';
+      final title = WorkIdentityMatcher.normalizeTitle(chapter.title ?? '');
+      final base = number != null
+          ? 'number:$number:volume:$volume'
+          : 'title:${title.isNotEmpty ? title : chapter.miniGroupId ?? chapter.id}';
+      final mini = chapter.kind == ChapterKind.miniChapter ? ':mini:${chapter.miniIndex ?? 0}' : '';
+      return '$language:${chapter.kind}:$base$mini';
+    }
+
+    for (final chapter in [...existing, ...incoming]) {
+      final key = identity(chapter);
+      final prior = merged[key];
+      if (prior == null) {
+        merged[key] = chapter;
+        continue;
+      }
+      final listings = <String, ChapterListing>{
+        for (final listing in prior.listings) listing.key: listing,
+        for (final listing in chapter.listings) listing.key: listing,
+      };
+      merged[key] = ChapterUnit(
+        id: prior.id,
+        editionId: prior.editionId,
+        title: prior.title ?? chapter.title,
+        chapterNumber: prior.chapterNumber ?? chapter.chapterNumber,
+        volumeNumber: prior.volumeNumber ?? chapter.volumeNumber,
+        kind: prior.kind,
+        miniGroupId: prior.miniGroupId ?? chapter.miniGroupId,
+        miniIndex: prior.miniIndex ?? chapter.miniIndex,
+        miniCount: prior.miniCount ?? chapter.miniCount,
+        listings: listings.values.toList(growable: false),
+      );
+    }
+    final result = merged.values.toList()
+      ..sort((left, right) {
+        final a = left.chapterNumber;
+        final b = right.chapterNumber;
+        if (a == null && b != null) return 1;
+        if (a != null && b == null) return -1;
+        if (a != null && b != null && a != b) return b.compareTo(a);
+        return (left.title ?? '').compareTo(right.title ?? '');
+      });
+    return List.unmodifiable(result);
   }
 
   Future<void> _addToLibrary() async {
@@ -159,12 +289,20 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
     final number = chapter.chapterNumber;
     final label = chapter.title ?? (number == null ? 'Special chapter' : 'Chapter ' + (number == number.roundToDouble() ? number.toInt().toString() : number.toString()));
     final language = chapter.listings.map((item) => item.languageCode).whereType<String>().toSet().join(', ');
+    final sourceNames = chapter.listings.map((item) {
+      final providers = widget.runtime.providers.all.where((provider) => provider.descriptor.id == item.providerId);
+      return providers.isEmpty ? item.providerId : providers.first.descriptor.name;
+    }).toSet().toList(growable: false);
     return Container(
       decoration: BoxDecoration(color: Colors.white.withValues(alpha: .045), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white.withValues(alpha: .06))),
       child: ListTile(
         leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: _violet.withValues(alpha: .12), borderRadius: BorderRadius.circular(11)), child: const Icon(Icons.menu_book_rounded, color: _violet, size: 19)),
         title: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        subtitle: Text([if (chapter.volumeNumber != null) 'Vol. ' + chapter.volumeNumber.toString(), if (language.isNotEmpty) language, 'Chapter ' + (index + 1).toString() + ' in loaded list'].join(' · '), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        subtitle: Text([
+          if (chapter.volumeNumber != null) 'Vol. ' + chapter.volumeNumber.toString(),
+          if (language.isNotEmpty) language,
+          if (sourceNames.length > 1) '${sourceNames.length} sources merged' else if (sourceNames.isNotEmpty) sourceNames.first,
+        ].join(' · '), style: const TextStyle(color: Colors.white54, fontSize: 11)),
         trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
         onTap: () {
           final workId = _workId;
